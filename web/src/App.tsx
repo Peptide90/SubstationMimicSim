@@ -384,8 +384,8 @@ const onConnect = useCallback(
         completionMs = Math.round(randomBetween(60, 120)); // 60–120 ms
         timeoutMs = 500; // 0.5s timeout for CB
       } else if (kind === 'ds' || kind === 'es') {
-        completionMs = Math.round(randomBetween(4500, 6500)); // ~5s with variance
-        timeoutMs = 9000; // 9s timeout
+        completionMs = Math.round(randomBetween(2000, 3000)); // ~3s with variance
+        timeoutMs = 6000; // 6s timeout
       } else {
         // default for other future switchgear
         completionMs = 1000;
