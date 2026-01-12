@@ -10,10 +10,9 @@ type PaletteItem = {
 const ITEMS: PaletteItem[] = [
   { kind: 'source', title: 'Source' },
   { kind: 'load', title: 'Load' },
-  { kind: 'bus', title: 'Bus' },
   { kind: 'ds', title: 'Disconnector (DS)' },
-  { kind: 'es', title: 'Earth Switch (ES)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
+  { kind: 'es', title: 'Earth Switch (ES)' },
   { kind: 'xfmr', title: 'Transformer (XFMR)' },
 ];
 
@@ -24,7 +23,7 @@ export type PaletteProps = {
 export function Palette({ onAddAtCenter }: PaletteProps) {
   const onDragStart = (evt: DragEvent<HTMLDivElement>, kind: NodeKind) => {
     evt.dataTransfer.setData('application/mimic-node-kind', kind);
-    evt.dataTransfer.effectAllowed = 'move';
+    evt.dataTransfer.effectAllowed = 'copy';
   };
 
   return (
@@ -33,16 +32,17 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
         position: 'absolute',
         top: 12,
         left: 12,
-        zIndex: 20,
-        width: 220,
+        zIndex: 30,
+        width: 240,
         padding: 10,
         border: '1px solid #ddd',
         background: 'white',
         borderRadius: 6,
+        color: '#111', // force readable text
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Components</div>
-      <div style={{ color: '#666', fontSize: 12, marginBottom: 10 }}>
+      <div style={{ fontWeight: 800, marginBottom: 8, color: '#111' }}>Components</div>
+      <div style={{ color: '#444', fontSize: 12, marginBottom: 10 }}>
         Drag onto canvas, or click to drop at centre.
       </div>
 
@@ -62,12 +62,17 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
               cursor: 'grab',
               userSelect: 'none',
               background: '#fafafa',
+              color: '#111',
             }}
             title="Drag to place, or click to add at centre"
           >
             {it.title}
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: '#444' }}>
+        Tip: Drag a terminal onto a busbar to tee in. Double-click a busbar to delete it.
       </div>
     </div>
   );
