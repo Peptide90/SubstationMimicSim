@@ -1,0 +1,37 @@
+{
+  "schemeId": "NG_BP109",
+  "version": "0.1",
+  "voltageClasses": {
+    "400": { "prefix": "X", "format": "PREFIX+TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" },
+    "275": { "prefix": "", "format": "TYPE_LETTER+CIRCUIT_NUM+PURPOSE" },
+    "132": { "prefix": "", "format": "TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" },
+    "LV66": { "prefix": "", "format": "CIRCUIT_NUM+TYPE_LETTER+PURPOSE" },
+    "HVDC": { "prefix": "D", "format": "PREFIX+TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" }
+  },
+  "typeMaps": {
+    "digitMap": {
+      "LINE": 0,
+      "TX_HV": 1,
+      "MAIN_BUS_SEC": 2,
+      "BUS_COUPLER": 3,
+      "SERIES_REACTOR": 4,
+      "SHUNT_COMP": 5,
+      "RES_BUS_SEC": 6,
+      "SPARE": 7,
+      "TX_LV": 8,
+      "GEN": 9
+    },
+    "letterMap": {
+      "LINE": "L",
+      "TX_HV": "H",
+      "MAIN_BUS_SEC": "S",
+      "BUS_COUPLER": "W",
+      "SERIES_REACTOR": "R",
+      "SHUNT_COMP": "K",
+      "RES_BUS_SEC": "P",
+      "SPARE": "Z",
+      "TX_LV": "T",
+      "GEN": "M"
+    }
+  }
+}

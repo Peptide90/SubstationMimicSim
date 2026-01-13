@@ -13,7 +13,7 @@ const ITEMS: PaletteItem[] = [
   { kind: 'ds', title: 'Disconnector (DS)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
   { kind: 'es', title: 'Earth Switch (ES)' },
-  { kind: 'xfmr', title: 'Transformer (XFMR)' },
+  { kind: 'xfmr', title: 'Transformer (XFMR)' }
 ];
 
 export type PaletteProps = {
@@ -29,20 +29,16 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
   return (
     <div
       style={{
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        zIndex: 30,
         width: 240,
         padding: 10,
-        border: '1px solid #ddd',
-        background: 'white',
-        borderRadius: 6,
-        color: '#111', // force readable text
+        border: '1px solid #1f2937',
+        background: '#0b1220',
+        borderRadius: 8,
+        color: '#fff'
       }}
     >
-      <div style={{ fontWeight: 800, marginBottom: 8, color: '#111' }}>Components</div>
-      <div style={{ color: '#444', fontSize: 12, marginBottom: 10 }}>
+      <div style={{ fontWeight: 900, marginBottom: 8, color: '#fff' }}>Components</div>
+      <div style={{ color: '#cbd5e1', fontSize: 12, marginBottom: 10 }}>
         Drag onto canvas, or click to drop at centre.
       </div>
 
@@ -57,12 +53,12 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
             tabIndex={0}
             style={{
               padding: '8px 10px',
-              border: '1px solid #eee',
-              borderRadius: 6,
+              border: '1px solid #334155',
+              borderRadius: 8,
               cursor: 'grab',
               userSelect: 'none',
-              background: '#fafafa',
-              color: '#111',
+              background: '#0f172a',
+              color: '#fff'
             }}
             title="Drag to place, or click to add at centre"
           >
@@ -71,7 +67,7 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
         ))}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 12, color: '#444' }}>
+      <div style={{ marginTop: 10, fontSize: 12, color: '#cbd5e1' }}>
         Tip: Drag a terminal onto a busbar to tee in. Double-click a busbar to delete it.
       </div>
     </div>
