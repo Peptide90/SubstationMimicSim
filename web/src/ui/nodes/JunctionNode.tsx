@@ -1,39 +1,51 @@
-import React from 'react';
-import { Handle, Position } from 'reactflow';
-import type { NodeProps } from 'reactflow';
+import React from "react";
+import { Handle, Position } from "reactflow";
+import type { NodeProps } from "reactflow";
 
-export function JunctionNode(_props: NodeProps) {
-  const stopClick = (e: any) => e.stopPropagation();
-
+export function JunctionNode(props: NodeProps) {
+  // Big clickable dot
   return (
     <div
       title="Junction"
       style={{
-        width: 10,
-        height: 10,
+        width: 18,
+        height: 18,
         borderRadius: 999,
-        border: '2px solid #555',
-        background: '#fff',
-        boxSizing: 'border-box',
+        border: "2px solid #94a3b8",
+        background: "#0b1220",
+        boxSizing: "border-box",
       }}
     >
+      {/* Overlay source and target handles at the SAME spot (center). Invisible but connectable. */}
       <Handle
-        className="junction-handle"
-        type="source"
-        id="j-s"
-        position={Position.Right}
-        style={{ width: 12, height: 12, right: -6 }}
-        onClick={stopClick}
-        onDoubleClick={stopClick}
+        type="target"
+        id="J"
+        position={Position.Left}
+        style={{
+          width: 18,
+          height: 18,
+          left: 0,
+          top: 0,
+          transform: "none",
+          opacity: 0,            // invisible
+          border: "none",
+          background: "transparent",
+        }}
       />
       <Handle
-        className="junction-handle"
-        type="target"
-        id="j-t"
+        type="source"
+        id="J"
         position={Position.Left}
-        style={{ width: 12, height: 12, left: -6 }}
-        onClick={stopClick}
-        onDoubleClick={stopClick}
+        style={{
+          width: 18,
+          height: 18,
+          left: 0,
+          top: 0,
+          transform: "none",
+          opacity: 0,            // invisible
+          border: "none",
+          background: "transparent",
+        }}
       />
     </div>
   );
