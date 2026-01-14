@@ -5,6 +5,7 @@ import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectSt
 
 import { Palette } from "../ui/Palette";
 import { BusbarEdge } from "../ui/BusbarEdge";
+import { busbarPolyline } from "../ui/busbarRouter";
 
 function isBusbarEdge(e: Edge): boolean {
   return (e.data as any)?.kind === "busbar";
@@ -165,7 +166,8 @@ export function EditorCanvas(props: {
         const tPt = getHandleCenter(e.target, e.targetHandle);
         if (!sPt || !tPt) continue;
 
-        const poly = buildStepPolyline(sPt, tPt);
+        const poly = busbarPolyline(sPt, tPt);
+
         for (let i = 0; i < poly.length - 1; i++) {
           const cp = closestPointOnSegment(poly[i], poly[i + 1], p);
           if (!best || cp.dist2 < best.dist2) {

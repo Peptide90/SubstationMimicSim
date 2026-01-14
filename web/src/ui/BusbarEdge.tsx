@@ -1,5 +1,6 @@
 import React from "react";
 import type { EdgeProps } from "reactflow";
+import { busbarPolyline } from "./busbarRouter";
 
 function clampMin(v: number, minAbs: number) {
   if (Math.abs(v) < minAbs) return v >= 0 ? minAbs : -minAbs;
@@ -35,7 +36,10 @@ export function BusbarEdge(props: EdgeProps) {
   const d = `M ${sourceX} ${sourceY}
              L ${midX} ${sourceY}
              L ${midX} ${targetY}
-             L ${targetX} ${targetY}`;
+             L ${targetX} ${targetY
+			 
+  const pts = busbarPolyline({ x: sourceX, y: sourceY }, { x: targetX, y: targetY });
+  const d = pts.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ");	 
 
   return <path id={id} d={d} fill="none" style={style} markerEnd={markerEnd} />;
 }
