@@ -1,26 +1,20 @@
-import React, { useCallback, useRef } from "react";
-import ReactFlow, {
-  Background,
-  ControlButton,
-  Controls,
-  MiniMap,
-  useReactFlow,
-} from "reactflow";
+import React, { useCallback, useMemo, useRef } from "react";
+import { useStore } from "reactflow";
+import ReactFlow, { Background, ControlButton, Controls, MiniMap, useReactFlow } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectStartParams } from "reactflow";
 
 import { Palette } from "../ui/Palette";
-
 import { BusbarEdge } from "../ui/BusbarEdge";
-
-function getBusbarId(e: Edge): string | undefined {
-  return (e.data as any)?.busbarId as string | undefined;
-}
 
 function isBusbarEdge(e: Edge): boolean {
   return (e.data as any)?.kind === "busbar";
 }
 
-// Orthogonal polyline for hit-testing (approx.)
+function getBusbarId(e: Edge): string | undefined {
+  return (e.data as any)?.busbarId as string | undefined;
+}
+
+// Approximate polyline for hit-testing (matches typical orthogonal routing)
 function buildStepPolyline(source: { x: number; y: number }, target: { x: number; y: number }) {
   const mx = (source.x + target.x) / 2;
   return [
@@ -53,8 +47,8 @@ type ConnectStart = {
 
 export function EditorCanvas(props: {
   nodes: Node[];
-  edges: Edge[];
-  rawEdges: Edge[];
+  edges: Edge[];      // DISPLAY edges (styled)
+  rawEdges: Edge[];   // CANONICAL edges (used for tee splitting)
   nodeTypes: Record<string, any>;
 
   locked: boolean;
@@ -72,22 +66,21 @@ export function EditorCanvas(props: {
   onNodeDragStart: NodeDragHandler;
   onNodeDragStop: NodeDragHandler;
 
-  onEdgeDoubleClick: (_: any, edge: Edge) => void;
   onEdgeClick: (_: any, edge: Edge) => void;
+  onEdgeDoubleClick: (_: any, edge: Edge) => void;
 
   onDragOver: (evt: React.DragEvent) => void;
   onDrop: (evt: React.DragEvent) => void;
 
   onAddAtCenter: (kind: any) => void;
 
-  // allow tee insertion to mutate state
   setNodes: (updater: (prev: Node[]) => Node[]) => void;
   setEdges: (updater: (prev: Edge[]) => Edge[]) => void;
 }) {
   const {
     nodes,
     edges,
-	rawEdges,
+    rawEdges,
     nodeTypes,
     locked,
     snapEnabled,
@@ -100,8 +93,8 @@ export function EditorCanvas(props: {
     onNodeClick,
     onNodeDragStart,
     onNodeDragStop,
+    onEdgeClick,
     onEdgeDoubleClick,
-	onEdgeClick,  
     onDragOver,
     onDrop,
     onAddAtCenter,
@@ -111,9 +104,14 @@ export function EditorCanvas(props: {
 
   const { screenToFlowPosition, getNode } = useReactFlow();
 
-  const connectStartRef = useRef<ConnectStart>({ nodeId: null, handleId: null, handleType: null });
-  const connectWasValidRef = useRef<boolean>(false);
+  // Wire custom edge types (busbar renderer)
+  const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
 
+  // Track a connect gesture to decide whether to tee insert
+  const connectStartRef = useRef<ConnectStart>({ nodeId: null, handleId: null, handleType: null });
+  const connectWasValidRef = useRef(false);
+
+  // Snap to grid helper (matches your 20px grid)
   const snapPoint = useCallback(
     (p: { x: number; y: number }) => {
       if (!snapEnabled) return p;
@@ -124,30 +122,70 @@ export function EditorCanvas(props: {
     [snapEnabled]
   );
 
-  const findNearestBusbar = useCallback((p: { x: number; y: number }) => {
-    let best: { edge: Edge; point: { x: number; y: number }; dist2: number } | null = null;
+  const nodeInternals = useStore((s: any) => s.nodeInternals);
 
-    for (const e of rawEdges) {
-      if (!isBusbarEdge(e)) continue;
+  const getHandleCenter = useCallback(
+    (nodeId: string, handleId: string | null | undefined) => {
+      const n = nodeInternals?.get?.(nodeId);
+      if (!n) return null;
 
-      const s = getNode(e.source);
-      const t = getNode(e.target);
-      if (!s || !t) continue;
+      // Absolute node position React Flow uses for rendering
+      const abs = n.positionAbsolute ?? n.position ?? { x: 0, y: 0 };
 
-      const poly = buildStepPolyline(s.position, t.position);
-      for (let i = 0; i < poly.length - 1; i++) {
-        const cp = closestPointOnSegment(poly[i], poly[i + 1], p);
-        if (!best || cp.dist2 < best.dist2) {
-          best = { edge: e, point: { x: cp.x, y: cp.y }, dist2: cp.dist2 };
+      // handleBounds can exist in different shapes depending on RF version
+      const hb = n.internals?.handleBounds ?? n.handleBounds;
+      if (!hb || !handleId) {
+        // fallback: use node center
+        return { x: abs.x + (n.width ?? 0) / 2, y: abs.y + (n.height ?? 0) / 2 };
+      }
+
+      const all = [...(hb.source ?? []), ...(hb.target ?? [])];
+      const h = all.find((x: any) => x.id === handleId);
+      if (!h) {
+        return { x: abs.x + (n.width ?? 0) / 2, y: abs.y + (n.height ?? 0) / 2 };
+      }
+
+      // Handle bounds are relative to node; convert to absolute center
+      return {
+        x: abs.x + h.x + h.width / 2,
+        y: abs.y + h.y + h.height / 2,
+      };
+    },
+    [nodeInternals]
+  );
+
+  const findNearestBusbar = useCallback(
+    (p: { x: number; y: number }) => {
+      let best: { edge: Edge; point: { x: number; y: number }; a: { x: number; y: number }; b: { x: number; y: number }; dist2: number } | null = null;
+
+      for (const e of rawEdges) {
+        if (!isBusbarEdge(e)) continue;
+
+        const sPt = getHandleCenter(e.source, e.sourceHandle);
+        const tPt = getHandleCenter(e.target, e.targetHandle);
+        if (!sPt || !tPt) continue;
+
+        const poly = buildStepPolyline(sPt, tPt);
+        for (let i = 0; i < poly.length - 1; i++) {
+          const cp = closestPointOnSegment(poly[i], poly[i + 1], p);
+          if (!best || cp.dist2 < best.dist2) {
+            best = {
+			  edge: e,
+			  point: { x: cp.x, y: cp.y },
+			  a: poly[i],
+			  b: poly[i + 1],
+			  dist2: cp.dist2
+			};
+          }
         }
       }
-    }
 
-    const threshold = 45;
-    if (best && best.dist2 <= threshold * threshold) return best;
-    return null;
-  }, [rawEdges, getNode]);
-
+      const threshold = 45;
+      if (best && best.dist2 <= threshold * threshold) return best;
+      return null;
+    },
+    [rawEdges, getHandleCenter]
+  );
 
   const insertTee = useCallback(
     (fromNodeId: string, fromHandleId: string | null, fromHandleType: "source" | "target" | null, dropFlow: { x: number; y: number }) => {
@@ -155,15 +193,30 @@ export function EditorCanvas(props: {
       if (!hit) return;
 
       const busbarEdge = hit.edge;
+      const bbid = getBusbarId(busbarEdge);
+      if (!bbid) return;
 
-      // Place junction on the BUSBAR, not where the mouse was.
-      let jPos = snapPoint(hit.point);
-	  
-	  const jPos = snapPoint(hit.point); // closest point ON the busbar
+	  // Place junction CENTRE on the busbar, but ONLY snap along the bus direction.
+	  // This prevents snapping 1 grid square off the bar when the bar is at (grid + 10px).
+	  const J = 18; // must match JunctionNode.tsx size
 
-      // Clamp away from corners: at least half-grid from the polyline vertices.
-      const half = 10; // half of 20px grid
-      jPos = { x: Math.round(jPos.x), y: Math.round(jPos.y) };
+	  const dxSeg = hit.b.x - hit.a.x;
+	  const dySeg = hit.b.y - hit.a.y;
+	  const isHorizontal = Math.abs(dxSeg) >= Math.abs(dySeg);
+
+	  const snap1D = (v: number) => {
+	    const g = 20;
+	    return Math.round(v / g) * g;
+	  };
+
+	  // Snap along the segment, keep perpendicular exactly on the bar.
+	  const center = {
+	    x: isHorizontal ? snap1D(hit.point.x) : hit.point.x,
+	    y: isHorizontal ? hit.point.y : snap1D(hit.point.y),
+	  };
+
+   	  let jPos = { x: center.x - J / 2, y: center.y - J / 2 };
+  	  jPos = { x: Math.round(jPos.x), y: Math.round(jPos.y) };
 
       const jId = `J-${bbid}-${crypto.randomUUID().slice(0, 4)}`;
 
@@ -181,16 +234,16 @@ export function EditorCanvas(props: {
       setEdges((prev) => {
         const remaining = prev.filter((e) => e.id !== busbarEdge.id);
 
-        // Split into two segments (keep same busbarId so delete works)
+        // Split busbar into two segments with same busbarId
         const segA: Edge = {
           id: `${bbid}-${crypto.randomUUID().slice(0, 4)}a`,
           source: busbarEdge.source,
           target: jId,
           sourceHandle: busbarEdge.sourceHandle,
           targetHandle: "J",
-          type: "step",
+          type: "busbar",
           style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-          data: { kind: "busbar", busbarId: bbid },
+          data: { kind: "busbar", busbarId: bbid, ...(busbarEdge.data as any) },
         };
 
         const segB: Edge = {
@@ -199,45 +252,42 @@ export function EditorCanvas(props: {
           target: busbarEdge.target,
           sourceHandle: "J",
           targetHandle: busbarEdge.targetHandle,
-          type: "step",
+          type: "busbar",
           style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-          data: { kind: "busbar", busbarId: bbid },
+          data: { kind: "busbar", busbarId: bbid, ...(busbarEdge.data as any) },
         };
 
-        // Branch direction depends on what you dragged from:
-        // - fromHandleType === "source" => from -> junction
-        // - fromHandleType === "target" => junction -> from   (this fixes ES)
+        // Branch edge direction depends on whether drag started on a source or target handle
         const branchBusbarId = `bb-${crypto.randomUUID().slice(0, 6)}`;
-        const branchBase: Edge = {
-          id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
-          type: "step",
-          style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-          data: { kind: "busbar", busbarId: branchBusbarId },
-        } as any;
+        const safeHandle = fromHandleId ?? "R";
 
-        const safeHandle = fromHandleId ?? "J";
-
-        const branch =
+        const branch: Edge =
           fromHandleType === "target"
-            ? ({
-                ...branchBase,
+            ? {
+                id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
                 source: jId,
                 target: fromNodeId,
                 sourceHandle: "J",
                 targetHandle: safeHandle,
-              } as Edge)
-            : ({
-                ...branchBase,
+                type: "busbar",
+                style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
+                data: { kind: "busbar", busbarId: branchBusbarId },
+              }
+            : {
+                id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
                 source: fromNodeId,
                 target: jId,
                 sourceHandle: safeHandle,
                 targetHandle: "J",
-              } as Edge);
+                type: "busbar",
+                style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
+                data: { kind: "busbar", busbarId: branchBusbarId },
+              };
 
         return remaining.concat(segA, segB, branch);
       });
     },
-    [findNearestBusbarEdge, setEdges, setNodes, snapPoint]
+    [findNearestBusbar, setEdges, setNodes, snapPoint]
   );
 
   const onConnectStart = useCallback(
@@ -271,7 +321,7 @@ export function EditorCanvas(props: {
 
       if (!nodeId) return;
 
-      // Normal handle->handle connect happened; do nothing.
+      // If normal connect occurred, do nothing.
       if (connectWasValidRef.current) {
         connectWasValidRef.current = false;
         return;
@@ -290,14 +340,15 @@ export function EditorCanvas(props: {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-		  edgeTypes={edgeTypes}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           isValidConnection={isValidConnection}
           onConnect={onConnectWrapped}
           onConnectStart={onConnectStart}
           onConnectEnd={onConnectEnd}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onEdgeClick={onEdgeClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodeClick={onNodeClick}
           onNodeDragStart={onNodeDragStart}
@@ -312,7 +363,6 @@ export function EditorCanvas(props: {
           selectionOnDrag={!locked}
           snapToGrid={snapEnabled}
           snapGrid={[20, 20]}
-		  onEdgeClick={onEdgeClick}
         >
           <Background variant="lines" gap={24} />
           <MiniMap />
