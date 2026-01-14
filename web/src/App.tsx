@@ -20,6 +20,8 @@ import { SaveLoadModal } from "./components/modals/SaveLoadModal";
 import { JunctionNode } from "./ui/nodes/JunctionNode";
 import { ScadaNode } from "./ui/nodes/ScadaNode";
 
+import { BusbarModal } from "./components/modals/BusbarModal";
+
 import {
   computeBp109Label,
   defaultBp109Meta,
@@ -72,9 +74,28 @@ function makeBusbarEdge(source: string, target: string, sourceHandle?: string, t
     target,
     sourceHandle,
     targetHandle,
-    type: "step",
+    type: "busbar",
     style: { strokeWidth: 6, stroke: "#64748b" },
     data: { kind: "busbar", busbarId: bbid },
+  };
+}
+
+function makeNode(
+  kind: NodeKind,
+  id: string,
+  x: number,
+  y: number,
+  state?: SwitchState,
+  sourceOn?: boolean
+): Node {
+  const mimic = { kind, state, sourceOn, label: id };
+  return {
+    id,
+    type: kind === "junction" ? "junction" : "scada",
+    position: { x, y },
+    data: { label: id, mimic },
+    draggable: kind !== "junction",
+    selectable: true,
   };
 }
 
@@ -176,10 +197,14 @@ function AppInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(tpl.edges);
 
   const nodeTypes = useMemo(() => ({ junction: JunctionNode, scada: ScadaNode }), []);
+  
+  const edgeClickTimerRef = useRef<number | null>(null);
+  const edgeClickIgnoreRef = useRef(false);
 
   // UI states
   const [locked, setLocked] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
 
   const [openInterlocking, setOpenInterlocking] = useState(false);
   const [openLabelling, setOpenLabelling] = useState(false);
@@ -193,9 +218,16 @@ function AppInner() {
   }, []);
 
   // Selection/operate gating
-  const [nodeDragInProgress, setNodeDragInProgress] = useState(false);
-  const onNodeDragStart: NodeDragHandler = useCallback(() => setNodeDragInProgress(true), []);
-  const onNodeDragStop: NodeDragHandler = useCallback(() => window.setTimeout(() => setNodeDragInProgress(false), 0), []);
+  const lastDragEndTsRef = useRef<number>(0);
+
+  const onNodeDragStart: NodeDragHandler = useCallback(() => {
+    // do nothing; we gate based on drag-end time
+  }, []);
+
+  const onNodeDragStop: NodeDragHandler = useCallback(() => {
+    lastDragEndTsRef.current = Date.now();
+  }, []);
+
 
   // Labeling state
   const [labelScheme, setLabelScheme] = useState<LabelScheme>("DEFAULT");
@@ -259,32 +291,57 @@ function AppInner() {
   }, [labelScheme, labelMode, labelOverrides, bayTypeOverrides, bp109MetaById]);
 
   // Connect validation
-  const isValidConnection = useCallback(
-    (c: Connection) => {
-      if (!c.source || !c.target) return false;
-      const target = nodeById.get(c.target);
-      if (!target) return false;
-      const k = getMimicData(target)?.kind;
-      if (!k) return false;
+const getDegree = (nodeId: string) =>
+  edges.reduce((acc, e) => acc + ((e.source === nodeId || e.target === nodeId) ? 1 : 0), 0);
 
-      if (k === "es") {
-        const already = edges.some((e) => e.source === c.target || e.target === c.target);
-        if (already) return false;
-      }
+const isValidConnection = useCallback(
+  (c: Connection) => {
+    if (!c.source || !c.target) return false;
 
-      const used = new Set<string>();
-      for (const e of edges) {
-        if (e.source === c.target && e.sourceHandle) used.add(e.sourceHandle);
-        if (e.target === c.target && e.targetHandle) used.add(e.targetHandle);
-      }
-      const hasH = used.has("L") || used.has("R");
-      const hasV = used.has("T") || used.has("B");
-      if (hasH) return c.targetHandle === "L" || c.targetHandle === "R";
-      if (hasV) return c.targetHandle === "T" || c.targetHandle === "B";
-      return true;
-    },
-    [edges, nodeById]
-  );
+    const sourceNode = nodeById.get(c.source);
+    const targetNode = nodeById.get(c.target);
+    if (!sourceNode || !targetNode) return false;
+
+    const sourceKind = getMimicData(sourceNode)?.kind;
+    const targetKind = getMimicData(targetNode)?.kind;
+    if (!sourceKind || !targetKind) return false;
+
+  // Interface nodes: exactly one connection total, allow any side.
+  // (This must run BEFORE axis locking logic.)
+    if (targetKind === "load") {
+      return getDegree(c.target) === 0;
+    }
+    if (sourceKind === "source") {
+      return getDegree(c.source) === 0;
+    }
+    if (targetKind === "source") {
+      return getDegree(c.target) === 0;
+    }
+    if (sourceKind === "load") {
+      return getDegree(c.source) === 0;
+    }
+
+  // ES must be a single-connection branch device (prevents ES being used inline)
+    if (sourceKind === "es" && getDegree(c.source) >= 1) return false;
+    if (targetKind === "es" && getDegree(c.target) >= 1) return false;
+
+    // Axis locking on the TARGET:
+    const used = new Set<string>();
+    for (const e of edges) {
+      if (e.source === c.target && e.sourceHandle) used.add(e.sourceHandle);
+      if (e.target === c.target && e.targetHandle) used.add(e.targetHandle);
+    }
+    const hasH = used.has("L") || used.has("R");
+    const hasV = used.has("T") || used.has("B");
+
+    if (hasH) return c.targetHandle === "L" || c.targetHandle === "R";
+    if (hasV) return c.targetHandle === "T" || c.targetHandle === "B";
+
+    return true;
+  },
+  [edges, nodeById]
+);
+
 
   // Energization/grounding
   const { nodes: mimicNodes, edges: mimicEdges } = useMemo(() => flowToMimicLocal(nodes, edges), [nodes, edges]);
@@ -319,12 +376,57 @@ function AppInner() {
   const onEdgeDoubleClick = useCallback((_evt: any, edge: Edge) => {
     const bbid = (edge.data as any)?.busbarId as string | undefined;
     if (!bbid) return;
+
+    // Cancel pending single-click selection
+    if (edgeClickTimerRef.current) {
+      window.clearTimeout(edgeClickTimerRef.current);
+      edgeClickTimerRef.current = null;
+    }
+    // Prevent click from re-selecting after delete
+    edgeClickIgnoreRef.current = true;
+
+    setSelectedEdge(null);
+
     setEdges((eds) => {
       const next = eds.filter((e) => (e.data as any)?.busbarId !== bbid);
+      // cleanup orphan junctions after deletion
       window.setTimeout(() => cleanupOrphanJunctions(next), 0);
       return next;
     });
   }, [cleanupOrphanJunctions, setEdges]);
+
+
+  
+  // Edge click handling
+  const onEdgeClick = useCallback((_evt: any, edge: Edge) => {
+    if ((edge.data as any)?.kind !== "busbar") return;
+
+    // If a double-click just happened, ignore this click.
+    if (edgeClickIgnoreRef.current) {
+      edgeClickIgnoreRef.current = false;
+      return;
+    }
+
+    // Debounce selection so double-click can win.
+    if (edgeClickTimerRef.current) window.clearTimeout(edgeClickTimerRef.current);
+
+    edgeClickTimerRef.current = window.setTimeout(() => {
+      setSelectedEdge(edge);
+     edgeClickTimerRef.current = null;
+    }, 220);
+  }, []);
+
+
+  const updateEdgeData = useCallback(
+    (edgeId: string, patch: any) => {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.id === edgeId ? { ...e, data: { ...(e.data as any), ...patch } } : e
+        )
+      );
+    },
+    []
+  );
 
   // DnD from palette
   const onDragOver = useCallback((evt: React.DragEvent) => {
@@ -423,15 +525,19 @@ function AppInner() {
   }, [appendEvent, checkInterlock, setNodeSwitchState]);
 
   const onNodeClick = useCallback((_evt: any, node: Node) => {
-    if (nodeDragInProgress) return;
+    // If we just finished dragging, ignore clicks for a short window
+    if (Date.now() - lastDragEndTsRef.current < 180) return;
+
     const md = getMimicData(node);
     if (!md || md.kind === "junction") return;
+
     if (md.kind === "cb" || md.kind === "ds" || md.kind === "es") {
       const current = md.state ?? "open";
       const to: SwitchState = current === "closed" ? "open" : "closed";
       scheduleSwitchCommand(node.id, md.kind, to);
     }
-  }, [nodeDragInProgress, scheduleSwitchCommand]);
+  }, [scheduleSwitchCommand]);
+
 
   // SCADA switchgear list
   const switchgear = useMemo(() => {
@@ -536,6 +642,9 @@ function AppInner() {
         <EditorCanvas
           nodes={nodes}
           edges={styledEdges}
+		  rawEdges={edges}
+		  setNodes={setNodes}
+          setEdges={setEdges}
           nodeTypes={nodeTypes}
           locked={locked}
           snapEnabled={snapEnabled}
@@ -552,6 +661,7 @@ function AppInner() {
           onDragOver={onDragOver}
           onDrop={onDrop}
           onAddAtCenter={onAddAtCenter}
+		  onEdgeClick={onEdgeClick}
         />
 
         <ScadaPanel
@@ -605,6 +715,13 @@ function AppInner() {
         templates={templates}
         onLoadTemplate={onLoadTemplate}
       />
+	  
+	  <BusbarModal
+	    open={!!selectedEdge}
+	    edge={selectedEdge}
+	    onClose={() => setSelectedEdge(null)}
+	    onUpdateEdgeData={updateEdgeData}
+	  />
     </div>
   );
 }

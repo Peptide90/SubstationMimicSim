@@ -52,16 +52,22 @@ export function ScadaNode(props: NodeProps) {
   const nodeId = useNodeId()!;
   const edges = useStore((s) => s.edges) as Edge[];
 
+  // While user is dragging a connection, show all handles (UX requirement)
+  const rfState = useStore((s: any) => s);
+  const isConnecting =
+    !!rfState.connectionNodeId ||
+    !!rfState.connectionStartHandle ||
+    !!rfState.connectionInProgress ||
+    !!rfState.connectionHandleId;
+
   const orientation = useMemo(() => getOrientationForNode(nodeId, edges), [nodeId, edges]);
 
   const handleStyleBase: React.CSSProperties = { width: 10, height: 10, borderRadius: 2, opacity: 0.9 };
 
-  const showH = orientation === 'NONE' || orientation === 'H';
-  const showV = orientation === 'NONE' || orientation === 'V';
+  // Show all four directions while connecting; otherwise lock to chosen axis
+  const showH = isConnecting || orientation === 'NONE' || orientation === 'H';
+  const showV = isConnecting || orientation === 'NONE' || orientation === 'V';
 
-  // For “pass-through” devices we provide both a target and source per handle
-  // so connections can be created in either direction. This is fine as long as
-  // App.tsx uses isValidConnection / onConnect to enforce axis rules.
   const AxisHandles = () => (
     <>
       {/* Horizontal pair */}
@@ -69,9 +75,9 @@ export function ScadaNode(props: NodeProps) {
         <>
           <Handle type="target" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6 }} onClick={stopClick} />
           <Handle type="source" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6 }} onClick={stopClick} />
-          {/* Opposite direction support */}
-          <Handle type="source" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="target" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6, opacity: 0 }} onClick={stopClick} />
+          {/* Opposite direction support (hidden) */}
+          <Handle type="source" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6, opacity: 0, pointerEvents: "none" }} onClick={stopClick} />
+          <Handle type="target" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6, opacity: 0, pointerEvents: "none" }} onClick={stopClick} />
         </>
       )}
 
@@ -80,42 +86,47 @@ export function ScadaNode(props: NodeProps) {
         <>
           <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6 }} onClick={stopClick} />
           <Handle type="source" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6 }} onClick={stopClick} />
-          {/* Opposite direction support */}
-          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: 0 }} onClick={stopClick} />
+          {/* Opposite direction support (hidden) */}
+          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: 0, pointerEvents: "none" }} onClick={stopClick} />
+          <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: 0, pointerEvents: "none" }} onClick={stopClick} />
         </>
       )}
     </>
   );
 
   const renderHandles = () => {
-    // Source: allow any orientation out of the box, but typically right output.
+    // Source: single termination; allow connect from any side while connecting (hidden others)
     if (kind === 'source') {
       return (
         <>
           <Handle type="source" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6 }} onClick={stopClick} />
-          <Handle type="source" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="source" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6, opacity: 0 }} onClick={stopClick} />
+          <Handle type="source" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
+          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
+          <Handle type="source" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
         </>
       );
     }
 
-    // Load: allow any orientation in, default left.
+    // Load: single termination; allow connect from any side while connecting (hidden others)
     if (kind === 'load') {
       return (
         <>
           <Handle type="target" id="L" position={Position.Left} style={{ ...handleStyleBase, left: -6 }} onClick={stopClick} />
-          <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: 0 }} onClick={stopClick} />
-          <Handle type="target" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6, opacity: 0 }} onClick={stopClick} />
+          <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
+          <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyleBase, bottom: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
+          <Handle type="target" id="R" position={Position.Right} style={{ ...handleStyleBase, right: -6, opacity: isConnecting ? 0.9 : 0 }} onClick={stopClick} />
         </>
       );
     }
 
-    // ES: single terminal (top) only
+    // ES: single visible terminal (top). Hidden source enables dragging from ES.
     if (kind === 'es') {
-      return <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6 }} onClick={stopClick} />;
+      return (
+        <>
+          <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6 }} onClick={stopClick} />
+          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyleBase, top: -6, opacity: 0, pointerEvents: "none" }} onClick={stopClick} />
+        </>
+      );
     }
 
     // Default pass-through device with axis locking

@@ -2,8 +2,7 @@ import React from "react";
 import { Handle, Position } from "reactflow";
 import type { NodeProps } from "reactflow";
 
-export function JunctionNode(props: NodeProps) {
-  // Big clickable dot
+export function JunctionNode(_props: NodeProps) {
   return (
     <div
       title="Junction"
@@ -14,37 +13,31 @@ export function JunctionNode(props: NodeProps) {
         border: "2px solid #94a3b8",
         background: "#0b1220",
         boxSizing: "border-box",
+        cursor: "move",
       }}
     >
-      {/* Overlay source and target handles at the SAME spot (center). Invisible but connectable. */}
+      {/* Target handle */}
       <Handle
         type="target"
         id="J"
-        position={Position.Left}
+        position={Position.Top}
         style={{
           width: 18,
           height: 18,
-          left: 0,
-          top: 0,
-          transform: "none",
-          opacity: 0,            // invisible
-          border: "none",
-          background: "transparent",
+          opacity: 0,
+          pointerEvents: "none",
         }}
       />
+      {/* Source handle */}
       <Handle
         type="source"
         id="J"
-        position={Position.Left}
+        position={Position.Top}
         style={{
           width: 18,
           height: 18,
-          left: 0,
-          top: 0,
-          transform: "none",
-          opacity: 0,            // invisible
-          border: "none",
-          background: "transparent",
+          opacity: 0,
+          pointerEvents: "none",
         }}
       />
     </div>
