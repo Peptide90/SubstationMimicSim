@@ -8,8 +8,7 @@ type PaletteItem = {
 };
 
 const ITEMS: PaletteItem[] = [
-  { kind: 'source', title: 'Source' },
-  { kind: 'load', title: 'Load' },
+  { kind: "iface", title: "Interface" },
   { kind: 'ds', title: 'Disconnector (DS)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
   { kind: 'es', title: 'Earth Switch (ES)' },

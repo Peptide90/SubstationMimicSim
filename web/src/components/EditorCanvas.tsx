@@ -66,6 +66,7 @@ export function EditorCanvas(props: {
   onNodeClick: (_: any, node: Node) => void;
   onNodeDragStart: NodeDragHandler;
   onNodeDragStop: NodeDragHandler;
+  onNodeDoubleClick: (_: any, node: Node) => void;
 
   onEdgeClick: (_: any, edge: Edge) => void;
   onEdgeDoubleClick: (_: any, edge: Edge) => void;
@@ -94,6 +95,7 @@ export function EditorCanvas(props: {
     onNodeClick,
     onNodeDragStart,
     onNodeDragStop,
+	onNodeDoubleClick,
     onEdgeClick,
     onEdgeDoubleClick,
     onDragOver,
@@ -355,6 +357,7 @@ export function EditorCanvas(props: {
           onNodeClick={onNodeClick}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
+		  onNodeDoubleClick={onNodeDoubleClick}
           fitView
           deleteKeyCode={["Backspace", "Delete"]}
           panOnDrag={[1, 2]}

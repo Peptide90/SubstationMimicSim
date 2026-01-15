@@ -1,9 +1,8 @@
 export type NodeKind =
-  | 'source'
+  | 'interface'
   | 'cb'
   | 'ds'
   | 'es'
-  | 'load'
   | 'xfmr'
   | 'junction'; // new hidden/utility node type
 

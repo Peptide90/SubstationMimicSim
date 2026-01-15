@@ -19,8 +19,12 @@ import { SaveLoadModal } from "./components/modals/SaveLoadModal";
 
 import { JunctionNode } from "./ui/nodes/JunctionNode";
 import { ScadaNode } from "./ui/nodes/ScadaNode";
+import { InterfaceNode } from "./ui/nodes/InterfaceNode";
 
 import { BusbarModal } from "./components/modals/BusbarModal";
+
+import { PowerFlowModal } from "./components/modals/PowerFlowModal";
+import type { InterfaceMeta } from "./components/modals/PowerFlowModal";
 
 import {
   computeBp109Label,
@@ -89,11 +93,30 @@ function makeNode(
   sourceOn?: boolean
 ): Node {
   const mimic = { kind, state, sourceOn, label: id };
+
+  const iface =
+    kind === "iface"
+      ? {
+          substationId: "SUB",
+          terminalId: "X1",
+          linkTo: "",
+        }
+      : undefined;
+
   return {
     id,
-    type: kind === "junction" ? "junction" : "scada",
+    type:
+      kind === "junction"
+        ? "junction"
+        : kind === "iface"
+        ? "iface"
+        : "scada",
     position: { x, y },
-    data: { label: id, mimic },
+    data: {
+      label: id,
+      mimic,
+      ...(iface ? { iface } : {}),
+    },
     draggable: kind !== "junction",
     selectable: true,
   };
@@ -196,7 +219,11 @@ function AppInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(tpl.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(tpl.edges);
 
-  const nodeTypes = useMemo(() => ({ junction: JunctionNode, scada: ScadaNode }), []);
+  const nodeTypes = useMemo(() => ({
+  junction: JunctionNode,
+  scada: ScadaNode,
+  iface: InterfaceNode,
+  }), []);
   
   const edgeClickTimerRef = useRef<number | null>(null);
   const edgeClickIgnoreRef = useRef(false);
@@ -206,9 +233,15 @@ function AppInner() {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
 
+  // Modals
   const [openInterlocking, setOpenInterlocking] = useState(false);
   const [openLabelling, setOpenLabelling] = useState(false);
   const [openSaveLoad, setOpenSaveLoad] = useState(false);
+  
+  // Power Flow modal
+  const [openPowerFlow, setOpenPowerFlow] = useState(false);
+  const [focusedInterfaceId, setFocusedInterfaceId] = useState<string | null>(null);
+  const [interfaceMetaById, setInterfaceMetaById] = useState<Record<string, InterfaceMeta>>({});
 
   // Event log
   const [events, setEvents] = useState<EventLogItem[]>([]);
@@ -227,6 +260,32 @@ function AppInner() {
   const onNodeDragStop: NodeDragHandler = useCallback(() => {
     lastDragEndTsRef.current = Date.now();
   }, []);
+
+  // Interface Labeling
+  const nodesForView = useMemo(() => {
+    return nodes.map((n) => {
+      const md = getMimicData(n);
+      if (md?.kind !== "iface") return n;
+
+      const meta = interfaceMetaById[n.id];
+      const role = meta?.role ?? "neutral";
+
+      const iface = (n.data as any)?.iface ?? { substationId: "SUB", terminalId: "X1", linkTo: "" };
+
+      return {
+        ...n,
+        data: {
+          ...(n.data as any),
+          ifaceRole: role,
+          iface,
+          onOpenPowerFlow: (id: string) => {
+            setFocusedInterfaceId(id);
+            setOpenPowerFlow(true);
+          },
+        },
+      };
+    });
+  }, [nodes, interfaceMetaById, setFocusedInterfaceId, setOpenPowerFlow]);
 
 
   // Labeling state
@@ -306,20 +365,11 @@ const isValidConnection = useCallback(
     const targetKind = getMimicData(targetNode)?.kind;
     if (!sourceKind || !targetKind) return false;
 
-  // Interface nodes: exactly one connection total, allow any side.
-  // (This must run BEFORE axis locking logic.)
-    if (targetKind === "load") {
-      return getDegree(c.target) === 0;
-    }
-    if (sourceKind === "source") {
-      return getDegree(c.source) === 0;
-    }
-    if (targetKind === "source") {
-      return getDegree(c.target) === 0;
-    }
-    if (sourceKind === "load") {
-      return getDegree(c.source) === 0;
-    }
+  // Interface node: single termination (max 1 connection total)
+    if (sourceKind === "iface" && getDegree(c.source) >= 1) return false;
+    if (targetKind === "iface" && getDegree(c.target) >= 1) return false;
+	
+	if (targetKind === "iface") return true;
 
   // ES must be a single-connection branch device (prevents ES being used inline)
     if (sourceKind === "es" && getDegree(c.source) >= 1) return false;
@@ -345,7 +395,24 @@ const isValidConnection = useCallback(
 
   // Energization/grounding
   const { nodes: mimicNodes, edges: mimicEdges } = useMemo(() => flowToMimicLocal(nodes, edges), [nodes, edges]);
-  const energized = useMemo(() => computeEnergized(mimicNodes as any, mimicEdges as any), [mimicNodes, mimicEdges]);
+  const energized = useMemo(() => {
+  // Convert iface nodes into source semantics for energization root selection
+  const nodesForEnergize = mimicNodes.map((n: any) => {
+    if (n.kind !== "iface") return n;
+
+    const meta = interfaceMetaById[n.id];
+    const enabled = meta?.enabled !== false;
+    const role = meta?.role ?? "neutral";
+
+    // Treat "source" role as energizing root
+    const sourceOn = enabled && role === "source";
+
+    return { ...n, kind: "source", sourceOn };
+  });
+
+  return computeEnergized(nodesForEnergize as any, mimicEdges as any);
+}, [mimicNodes, mimicEdges, interfaceMetaById]);
+
   const grounded = useMemo(() => computeGroundedVisual(mimicNodes as any, mimicEdges as any), [mimicNodes, mimicEdges]);
 
   const styledEdges = useMemo(() => {
@@ -531,13 +598,38 @@ const isValidConnection = useCallback(
     const md = getMimicData(node);
     if (!md || md.kind === "junction") return;
 
+    // Interface click opens Power Flow modal focused on this interface
+    if (md.kind === "iface") {
+      setFocusedInterfaceId(node.id);
+      setOpenPowerFlow(true);
+      return;
+    }
+
     if (md.kind === "cb" || md.kind === "ds" || md.kind === "es") {
       const current = md.state ?? "open";
       const to: SwitchState = current === "closed" ? "open" : "closed";
       scheduleSwitchCommand(node.id, md.kind, to);
     }
-  }, [scheduleSwitchCommand]);
+  }, [ scheduleSwitchCommand, setFocusedInterfaceId, setOpenPowerFlow ]);
 
+  const onNodeDoubleClick = useCallback((_evt: any, node: Node) => {
+    const md = getMimicData(node);
+    if (!md || md.kind === "junction") return;
+
+    // Interface: open Power Flow modal
+    if (md.kind === "iface") {
+      setFocusedInterfaceId(node.id);
+      setOpenPowerFlow(true);
+      return;
+    }
+
+    // Switchgear: operate
+    if (md.kind === "cb" || md.kind === "ds" || md.kind === "es") {
+      const current = md.state ?? "open";
+      const to: SwitchState = current === "closed" ? "open" : "closed";
+      scheduleSwitchCommand(node.id, md.kind, to);
+    }
+  }, [scheduleSwitchCommand, setFocusedInterfaceId, setOpenPowerFlow]);
 
   // SCADA switchgear list
   const switchgear = useMemo(() => {
@@ -636,11 +728,12 @@ const isValidConnection = useCallback(
         onOpenInterlocking={() => setOpenInterlocking(true)}
         onOpenLabelling={() => setOpenLabelling(true)}
         onOpenSaveLoad={() => setOpenSaveLoad(true)}
+	    onOpenPowerFlow={() => setOpenPowerFlow(true)}
       />
 
       <div style={{ display: "flex", height: "100vh", paddingTop: 52 }}>
         <EditorCanvas
-          nodes={nodes}
+          nodes={nodesForView}
           edges={styledEdges}
 		  rawEdges={edges}
 		  setNodes={setNodes}
@@ -662,6 +755,7 @@ const isValidConnection = useCallback(
           onDrop={onDrop}
           onAddAtCenter={onAddAtCenter}
 		  onEdgeClick={onEdgeClick}
+		  onNodeDoubleClick={onNodeDoubleClick}
         />
 
         <ScadaPanel
@@ -721,6 +815,17 @@ const isValidConnection = useCallback(
 	    edge={selectedEdge}
 	    onClose={() => setSelectedEdge(null)}
 	    onUpdateEdgeData={updateEdgeData}
+	  />
+	  
+	  <PowerFlowModal
+	    open={openPowerFlow}
+	    onClose={() => setOpenPowerFlow(false)}
+	    interfaces={nodes
+		  .filter((n) => getMimicData(n)?.kind === "iface")
+		  .map((n) => ({ id: n.id, label: (n.data as any)?.label ?? n.id }))}
+	    focusedId={focusedInterfaceId}
+	    metaById={interfaceMetaById}
+	    setMetaById={setInterfaceMetaById}
 	  />
     </div>
   );

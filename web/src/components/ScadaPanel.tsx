@@ -44,7 +44,10 @@ export function ScadaPanel(props: {
 
       {/* Commands */}
       <div style={{ padding: 14, borderBottom: "1px solid #1f2937" }}>
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>Commands</div>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>Commands</div>
+		<div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 10 }}>
+		  Tip: double-click a device on the diagram to operate it (or use these buttons).
+		</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
           {(["es", "ds", "cb"] as const).map((k) => (
             <div key={k}>

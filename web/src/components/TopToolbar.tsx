@@ -1,21 +1,28 @@
 import React from "react";
 
-export function TopToolbar(props: {
+type Props = {
   buildTag: string;
   onOpenInterlocking: () => void;
   onOpenLabelling: () => void;
   onOpenSaveLoad: () => void;
-}) {
-  const { buildTag, onOpenInterlocking, onOpenLabelling, onOpenSaveLoad } = props;
+  onOpenPowerFlow: () => void;
+};
 
+export function TopToolbar({
+  buildTag,
+  onOpenInterlocking,
+  onOpenLabelling,
+  onOpenSaveLoad,
+  onOpenPowerFlow,
+}: Props) {
   const btn: React.CSSProperties = {
-    border: "1px solid #334155",
     background: "#0f172a",
+    color: "#e5e7eb",
+    border: "1px solid #334155",
+    borderRadius: 6,
     padding: "6px 10px",
-    borderRadius: 8,
-    color: "#fff",
     cursor: "pointer",
-    fontWeight: 800,
+    fontSize: 13,
   };
 
   return (
@@ -25,23 +32,36 @@ export function TopToolbar(props: {
         top: 0,
         left: 0,
         right: 0,
-        height: 52,
-        zIndex: 99999,
-        background: "#0b1220",
-        borderBottom: "1px solid #1f2937",
+        height: 48,
         display: "flex",
         alignItems: "center",
-        gap: 10,
+        gap: 8,
         padding: "0 12px",
-        color: "#fff",
+        background: "#020617",
+        borderBottom: "1px solid #1e293b",
+        zIndex: 1000,
       }}
     >
-      <div style={{ fontWeight: 900 }}>Substation Mimic</div>
-      <div style={{ color: "#94a3b8", fontSize: 12 }}>Build: {buildTag}</div>
+      <div style={{ fontWeight: 700, color: "#e5e7eb", marginRight: 12 }}>
+        Substation Mimic
+      </div>
 
-      <button style={btn} onClick={onOpenInterlocking}>Interlocking</button>
-      <button style={btn} onClick={onOpenLabelling}>Labelling</button>
-      <button style={btn} onClick={onOpenSaveLoad}>Save/Load</button>
+      <button style={btn} onClick={onOpenInterlocking}>
+        Interlocking
+      </button>
+      <button style={btn} onClick={onOpenLabelling}>
+        Labelling
+      </button>
+      <button style={btn} onClick={onOpenSaveLoad}>
+        Save / Load
+      </button>
+      <button style={btn} onClick={onOpenPowerFlow}>
+        Power Flow
+      </button>
+
+      <div style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 12 }}>
+        {buildTag}
+      </div>
     </div>
   );
 }
