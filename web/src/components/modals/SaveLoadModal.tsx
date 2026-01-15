@@ -57,8 +57,8 @@ export function SaveLoadModal(props: {
   onDownload: () => void;
   onLoadFile: (file: File) => Promise<void>;
 
-  templates: Array<{ name: string; description: string }>;
-  onLoadTemplate: (name: string) => void;
+  templates: Array<{ id: string; name: string; description: string }>;
+  onLoadTemplate: (id: string) => void;
 }) {
   const { open, onClose, saveTitle, setSaveTitle, saveDescription, setSaveDescription, onDownload, onLoadFile, templates, onLoadTemplate } = props;
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -118,8 +118,15 @@ export function SaveLoadModal(props: {
                 <div style={{ fontWeight: 900 }}>{t.name}</div>
                 <div style={{ color: "#cbd5e1", marginTop: 4 }}>{t.description}</div>
                 <button
-                  onClick={() => onLoadTemplate(t.name)}
-                  style={{ marginTop: 10, border: "1px solid #334155", background: "#0b1220", padding: "6px 10px", borderRadius: 8, color: "#fff" }}
+                  onClick={() => onLoadTemplate(t.id)}
+                  style={{
+                  marginTop: 10,
+                  border: "1px solid #334155",
+                  background: "#0b1220",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  color: "#fff",
+                }}
                 >
                   Load Template
                 </button>

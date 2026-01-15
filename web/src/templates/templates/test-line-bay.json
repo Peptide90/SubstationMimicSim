@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "1.0",
+  "metadata": {
+    "title": "Test: IFACE → ES || DS → CB → DS || ES → IFACE",
+    "description": "Interface through DS/CB chain with parallel earth switches at both ends."
+  },
+  "nodes": [
+    {
+      "id": "SRC",
+      "type": "iface",
+      "position": { "x": 80, "y": 140 },
+      "data": {
+        "label": "SRC",
+        "mimic": { "kind": "iface", "label": "SRC" },
+        "iface": { "substationId": "SUB1", "terminalId": "A1", "linkTo": "" }
+      },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "J1",
+      "type": "junction",
+      "position": { "x": 260, "y": 140 },
+      "data": { "label": "J1", "mimic": { "kind": "junction" } },
+      "draggable": false,
+      "selectable": true
+    },
+    {
+      "id": "ES1",
+      "type": "scada",
+      "position": { "x": 260, "y": 280 },
+      "data": { "label": "ES1", "mimic": { "kind": "es", "state": "open", "label": "ES1" } },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "DS1",
+      "type": "scada",
+      "position": { "x": 420, "y": 140 },
+      "data": { "label": "DS1", "mimic": { "kind": "ds", "state": "closed", "label": "DS1" } },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "CB1",
+      "type": "scada",
+      "position": { "x": 580, "y": 140 },
+      "data": { "label": "CB1", "mimic": { "kind": "cb", "state": "closed", "label": "CB1" } },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "DS2",
+      "type": "scada",
+      "position": { "x": 740, "y": 140 },
+      "data": { "label": "DS2", "mimic": { "kind": "ds", "state": "closed", "label": "DS2" } },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "J2",
+      "type": "junction",
+      "position": { "x": 900, "y": 140 },
+      "data": { "label": "J2", "mimic": { "kind": "junction" } },
+      "draggable": false,
+      "selectable": true
+    },
+    {
+      "id": "ES2",
+      "type": "scada",
+      "position": { "x": 900, "y": 280 },
+      "data": { "label": "ES2", "mimic": { "kind": "es", "state": "open", "label": "ES2" } },
+      "draggable": true,
+      "selectable": true
+    },
+    {
+      "id": "LOAD",
+      "type": "iface",
+      "position": { "x": 1080, "y": 140 },
+      "data": {
+        "label": "LOAD",
+        "mimic": { "kind": "iface", "label": "LOAD" },
+        "iface": { "substationId": "SUB2", "terminalId": "B1", "linkTo": "" }
+      },
+      "draggable": true,
+      "selectable": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "bb-main-1a",
+      "source": "SRC",
+      "target": "J1",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-1" }
+    },
+    {
+      "id": "bb-main-2a",
+      "source": "J1",
+      "target": "DS1",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-2" }
+    },
+    {
+      "id": "bb-main-3a",
+      "source": "DS1",
+      "target": "CB1",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-3" }
+    },
+    {
+      "id": "bb-main-4a",
+      "source": "CB1",
+      "target": "DS2",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-4" }
+    },
+    {
+      "id": "bb-main-5a",
+      "source": "DS2",
+      "target": "J2",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-5" }
+    },
+    {
+      "id": "bb-main-6a",
+      "source": "J2",
+      "target": "LOAD",
+      "sourceHandle": "R",
+      "targetHandle": "L",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-main-6" }
+    },
+    {
+      "id": "bb-es-1a",
+      "source": "J1",
+      "target": "ES1",
+      "sourceHandle": "B",
+      "targetHandle": "T",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-es-1" }
+    },
+    {
+      "id": "bb-es-2a",
+      "source": "J2",
+      "target": "ES2",
+      "sourceHandle": "B",
+      "targetHandle": "T",
+      "type": "busbar",
+      "style": { "strokeWidth": 6, "stroke": "#64748b", "strokeLinecap": "square", "strokeLinejoin": "miter" },
+      "data": { "kind": "busbar", "busbarId": "bb-es-2" }
+    }
+  ],
+  "labelScheme": "DEFAULT",
+  "labelMode": "AUTO",
+  "labelOverrides": {},
+  "bayTypeOverrides": {},
+  "bp109MetaById": {},
+  "interlocks": [],
+  "interfaceMetaById": {
+    "SRC": { "enabled": true, "role": "source", "mva": 100 },
+    "LOAD": { "enabled": true, "role": "sink", "mva": -100 }
+  }
+}

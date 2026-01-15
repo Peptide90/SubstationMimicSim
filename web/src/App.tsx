@@ -26,6 +26,8 @@ import { BusbarModal } from "./components/modals/BusbarModal";
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
 import type { InterfaceMeta } from "./components/modals/PowerFlowModal";
 
+import { TEMPLATE_INDEX, loadTemplateById } from "./templates/manifest";
+
 import {
   computeBp109Label,
   defaultBp109Meta,
@@ -173,51 +175,26 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
   return { groundedNodeIds, groundedEdgeIds };
 }
 
-function templateTest() {
-  const makeNode = (kind: NodeKind, id: string, x: number, y: number, state?: SwitchState, sourceOn?: boolean): Node => {
-    const mimic = { kind, state, sourceOn, label: id };
-    return {
-      id,
-      type: kind === "junction" ? "junction" : "scada",
-      position: { x, y },
-      data: { label: id, mimic },
-      draggable: kind !== "junction",
-    };
-  };
-
-  const nodes: Node[] = [
-    makeNode("source", "SRC", 80, 140, undefined, true),
-    makeNode("junction", "J1", 260, 140),
-    makeNode("es", "ES1", 260, 280, "open"),
-    makeNode("ds", "DS1", 420, 140, "closed"),
-    makeNode("cb", "CB1", 580, 140, "closed"),
-    makeNode("ds", "DS2", 740, 140, "closed"),
-    makeNode("junction", "J2", 900, 140),
-    makeNode("es", "ES2", 900, 280, "open"),
-    makeNode("load", "LOAD", 1080, 140),
-  ];
-
-  const edges: Edge[] = [
-    makeBusbarEdge("SRC", "J1", "R", "L"),
-    makeBusbarEdge("J1", "DS1", "R", "L"),
-    makeBusbarEdge("DS1", "CB1", "R", "L"),
-    makeBusbarEdge("CB1", "DS2", "R", "L"),
-    makeBusbarEdge("DS2", "J2", "R", "L"),
-    makeBusbarEdge("J2", "LOAD", "R", "L"),
-    makeBusbarEdge("J1", "ES1", "B", "T"),
-    makeBusbarEdge("J2", "ES2", "B", "T"),
-  ];
-
-  return { nodes, edges, name: "Test: SRC → ES || DS → CB → DS || ES → LOAD", description: "Source through DS/CB chain with parallel earth switches at each end." };
-}
 
 // ---------- AppInner ----------
 function AppInner() {
   const { screenToFlowPosition } = useReactFlow();
 
-  const tpl = useMemo(() => templateTest(), []);
-  const [nodes, setNodes, onNodesChange] = useNodesState(tpl.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(tpl.edges);
+  const DEFAULT_TEMPLATE_ID = TEMPLATE_INDEX[0].id;
+  
+  const initialProject = useMemo(() => {
+  const parsed = loadTemplateById(DEFAULT_TEMPLATE_ID);
+  if (!parsed?.nodes || !parsed?.edges) {
+    throw new Error(`Default template failed to load: ${DEFAULT_TEMPLATE_ID}`);
+  }
+  return parsed;
+}, []);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
+
+  const [saveTitle, setSaveTitle] = useState(initialProject?.metadata?.title ?? "Untitled Template");
+  const [saveDescription, setSaveDescription] = useState(initialProject?.metadata?.description ?? "");
 
   const nodeTypes = useMemo(() => ({
   junction: JunctionNode,
@@ -241,7 +218,7 @@ function AppInner() {
   // Power Flow modal
   const [openPowerFlow, setOpenPowerFlow] = useState(false);
   const [focusedInterfaceId, setFocusedInterfaceId] = useState<string | null>(null);
-  const [interfaceMetaById, setInterfaceMetaById] = useState<Record<string, InterfaceMeta>>({});
+  const [interfaceMetaById, setInterfaceMetaById] = useState(initialProject.interfaceMetaById ?? {});
 
   // Event log
   const [events, setEvents] = useState<EventLogItem[]>([]);
@@ -289,22 +266,18 @@ function AppInner() {
 
 
   // Labeling state
-  const [labelScheme, setLabelScheme] = useState<LabelScheme>("DEFAULT");
-  const [labelMode, setLabelMode] = useState<LabelMode>("AUTO");
-  const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
-  const [bayTypeOverrides, setBayTypeOverrides] = useState<Record<string, BayType>>({});
-  const [bp109MetaById, setBp109MetaById] = useState<Record<string, BP109Meta>>({});
+  const [labelScheme, setLabelScheme] = useState(initialProject.labelScheme ?? "DEFAULT");
+  const [labelMode, setLabelMode] = useState(initialProject.labelMode ?? "AUTO");
+  const [labelOverrides, setLabelOverrides] = useState(initialProject.labelOverrides ?? {});
+  const [bayTypeOverrides, setBayTypeOverrides] = useState(initialProject.bayTypeOverrides ?? {});
+  const [bp109MetaById, setBp109MetaById] = useState(initialProject.bp109MetaById ?? {});
 
   const ensureBp109Meta = useCallback((nodeId: string, kind: NodeKind) => {
     setBp109MetaById((m) => (m[nodeId] ? m : { ...m, [nodeId]: defaultBp109Meta(kind) }));
   }, []);
 
   // Interlocks state
-  const [interlocks, setInterlocks] = useState<InterlockRule[]>([]);
-
-  // Save metadata
-  const [saveTitle, setSaveTitle] = useState(tpl.name);
-  const [saveDescription, setSaveDescription] = useState(tpl.description);
+  const [interlocks, setInterlocks] = useState(initialProject.interlocks ?? []);
 
   // Derived maps
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
@@ -705,18 +678,36 @@ const isValidConnection = useCallback(
     appendEvent("debug", `Loaded ${file.name}`);
   }, [appendEvent, setEdges, setNodes]);
 
-  const templates = useMemo(() => [tpl], [tpl]);
-  const onLoadTemplate = useCallback((name: string) => {
-    if (name === tpl.name) {
-      const t = templateTest();
-      setNodes(t.nodes);
-      setEdges(t.edges);
-      setSaveTitle(t.name);
-      setSaveDescription(t.description);
-      appendEvent("debug", `Loaded template: ${t.name}`);
-      setOpenSaveLoad(false);
+  const templates = useMemo(
+    () => TEMPLATE_INDEX.map((t) => ({ id: t.id, name: t.title, description: t.description })),
+    []
+  );
+
+  const onLoadTemplate = useCallback((id: string) => {
+    const parsed = loadTemplateById(id);
+    if (!parsed?.nodes || !parsed?.edges) {
+      appendEvent("error", `Template load failed: ${id}`);
+      return;
     }
-  }, [appendEvent, tpl.description, tpl.name]);
+
+    setNodes(parsed.nodes);
+    setEdges(parsed.edges);
+
+    if (parsed?.metadata?.title) setSaveTitle(parsed.metadata.title);
+    if (parsed?.metadata?.description) setSaveDescription(parsed.metadata.description);
+
+    if (parsed.labelScheme) setLabelScheme(parsed.labelScheme);
+    if (parsed.labelMode) setLabelMode(parsed.labelMode);
+    if (parsed.labelOverrides) setLabelOverrides(parsed.labelOverrides);
+    if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
+    if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
+    if (parsed.interlocks) setInterlocks(parsed.interlocks);
+    if (parsed.interfaceMetaById) setInterfaceMetaById(parsed.interfaceMetaById);
+
+    appendEvent("debug", `Loaded template: ${id}`);
+    setOpenSaveLoad(false);
+  }, [appendEvent, setNodes, setEdges]);
+
 
   // Build tag
   const buildTag = "SPLIT-001";
