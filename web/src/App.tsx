@@ -28,6 +28,8 @@ import type { InterfaceMeta } from "./components/modals/PowerFlowModal";
 
 import { TEMPLATE_INDEX, loadTemplateById } from "./templates/manifest";
 
+import { useEffect } from "react";
+
 import {
   computeBp109Label,
   defaultBp109Meta,
@@ -183,12 +185,15 @@ function AppInner() {
   const DEFAULT_TEMPLATE_ID = TEMPLATE_INDEX[0].id;
   
   const initialProject = useMemo(() => {
-  const parsed = loadTemplateById(DEFAULT_TEMPLATE_ID);
-  if (!parsed?.nodes || !parsed?.edges) {
-    throw new Error(`Default template failed to load: ${DEFAULT_TEMPLATE_ID}`);
-  }
-  return parsed;
-}, []);
+    if (!DEFAULT_TEMPLATE_ID) {
+      throw new Error("No templates found. Add JSON files under src/templates/templates/");
+    }
+    const parsed = loadTemplateById(DEFAULT_TEMPLATE_ID);
+    if (!parsed?.nodes || !parsed?.edges) {
+      throw new Error(`Default template failed to load: ${DEFAULT_TEMPLATE_ID}`);
+    }
+    return parsed;
+  }, []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
@@ -204,6 +209,20 @@ function AppInner() {
   
   const edgeClickTimerRef = useRef<number | null>(null);
   const edgeClickIgnoreRef = useRef(false);
+
+  // stop scrolling body
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+    };
+  }, []);
 
   // UI states
   const [locked, setLocked] = useState(false);
@@ -365,6 +384,30 @@ const isValidConnection = useCallback(
   [edges, nodeById]
 );
 
+  // Get latest version of nodes
+  const normalizeNodes = useCallback((loaded: Node[]) => {
+    return loaded.map((n) => {
+      const md = getMimicData(n) ?? (n.data as any)?.mimic ?? null;
+      const kind = md?.kind;
+
+      const type =
+        kind === "junction" ? "junction" :
+        kind === "iface" ? "iface" :
+        "scada";
+
+      return {
+        ...n,
+        type,
+        selectable: n.selectable ?? true,
+        draggable: n.draggable ?? (type !== "junction"),
+        data: {
+          ...(n.data as any),
+          mimic: md ?? { kind: "ds", label: n.id },
+          label: (n.data as any)?.label ?? md?.label ?? n.id,
+        },
+      };
+    });
+  }, []);
 
   // Energization/grounding
   const { nodes: mimicNodes, edges: mimicEdges } = useMemo(() => flowToMimicLocal(nodes, edges), [nodes, edges]);
@@ -527,42 +570,72 @@ const isValidConnection = useCallback(
     }));
   }, [setNodes]);
 
-  const scheduleSwitchCommand = useCallback((nodeId: string, kind: NodeKind, to: SwitchState) => {
-    const blocked = checkInterlock(nodeId, to);
-    if (blocked) { appendEvent("warn", blocked); return; }
+  // DBI while moving (double bit indication)
+  const setNodeMoving = useCallback((nodeId: string, moving: boolean) => {
+    setNodes((ns) =>
+      ns.map((n) => {
+        if (n.id !== nodeId) return n;
+        const md = getMimicData(n);
+        if (!md) return n;
+        return { ...n, data: { ...(n.data as any), mimic: { ...md, moving } } };
+      })
+    );
+  }, [setNodes]);
 
-    if (pendingRef.current.has(nodeId)) { appendEvent("warn", `CMD REJECTED ${kind.toUpperCase()} ${nodeId} (already in progress)`); return; }
+	const scheduleSwitchCommand = useCallback((nodeId: string, kind: NodeKind, to: SwitchState) => {
+	  const blocked = checkInterlock(nodeId, to);
+	  if (blocked) { appendEvent("warn", blocked); return; }
 
-    let completionMs = 1000;
-    let timeoutMs = 4000;
-    if (kind === "cb") { completionMs = Math.round(60 + Math.random() * 60); timeoutMs = 500; }
-    else if (kind === "ds" || kind === "es") { completionMs = Math.round(2000 + Math.random() * 1000); timeoutMs = 6000; }
+	  if (pendingRef.current.has(nodeId)) {
+		appendEvent("warn", `CMD REJECTED ${kind.toUpperCase()} ${nodeId} (already in progress)`);
+		return;
+	  }
 
-    const cmdId = `cmd-${crypto.randomUUID().slice(0, 6)}`;
-    appendEvent("info", `CMD ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
+	  let completionMs = 1000;
+	  let timeoutMs = 4000;
+	  if (kind === "cb") { completionMs = Math.round(60 + Math.random() * 60); timeoutMs = 500; }
+	  else if (kind === "ds" || kind === "es") { completionMs = Math.round(2000 + Math.random() * 1000); timeoutMs = 6000; }
 
-    const willFail = Math.random() < (kind === "cb" ? 0.01 : 0.03);
+	  const cmdId = `cmd-${crypto.randomUUID().slice(0, 6)}`;
+	  appendEvent("info", `CMD ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
 
-    const completeTimer = window.setTimeout(() => {
-      const pending = pendingRef.current.get(nodeId);
-      if (!pending || pending.cmdId !== cmdId) return;
-      window.clearTimeout(pending.timeoutTimer);
-      pendingRef.current.delete(nodeId);
-      if (willFail) { appendEvent("error", `RPT ${kind.toUpperCase()} ${nodeId} FAILED (${to.toUpperCase()})`); return; }
-      setNodeSwitchState(nodeId, to);
-      appendEvent("info", `RPT ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
-    }, completionMs);
+	  // DBI while operating
+	  setNodeMoving(nodeId, true);
 
-    const timeoutTimer = window.setTimeout(() => {
-      const pending = pendingRef.current.get(nodeId);
-      if (!pending || pending.cmdId !== cmdId) return;
-      window.clearTimeout(pending.completeTimer);
-      pendingRef.current.delete(nodeId);
-      appendEvent("error", `TIMEOUT ${kind.toUpperCase()} ${nodeId} (${to.toUpperCase()}) after ${timeoutMs} ms`);
-    }, timeoutMs);
+	  const willFail = Math.random() < (kind === "cb" ? 0.01 : 0.03);
 
-    pendingRef.current.set(nodeId, { cmdId, completeTimer, timeoutTimer });
-  }, [appendEvent, checkInterlock, setNodeSwitchState]);
+	  const completeTimer = window.setTimeout(() => {
+		const pending = pendingRef.current.get(nodeId);
+		if (!pending || pending.cmdId !== cmdId) return;
+
+		window.clearTimeout(pending.timeoutTimer);
+		pendingRef.current.delete(nodeId);
+
+		if (willFail) {
+		  setNodeMoving(nodeId, false);
+		  appendEvent("error", `RPT ${kind.toUpperCase()} ${nodeId} FAILED (${to.toUpperCase()})`);
+		  return;
+		}
+
+		setNodeSwitchState(nodeId, to);
+		setNodeMoving(nodeId, false);
+		appendEvent("info", `RPT ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
+	  }, completionMs);
+
+	  const timeoutTimer = window.setTimeout(() => {
+		const pending = pendingRef.current.get(nodeId);
+		if (!pending || pending.cmdId !== cmdId) return;
+
+		window.clearTimeout(pending.completeTimer);
+		pendingRef.current.delete(nodeId);
+
+		setNodeMoving(nodeId, false);
+		appendEvent("error", `TIMEOUT ${kind.toUpperCase()} ${nodeId} (${to.toUpperCase()}) after ${timeoutMs} ms`);
+	  }, timeoutMs);
+
+	  pendingRef.current.set(nodeId, { cmdId, completeTimer, timeoutTimer });
+	}, [appendEvent, checkInterlock, setNodeSwitchState, setNodeMoving]);
+
 
   const onNodeClick = useCallback((_evt: any, node: Node) => {
     // If we just finished dragging, ignore clicks for a short window
@@ -665,7 +738,8 @@ const isValidConnection = useCallback(
     const text = await file.text();
     const parsed = JSON.parse(text);
     if (!parsed?.nodes || !parsed?.edges) { appendEvent("error", "Load failed: invalid file format"); return; }
-    setNodes(parsed.nodes);
+    setNodes(normalizeNodes(parsed.nodes));
+
     setEdges(parsed.edges);
     if (parsed?.metadata?.title) setSaveTitle(parsed.metadata.title);
     if (parsed?.metadata?.description) setSaveDescription(parsed.metadata.description);
@@ -679,7 +753,7 @@ const isValidConnection = useCallback(
   }, [appendEvent, setEdges, setNodes]);
 
   const templates = useMemo(
-    () => TEMPLATE_INDEX.map((t) => ({ id: t.id, name: t.title, description: t.description })),
+    () => TEMPLATE_INDEX.map((t) => ({ id: t.id, name: t.title, description: t.description, category: t.category })),
     []
   );
 
@@ -690,7 +764,8 @@ const isValidConnection = useCallback(
       return;
     }
 
-    setNodes(parsed.nodes);
+    setNodes(normalizeNodes(parsed.nodes));
+
     setEdges(parsed.edges);
 
     if (parsed?.metadata?.title) setSaveTitle(parsed.metadata.title);

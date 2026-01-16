@@ -1,8 +1,13 @@
+import { TEMPLATE_CATALOG } from "./catalog";
+
 export type TemplateEntry = {
   id: string;          // derived from filename (without extension)
   title: string;       // from JSON metadata.title or fallback
   description: string; // from JSON metadata.description or fallback
   file: string;        // the relative glob key
+  category: string;
+  order: number;
+  featured: boolean;
 };
 
 type TemplateJson = {
@@ -13,6 +18,8 @@ type TemplateJson = {
 };
 
 const modules = import.meta.glob("./templates/*.json", { eager: true }) as Record<string, any>;
+
+const catalogById = new Map(TEMPLATE_CATALOG.map((c) => [c.id, c]));
 
 function basenameNoExt(path: string): string {
   const base = path.split("/").pop() ?? path;
@@ -31,6 +38,15 @@ export const TEMPLATE_INDEX: TemplateEntry[] = Object.entries(modules)
     const id = basenameNoExt(file);
     const title = json?.metadata?.title ?? normalizeTitle(id);
     const description = json?.metadata?.description ?? "";
+	const c = catalogById.get(id);
+    const category = c?.category ?? "Uncategorized";
+    const order = c?.order ?? 9999;
+    const featured = c?.featured ?? false;
+
+if (c?.hidden) return null;
+
+return { id, title, description, file, category, order, featured };
+
     return { id, title, description, file };
   })
   // deterministic order

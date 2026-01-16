@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
   const { title, open, onClose, children } = props;
@@ -57,11 +57,34 @@ export function SaveLoadModal(props: {
   onDownload: () => void;
   onLoadFile: (file: File) => Promise<void>;
 
-  templates: Array<{ id: string; name: string; description: string }>;
+  templates: Array<{ id: string; name: string; description: string; category: string }>;
   onLoadTemplate: (id: string) => void;
 }) {
-  const { open, onClose, saveTitle, setSaveTitle, saveDescription, setSaveDescription, onDownload, onLoadFile, templates, onLoadTemplate } = props;
+  const {
+    open,
+    onClose,
+    saveTitle,
+    setSaveTitle,
+    saveDescription,
+    setSaveDescription,
+    onDownload,
+    onLoadFile,
+    templates,
+    onLoadTemplate,
+  } = props;
+
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Group templates by category (minimal changes, derived here)
+  const { grouped, categories } = useMemo(() => {
+    const grouped = templates.reduce<Record<string, typeof templates>>((acc, t) => {
+      const key = t.category || "Uncategorized";
+      (acc[key] ||= []).push(t);
+      return acc;
+    }, {});
+    const categories = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+    return { grouped, categories };
+  }, [templates]);
 
   return (
     <ModalShell title="Save / Load" open={open} onClose={onClose}>
@@ -72,7 +95,14 @@ export function SaveLoadModal(props: {
             <input
               value={saveTitle}
               onChange={(e) => setSaveTitle(e.target.value)}
-              style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#fff" }}
+              style={{
+                padding: 8,
+                width: "100%",
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: "#0f172a",
+                color: "#fff",
+              }}
             />
           </div>
           <div>
@@ -80,13 +110,23 @@ export function SaveLoadModal(props: {
             <input
               value={saveDescription}
               onChange={(e) => setSaveDescription(e.target.value)}
-              style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#fff" }}
+              style={{
+                padding: 8,
+                width: "100%",
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: "#0f172a",
+                color: "#fff",
+              }}
             />
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={onDownload} style={{ border: "1px solid #334155", background: "#0f172a", padding: "8px 12px", borderRadius: 8, color: "#fff" }}>
+          <button
+            onClick={onDownload}
+            style={{ border: "1px solid #334155", background: "#0f172a", padding: "8px 12px", borderRadius: 8, color: "#fff" }}
+          >
             Save (download JSON)
           </button>
 
@@ -112,24 +152,43 @@ export function SaveLoadModal(props: {
 
         <div style={{ borderTop: "1px solid #1f2937", paddingTop: 10 }}>
           <div style={{ fontWeight: 900, marginBottom: 8 }}>Templates</div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {templates.map((t) => (
-              <div key={t.name} style={{ border: "1px solid #1f2937", background: "#0f172a", borderRadius: 10, padding: 12 }}>
-                <div style={{ fontWeight: 900 }}>{t.name}</div>
-                <div style={{ color: "#cbd5e1", marginTop: 4 }}>{t.description}</div>
-                <button
-                  onClick={() => onLoadTemplate(t.id)}
-                  style={{
-                  marginTop: 10,
-                  border: "1px solid #334155",
-                  background: "#0b1220",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  color: "#fff",
-                }}
-                >
-                  Load Template
-                </button>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            {categories.map((cat) => (
+              <div key={cat}>
+                <div style={{ fontWeight: 900, marginBottom: 8, color: "#fff" }}>{cat}</div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {grouped[cat].map((t) => (
+                    <div
+                      key={t.id}
+                      style={{
+                        border: "1px solid #1f2937",
+                        background: "#0f172a",
+                        borderRadius: 10,
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, color: "#fff" }}>{t.name}</div>
+                      <div style={{ color: "#cbd5e1", marginTop: 4 }}>{t.description}</div>
+
+                      <button
+                        onClick={() => onLoadTemplate(t.id)}
+                        style={{
+                          marginTop: 10,
+                          border: "1px solid #334155",
+                          background: "#0b1220",
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          color: "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Load Template
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
