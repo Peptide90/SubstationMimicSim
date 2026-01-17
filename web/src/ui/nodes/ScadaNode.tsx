@@ -156,10 +156,10 @@ export function ScadaNode(props: NodeProps) {
   );
 
   // Transformer: 4 terminals (primary/secondary/tertiary/neutral) centered, no manual left offsets.
-  // IMPORTANT: Do NOT set left offsets for top/bottom. Let React Flow center them.
   const XfmrHandles = () => (
     <>
-      {/* L/R aligned to the 30px centreline so they mate perfectly with CB/DS chains */}
+      {/* L/R aligned to the same centreline as CB/DS chains */}
+      {/* Visible target handles */}
       <Handle
         type="target"
         id="L"
@@ -175,27 +175,28 @@ export function ScadaNode(props: NodeProps) {
         onClick={stopClick}
       />
 
-      {/* Top/Bottom remain centred; use for tertiary / neutral as needed */}
-      <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
-      <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
-
-      {/* Hidden sources so users can start connections from transformer terminals if needed */}
+      {/* Invisible-but-active source handles at same positions (bidirectional terminals) */}
       <Handle
         type="source"
         id="L"
         position={Position.Left}
-        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)", ...hiddenHandle }}
+        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
         onClick={stopClick}
       />
       <Handle
         type="source"
         id="R"
         position={Position.Right}
-        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)", ...hiddenHandle }}
+        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
         onClick={stopClick}
       />
-      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, ...hiddenHandle }} onClick={stopClick} />
-      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, ...hiddenHandle }} onClick={stopClick} />
+
+      {/* T/B terminals (bidirectional) */}
+      <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
+      <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
+
+      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, opacity: 0 }} onClick={stopClick} />
+      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, opacity: 0 }} onClick={stopClick} />
     </>
   );
 
