@@ -124,6 +124,12 @@ export function EditorCanvas(props: {
 
   setNodes: (updater: (prev: Node[]) => Node[]) => void;
   setEdges: (updater: (prev: Edge[]) => Edge[]) => void;
+  
+  onEdgeContextMenu: (edge: Edge, pos: { x: number; y: number }) => void;
+  onNodeContextMenu: (node: Node, pos: { x: number; y: number }) => void;
+  onPaneContextMenu: (pos: { x: number; y: number }) => void;
+  onPaneClick: () => void;
+
 }) {
   const {
     nodes,
@@ -149,6 +155,10 @@ export function EditorCanvas(props: {
     onAddAtCenter,
     setNodes,
     setEdges,
+	onEdgeContextMenu,
+	onNodeContextMenu,
+	onPaneContextMenu,
+	onPaneClick,
   } = props;
 
   const { screenToFlowPosition, getNode } = useReactFlow();
@@ -431,6 +441,19 @@ export function EditorCanvas(props: {
           selectionOnDrag={!locked}
           snapToGrid={snapEnabled}
           snapGrid={[20, 20]}
+		  onEdgeContextMenu={(evt, edge) => {
+		    evt.preventDefault();
+		    onEdgeContextMenu(edge, { x: evt.clientX, y: evt.clientY });
+		  }}
+		  onNodeContextMenu={(evt, node) => {
+		    evt.preventDefault();
+		    onEdgeContextMenu(edge, { x: evt.clientX, y: evt.clientY });
+		  }}
+		  onPaneContextMenu={(evt) => {
+		    evt.preventDefault();
+		    onEdgeContextMenu(edge, { x: evt.clientX, y: evt.clientY });
+		  }}
+		  onPaneClick={() => onPaneClick()}
         >
           <Background variant="lines" gap={24} />
           <MiniMap />

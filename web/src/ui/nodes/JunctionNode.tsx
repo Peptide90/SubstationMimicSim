@@ -3,12 +3,21 @@ import { Handle, Position } from "reactflow";
 import type { NodeProps } from "reactflow";
 
 export function JunctionNode(_props: NodeProps) {
+  const size = 18;
+
+  const h: React.CSSProperties = {
+    width: size,
+    height: size,
+    opacity: 0,
+    pointerEvents: "none",
+  };
+
   return (
     <div
       title="Junction"
       style={{
-        width: 18,
-        height: 18,
+        width: size,
+        height: size,
         borderRadius: 999,
         border: "2px solid #94a3b8",
         background: "#0b1220",
@@ -16,30 +25,18 @@ export function JunctionNode(_props: NodeProps) {
         cursor: "move",
       }}
     >
-      {/* Target handle */}
-      <Handle
-        type="target"
-        id="J"
-        position={Position.Top}
-        style={{
-          width: 18,
-          height: 18,
-          opacity: 0,
-          pointerEvents: "none",
-        }}
-      />
-      {/* Source handle */}
-      <Handle
-        type="source"
-        id="J"
-        position={Position.Top}
-        style={{
-          width: 18,
-          height: 18,
-          opacity: 0,
-          pointerEvents: "none",
-        }}
-      />
+      {/* Expose all four handle IDs so templates can attach using L/R/T/B */}
+      {/* Target handles */}
+      <Handle type="target" id="L" position={Position.Left} style={h} />
+      <Handle type="target" id="R" position={Position.Right} style={h} />
+      <Handle type="target" id="T" position={Position.Top} style={h} />
+      <Handle type="target" id="B" position={Position.Bottom} style={h} />
+
+      {/* Source handles (hidden) */}
+      <Handle type="source" id="L" position={Position.Left} style={h} />
+      <Handle type="source" id="R" position={Position.Right} style={h} />
+      <Handle type="source" id="T" position={Position.Top} style={h} />
+      <Handle type="source" id="B" position={Position.Bottom} style={h} />
     </div>
   );
 }

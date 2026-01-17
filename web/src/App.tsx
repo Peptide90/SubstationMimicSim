@@ -241,6 +241,7 @@ function AppInner() {
     };
   }, []);
 
+
   // UI states
   const [locked, setLocked] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -721,6 +722,125 @@ const isValidConnection = useCallback(
     const to: SwitchState = current === "closed" ? "open" : "closed";
     scheduleSwitchCommand(id, md.kind, to);
   }, [nodeById, scheduleSwitchCommand]);
+  
+  // Add right click context menu
+  type CtxMenu =
+    | null
+    | { kind: "edge"; edgeId: string; x: number; y: number }
+    | { kind: "node"; nodeId: string; x: number; y: number };
+
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu>(null);
+
+  const onEdgeContextMenu = useCallback((edge: Edge, pos: { x: number; y: number }) => {
+    if ((edge.data as any)?.kind !== "busbar") return;
+    setCtxMenu({ kind: "edge", edgeId: edge.id, x: pos.x, y: pos.y });
+  }, []);
+
+  const onNodeContextMenu = useCallback((node: Node, pos: { x: number; y: number }) => {
+    setCtxMenu({ kind: "node", nodeId: node.id, x: pos.x, y: pos.y });
+  }, []);
+
+  const onPaneContextMenu = useCallback((_pos: { x: number; y: number }) => {
+    // optional: later use pane menu
+    setCtxMenu(null);
+  }, []);
+
+  const onPaneClick = useCallback(() => setCtxMenu(null), []);
+
+
+  // Fault Markers in Context menu
+  type Fault = {
+    id: string;
+    edgeId: string;
+    busbarId: string;
+    aNodeId: string;
+    bNodeId: string;
+    x: number;
+    y: number;
+    status: "active" | "cleared";
+  };
+
+  const [faults, setFaults] = useState<Record<string, Fault>>({});
+
+  const placeFaultOnEdge = useCallback((edgeId: string, pos: { x: number; y: number }) => {
+    const edge = edges.find((e) => e.id === edgeId);
+    if (!edge) return;
+
+    const busbarId = (edge.data as any)?.busbarId ?? "bb-unknown";
+    const faultId = `fault-${crypto.randomUUID().slice(0, 6)}`;
+
+    const fault: Fault = {
+      id: faultId,
+      edgeId,
+      busbarId,
+      aNodeId: edge.source,
+      bNodeId: edge.target,
+      x: pos.x,
+      y: pos.y,
+      status: "active",
+    };
+
+    setFaults((m) => ({ ...m, [faultId]: fault }));
+
+    appendEvent("error", `ALARM FAULT between ${edge.source} and ${edge.target} (busbar ${busbarId})`);
+
+    // Trigger isolation
+    isolateFault(fault);
+  }, [edges, appendEvent]);
+
+  const isolateFault = useCallback((fault: Fault) => {
+    // Build adjacency from current nodes/edges
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const adj = new Map<string, Array<{ other: string }>>();
+
+    for (const e of edges) {
+      // Ignore non-busbar edges if any; you currently treat all connections as busbar edges
+      if (!adj.has(e.source)) adj.set(e.source, []);
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.source)!.push({ other: e.target });
+      adj.get(e.target)!.push({ other: e.source });
+    }
+
+    const isClosedSwitch = (nodeId: string) => {
+      const n = nodeMap.get(nodeId);
+      const md = n ? getMimicData(n) : null;
+      if (!md) return true;
+      if (md.kind === "cb" || md.kind === "ds") return md.state === "closed";
+      if (md.kind === "es") return md.state !== "closed"; // ES closed grounds; treat as stop
+      return true;
+    };
+
+    const tripSet = new Set<string>();
+    const visited = new Set<string>();
+    const q: string[] = [fault.aNodeId, fault.bNodeId];
+
+    while (q.length) {
+      const cur = q.shift()!;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+
+      const n = nodeMap.get(cur);
+      const md = n ? getMimicData(n) : null;
+
+      // Stop at first closed CB: trip it and do not traverse beyond
+      if (md?.kind === "cb" && md.state === "closed") {
+        tripSet.add(cur);
+        continue;
+      }
+
+      // Stop at open DS/CB
+      if (!isClosedSwitch(cur)) continue;
+
+      for (const { other } of adj.get(cur) ?? []) {
+        if (!visited.has(other)) q.push(other);
+      }
+    }
+
+    // Trip all found breakers
+    for (const cbId of tripSet) {
+      scheduleSwitchCommand(cbId, "cb" as any, "open");
+    }
+  }, [edges, nodes, scheduleSwitchCommand]);
 
   // Event log filters
   const onToggleFilter = useCallback((cat: EventCategory) => setFilters((f) => ({ ...f, [cat]: !f[cat] })), []);
@@ -831,7 +951,7 @@ const isValidConnection = useCallback(
           snapEnabled={snapEnabled}
           onToggleSnap={() => setSnapEnabled((v) => !v)}
           onToggleLock={() => setLocked((v) => !v)}
-          onNodesChange={onNodesChange}
+          onNodesChange={onNodesChangeSnapped}
           onEdgesChange={onEdgesChange}
           isValidConnection={isValidConnection}
           onConnect={onConnect}
@@ -844,6 +964,10 @@ const isValidConnection = useCallback(
           onAddAtCenter={onAddAtCenter}
 		  onEdgeClick={onEdgeClick}
 		  onNodeDoubleClick={onNodeDoubleClick}
+		  onEdgeContextMenu={onEdgeContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
+		  onPaneContextMenu={onPaneContextMenu}
+		  onPaneClick={onPaneClick}
         />
 
         <ScadaPanel
@@ -915,6 +1039,24 @@ const isValidConnection = useCallback(
 	    metaById={interfaceMetaById}
 	    setMetaById={setInterfaceMetaById}
 	  />
+	  
+	  {Object.values(faults).filter(f => f.status==="active").map((f) => (
+	    <div
+	  	  key={f.id}
+		  style={{
+		    position: "absolute",
+		    left: f.x - 6,
+		    top: f.y - 6,
+		    width: 12,
+		    height: 12,
+		    borderRadius: 999,
+		    background: "#facc15",
+		    border: "2px solid #92400e",
+		    pointerEvents: "none",
+		    zIndex: 2000
+		  }}
+	    />
+	  ))}
     </div>
   );
 }
