@@ -35,31 +35,28 @@ export function InterfaceNode(props: NodeProps) {
 
   const data = props.data as any;
 
-  // Long label (vanity circuit name)
-  const name: string = data?.label ?? props.id;
-
-  // Short substation grouping label inside the diamond
+  const name: string = data?.label ?? props.id; // vanity name (can be long)
   const substationId: string = data?.iface?.substationId ?? "SUB";
-  const terminalId: string = data?.iface?.terminalId ?? "X";
+  const terminalId: string = data?.iface?.terminalId ?? "X1";
 
-  const onOpen = () => {
-    // We pass a callback in node data for reliable modal open
-    data?.onOpenPowerFlow?.(props.id);
-  };
+  // 3x3 grid box
+  const W = 60;
+  const H = 60;
 
   const handleStyle: React.CSSProperties = { width: 10, height: 10, borderRadius: 2, opacity: 0.9 };
   const hiddenHandle: React.CSSProperties = { opacity: 0, pointerEvents: "none" };
 
-  const stop = (e: any) => e.stopPropagation();
+  // Centreline is exactly y=30 for left/right handles
+  const lrTop = 30;
 
   return (
-    <div style={{ position: "relative", width: 90, height: 60 }}>
-      {/* Outer label (white, readable) */}
+    <div style={{ position: "relative", width: W, height: H }}>
+      {/* External label (optional): keep it readable and not affecting geometry */}
       <div
         style={{
           position: "absolute",
-          left: 100,
-          top: 18,
+          left: W + 10,
+          top: 22,
           color: "#fff",
           fontSize: 12,
           whiteSpace: "nowrap",
@@ -71,58 +68,89 @@ export function InterfaceNode(props: NodeProps) {
         {name}
       </div>
 
-      {/* Diamond (substation side is LEFT, external side is RIGHT) */}
+      {/* Diamond fills the full 60x60 box */}
       <div
         style={{
           position: "absolute",
-          left: 15,
-          top: 10,
-          width: 60,
-          height: 40,
+          left: 0,
+          top: 0,
+          width: W,
+          height: H,
+          transform: "rotate(45deg) scale(0.72)", // 0.72 fits the diamond inside without clipping
+          transformOrigin: "center",
           background: "#0f172a",
           border: "2px solid #94a3b8",
-          transform: "skewX(-20deg)",
           borderRadius: 6,
           boxSizing: "border-box",
+          pointerEvents: "none",
         }}
       />
 
-      {/* Inner short label */}
+      {/* Inner short label (fits inside 60x60) */}
       <div
         style={{
           position: "absolute",
-          left: 22,
-          top: 22,
+          left: 6,
+          right: 6,
+          top: 18,
+          textAlign: "center",
           color: "#fff",
-          fontWeight: 800,
-          fontSize: 12,
+          fontWeight: 900,
+          fontSize: 11,
+          lineHeight: 1.05,
           textShadow: "0 1px 1px rgba(0,0,0,0.6)",
           pointerEvents: "none",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
+        title={`${substationId}:${terminalId}`}
       >
         {substationId}:{terminalId}
       </div>
 
-      {/* Handles: show 4 while connecting, otherwise lock to chosen axis */}
+      {/* Handles: show 4 while connecting, then axis-lock */}
       {showH && (
         <>
-          <Handle type="target" id="L" position={Position.Left} style={{ ...handleStyle, left: 0, top: 26 }} onClick={stop} />
-          <Handle type="source" id="R" position={Position.Right} style={{ ...handleStyle, right: 0, top: 26 }} onClick={stop} />
+          {/* L/R visible */}
+          <Handle
+            type="target"
+            id="L"
+            position={Position.Left}
+            style={{ ...handleStyle, left: -6, top: lrTop, transform: "translateY(-50%)" }}
+          />
+          <Handle
+            type="source"
+            id="R"
+            position={Position.Right}
+            style={{ ...handleStyle, right: -6, top: lrTop, transform: "translateY(-50%)" }}
+          />
 
-          <Handle type="source" id="L" position={Position.Left} style={{ ...handleStyle, left: 0, top: 26, ...hiddenHandle }} onClick={stop} />
-          <Handle type="target" id="R" position={Position.Right} style={{ ...handleStyle, right: 0, top: 26, ...hiddenHandle }} onClick={stop} />
+          {/* hidden opposite direction */}
+          <Handle
+            type="source"
+            id="L"
+            position={Position.Left}
+            style={{ ...handleStyle, left: -6, top: lrTop, transform: "translateY(-50%)", ...hiddenHandle }}
+          />
+          <Handle
+            type="target"
+            id="R"
+            position={Position.Right}
+            style={{ ...handleStyle, right: -6, top: lrTop, transform: "translateY(-50%)", ...hiddenHandle }}
+          />
         </>
       )}
 
-      {showV && (
-        <>
-          <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyle, left: 40, top: 0 }} onClick={stop} />
-          <Handle type="source" id="B" position={Position.Bottom} style={{ ...handleStyle, left: 40, bottom: 0 }} onClick={stop} />
+	  {showV && (
+	    <>
+	  	  <Handle type="target" id="T" position={Position.Top} style={{ ...handleStyle, top: -6 }} />
+		  <Handle type="source" id="B" position={Position.Bottom} style={{ ...handleStyle, bottom: -6 }} />
 
-          <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyle, left: 40, top: 0, ...hiddenHandle }} onClick={stop} />
-          <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyle, left: 40, bottom: 0, ...hiddenHandle }} onClick={stop} />
-        </>
-      )}
+		  <Handle type="source" id="T" position={Position.Top} style={{ ...handleStyle, top: -6, ...hiddenHandle }} />
+		  <Handle type="target" id="B" position={Position.Bottom} style={{ ...handleStyle, bottom: -6, ...hiddenHandle }} />
+	    </>
+	  )}
     </div>
   );
 }

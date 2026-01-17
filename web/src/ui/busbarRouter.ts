@@ -1,23 +1,31 @@
 export type Pt = { x: number; y: number };
 
+const GRID = 20;
+const snap = (v: number) => Math.round(v / GRID) * GRID;
+
 export function busbarPolyline(source: Pt, target: Pt): Pt[] {
   const dx = target.x - source.x;
   const dy = target.y - source.y;
 
-  // Straight if almost aligned
+  // If nearly aligned, draw straight from handle to handle (keep endpoints exact).
   if (Math.abs(dy) < 1 || Math.abs(dx) < 1) return [source, target];
 
-  // Same midX strategy as BusbarEdge
   const minBend = 10;
   let midX = source.x + dx / 2;
 
+  // Enforce minimum bend length so we don't get micro segments
   if (Math.abs(midX - source.x) < minBend) midX = source.x + (dx >= 0 ? minBend : -minBend);
   if (Math.abs(target.x - midX) < minBend) midX = target.x - (dx >= 0 ? minBend : -minBend);
 
+  // Snap intermediate point(s) only (keep endpoints exact to handle centres)
+  midX = snap(midX);
+  const y1 = snap(source.y);
+  const y2 = snap(target.y);
+
   return [
     source,
-    { x: midX, y: source.y },
-    { x: midX, y: target.y },
+    { x: midX, y: y1 },
+    { x: midX, y: y2 },
     target,
   ];
 }

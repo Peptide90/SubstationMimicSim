@@ -46,6 +46,52 @@ type ConnectStart = {
   handleType: "source" | "target" | null;
 };
 
+function pointOnSegment(a: { x: number; y: number }, b: { x: number; y: number }, p: { x: number; y: number }, eps = 0.5) {
+  // Assumes axis-aligned segments (true for our polylines)
+  const minX = Math.min(a.x, b.x) - eps;
+  const maxX = Math.max(a.x, b.x) + eps;
+  const minY = Math.min(a.y, b.y) - eps;
+  const maxY = Math.max(a.y, b.y) + eps;
+
+  // Colinear for horizontal/vertical
+  const isH = Math.abs(a.y - b.y) < eps;
+  const isV = Math.abs(a.x - b.x) < eps;
+
+  if (isH && Math.abs(p.y - a.y) < eps && p.x >= minX && p.x <= maxX) return true;
+  if (isV && Math.abs(p.x - a.x) < eps && p.y >= minY && p.y <= maxY) return true;
+  return false;
+}
+
+function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: number }) {
+  const outA: { x: number; y: number }[] = [];
+  const outB: { x: number; y: number }[] = [];
+
+  let inserted = false;
+
+  for (let i = 0; i < poly.length - 1; i++) {
+    const a = poly[i];
+    const b = poly[i + 1];
+
+    outA.push(a);
+
+    if (!inserted && pointOnSegment(a, b, split)) {
+      outA.push(split);
+      outB.push(split);
+      inserted = true;
+    }
+
+    if (inserted) outB.push(b);
+  }
+
+  // Fallback: if we didn't insert, just split at end
+  if (!inserted) {
+    return { a: poly.slice(), b: [split, poly[poly.length - 1]] };
+  }
+
+  return { a: outA, b: outB };
+}
+
+
 export function EditorCanvas(props: {
   nodes: Node[];
   edges: Edge[];      // DISPLAY edges (styled)
@@ -235,64 +281,81 @@ export function EditorCanvas(props: {
         })
       );
 
-      setEdges((prev) => {
-        const remaining = prev.filter((e) => e.id !== busbarEdge.id);
+	  const s = getNode(busbarEdge.source)!;
+	  const t = getNode(busbarEdge.target)!;
 
-        // Split busbar into two segments with same busbarId
-        const segA: Edge = {
-          id: `${bbid}-${crypto.randomUUID().slice(0, 4)}a`,
-          source: busbarEdge.source,
-          target: jId,
-          sourceHandle: busbarEdge.sourceHandle,
-          targetHandle: "J",
-          type: "busbar",
-          style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-          data: { kind: "busbar", busbarId: bbid, ...(busbarEdge.data as any) },
-        };
+	  const sPt = getHandleCenter(busbarEdge.source, busbarEdge.sourceHandle)!;
+	  const tPt = getHandleCenter(busbarEdge.target, busbarEdge.targetHandle)!;
 
-        const segB: Edge = {
-          id: `${bbid}-${crypto.randomUUID().slice(0, 4)}b`,
-          source: jId,
-          target: busbarEdge.target,
-          sourceHandle: "J",
-          targetHandle: busbarEdge.targetHandle,
-          type: "busbar",
-          style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-          data: { kind: "busbar", busbarId: bbid, ...(busbarEdge.data as any) },
-        };
+	  const poly = busbarPolyline(sPt, tPt);
 
-        // Branch edge direction depends on whether drag started on a source or target handle
-        const branchBusbarId = `bb-${crypto.randomUUID().slice(0, 6)}`;
-        const safeHandle = fromHandleId ?? "R";
+  setEdges((prev) => {
+    const remaining = prev.filter((e) => e.id !== busbarEdge.id);
 
-        const branch: Edge =
-          fromHandleType === "target"
-            ? {
-                id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
-                source: jId,
-                target: fromNodeId,
-                sourceHandle: "J",
-                targetHandle: safeHandle,
-                type: "busbar",
-                style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-                data: { kind: "busbar", busbarId: branchBusbarId },
-              }
-            : {
-                id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
-                source: fromNodeId,
-                target: jId,
-                sourceHandle: safeHandle,
-                targetHandle: "J",
-                type: "busbar",
-                style: { strokeWidth: 6, stroke: "#64748b", strokeLinecap: "square", strokeLinejoin: "miter" },
-                data: { kind: "busbar", busbarId: branchBusbarId },
-              };
+    const splitPoint = { x: center.x, y: center.y };
+    const { a, b } = splitPolyline(poly, splitPoint);
 
-        return remaining.concat(segA, segB, branch);
-      });
+    const segA: Edge = {
+      id: `${bbid}-${crypto.randomUUID().slice(0, 4)}a`,
+      source: busbarEdge.source,
+      target: jId,
+      sourceHandle: busbarEdge.sourceHandle,
+      targetHandle: "J",
+      type: "busbar",
+      data: {
+        ...(busbarEdge.data as any),
+        kind: "busbar",
+        busbarId: bbid,
+        points: a,
+      },
+    };
+
+    const segB: Edge = {
+      id: `${bbid}-${crypto.randomUUID().slice(0, 4)}b`,
+      source: jId,
+      target: busbarEdge.target,
+      sourceHandle: "J",
+      targetHandle: busbarEdge.targetHandle,
+      type: "busbar",
+      data: {
+        ...(busbarEdge.data as any),
+        kind: "busbar",
+        busbarId: bbid,
+        points: b,
+      },
+    };
+
+    // Branch edge direction depends on whether drag started on a source or target handle
+    const branchBusbarId = `bb-${crypto.randomUUID().slice(0, 6)}`;
+    const safeHandle = fromHandleId ?? "R";
+
+    const branch: Edge =
+      fromHandleType === "target"
+        ? {
+            id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
+            source: jId,
+            target: fromNodeId,
+            sourceHandle: "J",
+            targetHandle: safeHandle,
+            type: "busbar",
+            data: { kind: "busbar", busbarId: branchBusbarId },
+          }
+        : {
+            id: `${branchBusbarId}-${crypto.randomUUID().slice(0, 4)}`,
+            source: fromNodeId,
+            target: jId,
+            sourceHandle: safeHandle,
+            targetHandle: "J",
+            type: "busbar",
+            data: { kind: "busbar", busbarId: branchBusbarId },
+          };
+
+    return remaining.concat(segA, segB, branch);
+  });
     },
     [findNearestBusbar, setEdges, setNodes, snapPoint]
   );
+
 
   const onConnectStart = useCallback(
     (_evt: unknown, params: OnConnectStartParams) => {

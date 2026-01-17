@@ -15,15 +15,12 @@ type Orientation = "NONE" | "H" | "V";
 
 function getOrientationForNode(nodeId: string, edges: Edge[]): Orientation {
   const used = new Set<string>();
-
   for (const e of edges) {
     if (e.source === nodeId && e.sourceHandle) used.add(e.sourceHandle);
     if (e.target === nodeId && e.targetHandle) used.add(e.targetHandle);
   }
-
   const hasH = used.has("L") || used.has("R");
   const hasV = used.has("T") || used.has("B");
-
   if (hasH) return "H";
   if (hasV) return "V";
   return "NONE";
@@ -38,10 +35,48 @@ export function ScadaNode(props: NodeProps) {
 
   const isSwitch = kind === "cb" || kind === "ds" || kind === "es";
   const isClosed = mimic.state === "closed";
-  const status = mimic.moving ? "DBI" : isSwitch ? (isClosed ? "CLOSED" : "OPEN") : "";
+  const isPending = !!mimic.moving; // canonical DBI flag for now
+  const status = isPending ? "DBI" : isSwitch ? (isClosed ? "CLOSED" : "OPEN") : "";
 
-  const border = isSwitch ? (isClosed ? "2px solid #b00000" : "2px solid #2e7d32") : "2px solid #444";
-  const bg = "#ffffff";
+  // ---- Geometry (20px grid) ----
+  // CB: 3×3 = 60×60
+  // DS/ES: 5×2 = 100×40
+  // XFMR: 5×4 = 100×80
+  const dims = useMemo(() => {
+    if (kind === "cb") return { w: 60, h: 60 };
+    if (kind === "ds" || kind === "es") return { w: 100, h: 40 };
+    if (kind === "xfmr") return { w: 100, h: 80 };
+    return { w: 120, h: 48 };
+  }, [kind]);
+
+  // ---- Visual state colours (muted) ----
+  // Open/Closed colours should not be “alarm” bright.
+  const SW_OPEN_BG = "#cfead6";   // muted light green
+  const SW_CLOSED_BG = "#f0c9c9"; // muted light red
+  const SW_DBI_BG = "#e5e7eb";    // light grey (unknown/in transit)
+
+  const TX_BG = "#e5e7eb";        // transformer base grey
+  const TX_FAULT_BG = "#fde68a";  // muted yellow (faulted/failed isolation)
+
+  // If in future you flag a transformer as faulted, set data.faulted = true
+  const isFaulted = data?.faulted === true;
+
+  const bg = useMemo(() => {
+    if (kind === "xfmr") return isFaulted ? TX_FAULT_BG : TX_BG;
+    if (!isSwitch) return "#ffffff";
+    if (isPending) return SW_DBI_BG;
+    return isClosed ? SW_CLOSED_BG : SW_OPEN_BG;
+  }, [kind, isSwitch, isPending, isClosed, isFaulted]);
+
+  const border = useMemo(() => {
+    if (kind === "xfmr") return "2px solid #64748b";
+    if (!isSwitch) return "2px solid #444";
+    if (isPending) return "2px solid #64748b";
+    return isClosed ? "2px solid #7f2a2a" : "2px solid #1f6b3f";
+  }, [kind, isSwitch, isPending, isClosed]);
+
+  // All text black (as requested)
+  const textPrimary = "#111111";
 
   const stopClick = (e: any) => e.stopPropagation();
 
@@ -59,15 +94,6 @@ export function ScadaNode(props: NodeProps) {
 
   const orientation = useMemo(() => getOrientationForNode(nodeId, edges), [nodeId, edges]);
 
-  // ---- Geometry (20px grid) ----
-  // CB: 3x3 squares = 60x60
-  // DS/ES: 6x2 squares = 120x40
-  const dims = useMemo(() => {
-    if (kind === "cb") return { w: 60, h: 60 };
-    if (kind === "ds" || kind === "es") return { w: 120, h: 40 };
-    return { w: 120, h: 48 };
-  }, [kind]);
-
   // Show all four directions while connecting; otherwise lock to chosen axis
   const showH = isConnecting || orientation === "NONE" || orientation === "H";
   const showV = isConnecting || orientation === "NONE" || orientation === "V";
@@ -77,7 +103,7 @@ export function ScadaNode(props: NodeProps) {
 
   // L/R vertical alignment:
   // CB is 60 high -> centre y=30
-  // DS/ES are 40 high -> we want L/R at y=30 (lower square centre) when top-aligned with CB
+  // DS/ES are 40 high -> lower square centre is y=30 when top-aligned
   const lrTop = kind === "ds" || kind === "es" ? 30 : dims.h / 2;
 
   const AxisHandles = () => (
@@ -99,7 +125,7 @@ export function ScadaNode(props: NodeProps) {
             onClick={stopClick}
           />
 
-          {/* Hidden opposite direction handles (must not intercept) */}
+          {/* Hidden opposite direction handles */}
           <Handle
             type="source"
             id="L"
@@ -119,54 +145,75 @@ export function ScadaNode(props: NodeProps) {
 
       {showV && (
         <>
-          <Handle
-            type="target"
-            id="T"
-            position={Position.Top}
-            style={{ ...baseHandle, top: -6 }}
-            onClick={stopClick}
-          />
-          <Handle
-            type="source"
-            id="B"
-            position={Position.Bottom}
-            style={{ ...baseHandle, bottom: -6 }}
-            onClick={stopClick}
-          />
+          <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
+          <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
 
-          {/* Hidden opposite direction handles */}
-          <Handle
-            type="source"
-            id="T"
-            position={Position.Top}
-            style={{ ...baseHandle, top: -6, ...hiddenHandle }}
-            onClick={stopClick}
-          />
-          <Handle
-            type="target"
-            id="B"
-            position={Position.Bottom}
-            style={{ ...baseHandle, bottom: -6, ...hiddenHandle }}
-            onClick={stopClick}
-          />
+          <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, ...hiddenHandle }} onClick={stopClick} />
+          <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, ...hiddenHandle }} onClick={stopClick} />
         </>
       )}
     </>
   );
 
-  const renderHandles = () => {
-    // Switchgear uses axis handles (ES is single-connection enforced in isValidConnection)
-    if (kind === "cb" || kind === "ds" || kind === "es") return <AxisHandles />;
+  // Transformer: 4 terminals (primary/secondary/tertiary/neutral) centered, no manual left offsets.
+  // IMPORTANT: Do NOT set left offsets for top/bottom. Let React Flow center them.
+  const XfmrHandles = () => (
+    <>
+      {/* L/R aligned to the 30px centreline so they mate perfectly with CB/DS chains */}
+      <Handle
+        type="target"
+        id="L"
+        position={Position.Left}
+        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)" }}
+        onClick={stopClick}
+      />
+      <Handle
+        type="target"
+        id="R"
+        position={Position.Right}
+        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)" }}
+        onClick={stopClick}
+      />
 
-    // Default
+      {/* Top/Bottom remain centred; use for tertiary / neutral as needed */}
+      <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
+      <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
+
+      {/* Hidden sources so users can start connections from transformer terminals if needed */}
+      <Handle
+        type="source"
+        id="L"
+        position={Position.Left}
+        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)", ...hiddenHandle }}
+        onClick={stopClick}
+      />
+      <Handle
+        type="source"
+        id="R"
+        position={Position.Right}
+        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)", ...hiddenHandle }}
+        onClick={stopClick}
+      />
+      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, ...hiddenHandle }} onClick={stopClick} />
+      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, ...hiddenHandle }} onClick={stopClick} />
+    </>
+  );
+
+
+  const renderHandles = () => {
+    if (kind === "xfmr") return <XfmrHandles />;
+    if (kind === "cb" || kind === "ds" || kind === "es") return <AxisHandles />;
     return <AxisHandles />;
   };
 
-  // Text sizing: tighten for DS/ES
+  // Text sizing: DS/ES tighter
   const pad = kind === "ds" || kind === "es" ? 4 : 8;
   const typeFont = kind === "ds" || kind === "es" ? 11 : 12;
-  const labelFont = kind === "ds" || kind === "es" ? 11 : 12;
+  const labelFont = kind === "ds" || kind === "es" ? 10 : 12;
   const statusFont = kind === "ds" || kind === "es" ? 11 : 12;
+
+  // Transformer abbreviation
+  const kindShort = kind === "xfmr" ? "TX" : kind.toUpperCase();
 
   return (
     <div
@@ -177,52 +224,85 @@ export function ScadaNode(props: NodeProps) {
         borderRadius: 8,
         border,
         background: bg,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
         lineHeight: 1.05,
         userSelect: "none",
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
+        color: textPrimary,
       }}
     >
       {renderHandles()}
 
-      {/* Row 1: type (left) + label (right) */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-        <div style={{ fontWeight: 900, color: "#111", fontSize: typeFont }}>
-          {kind.toUpperCase()}
-        </div>
+      {/* TEXT LAYOUT:
+          - CB: stacked (CB / label / status)
+          - DS/ES: compact (type left + label right / status)
+          - TX: stacked (TX / label / optional line)
+      */}
+      {kind === "cb" ? (
+        <>
+          <div style={{ fontWeight: 900, fontSize: typeFont }}>{kindShort}</div>
 
-        <div
-          style={{
-            color: "#111",
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
-            fontSize: labelFont,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: dims.w - 44,
-            textAlign: "right",
-          }}
-          title={label}
-        >
-          {label}
-        </div>
-      </div>
+          <div
+            style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
+              fontSize: 12,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={label}
+          >
+            {label}
+          </div>
 
-      {/* Row 2: status */}
-      {isSwitch && (
-        <div
-          style={{
-            marginTop: 2,
-            fontWeight: 900,
-            fontSize: statusFont,
-            color: status === "CLOSED" ? "#b00000" : status === "OPEN" ? "#2e7d32" : "#111",
-          }}
-        >
-          {status}
-        </div>
+          <div style={{ fontWeight: 900, fontSize: statusFont }}>{status}</div>
+        </>
+      ) : kind === "xfmr" ? (
+        <>
+          <div style={{ fontWeight: 900, fontSize: 12 }}>{kindShort}</div>
+
+          <div
+            style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
+              fontSize: 12,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={label}
+          >
+            {label}
+          </div>
+
+          {/* Placeholder for ratio / vector group later */}
+          <div style={{ fontWeight: 700, fontSize: 11, color: "#374151" }}> </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+            <div style={{ fontWeight: 900, fontSize: typeFont }}>{kindShort}</div>
+
+            <div
+              style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
+                fontSize: labelFont,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: dims.w - 36,
+                textAlign: "right",
+              }}
+              title={label}
+            >
+              {label}
+            </div>
+          </div>
+
+          {isSwitch && <div style={{ marginTop: 2, fontWeight: 900, fontSize: statusFont }}>{status}</div>}
+        </>
       )}
     </div>
   );

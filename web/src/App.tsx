@@ -197,6 +197,23 @@ function AppInner() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
+  
+  const GRID = 20;
+  const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+  const onNodesChangeSnapped = useCallback((changes: any) => {
+    // apply React Flow changes first
+    onNodesChange(changes);
+
+    // then snap switchgear + junction + iface nodes to grid to keep busbars perfectly straight
+    setNodes((ns) =>
+      ns.map((n) => ({
+        ...n,
+        position: { x: snap(n.position.x), y: snap(n.position.y) },
+      }))
+    );
+  }, [onNodesChange, setNodes]);
+
 
   const [saveTitle, setSaveTitle] = useState(initialProject?.metadata?.title ?? "Untitled Template");
   const [saveDescription, setSaveDescription] = useState(initialProject?.metadata?.description ?? "");
@@ -253,9 +270,14 @@ function AppInner() {
     // do nothing; we gate based on drag-end time
   }, []);
 
-  const onNodeDragStop: NodeDragHandler = useCallback(() => {
+  const onNodeDragStop: NodeDragHandler = useCallback((_e, n) => {
     lastDragEndTsRef.current = Date.now();
-  }, []);
+    setNodes((ns) =>
+      ns.map((x) =>
+        x.id !== n.id ? x : { ...x, position: { x: snap(x.position.x), y: snap(x.position.y) } }
+      )
+    );
+  }, [setNodes]);
 
   // Interface Labeling
   const nodesForView = useMemo(() => {
