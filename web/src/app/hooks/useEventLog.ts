@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
+
 import type { EventCategory, EventLogItem } from "../../components/EventLog";
 
 export function useEventLog() {
@@ -14,11 +15,10 @@ export function useEventLog() {
     setEvents((ev) => [{ ts: Date.now(), category, msg }, ...ev].slice(0, 500));
   }, []);
 
-  const toggleFilter = useCallback((cat: EventCategory) => {
-    setFilters((f) => ({ ...f, [cat]: !f[cat] }));
-  }, []);
+  const onToggleFilter = useCallback(
+    (cat: EventCategory) => setFilters((f) => ({ ...f, [cat]: !f[cat] })),
+    []
+  );
 
-  const filteredEvents = useMemo(() => events.filter((e) => filters[e.category]), [events, filters]);
-
-  return { events, filters, appendEvent, toggleFilter, filteredEvents };
+  return { events, filters, appendEvent, onToggleFilter };
 }

@@ -10,7 +10,6 @@ import type { NodeKind, SwitchState } from "./core/model";
 import { TopToolbar } from "./components/TopToolbar";
 import { EditorCanvas } from "./components/EditorCanvas";
 import { ScadaPanel } from "./components/ScadaPanel";
-import type { EventCategory, EventLogItem } from "./components/EventLog";
 
 import { InterlockingModal } from "./components/modals/InterlockingModal";
 import type { InterlockRule } from "./components/modals/InterlockingModal";
@@ -26,12 +25,9 @@ import { BusbarModal } from "./components/modals/BusbarModal";
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
 import type { InterfaceMeta } from "./components/modals/PowerFlowModal";
 
-import { TEMPLATE_INDEX, loadTemplateById } from "./templates/manifest";
-
 import { useEffect } from "react";
 
 import { ContextMenu } from "./components/ContextMenu";
-import type { CtxMenu } from "./components/ContextMenu";
 
 import { FaultNode } from "./ui/nodes/FaultNode";
 
@@ -47,6 +43,13 @@ import type {
   LabelScheme,
   BayType,
 } from "./app/labeling/bp109";
+
+import { useEventLog } from "./app/hooks/useEventLog";
+import { useSwitchCommands } from "./app/hooks/useSwitchCommands";
+import { useProtection } from "./app/hooks/useProtection";
+import { useFaults } from "./app/hooks/useFaults";
+import { loadInitialProject, useTemplates } from "./app/hooks/useTemplates";
+import { useContextMenu } from "./app/hooks/useContextMenu";
 
 
 // ---------- minimal helpers (kept in App to avoid more files now) ----------
@@ -186,19 +189,7 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
 // ---------- AppInner ----------
 function AppInner() {
   const { screenToFlowPosition } = useReactFlow();
-
-  const DEFAULT_TEMPLATE_ID = TEMPLATE_INDEX[0].id;
-  
-  const initialProject = useMemo(() => {
-    if (!DEFAULT_TEMPLATE_ID) {
-      throw new Error("No templates found. Add JSON files under src/templates/templates/");
-    }
-    const parsed = loadTemplateById(DEFAULT_TEMPLATE_ID);
-    if (!parsed?.nodes || !parsed?.edges) {
-      throw new Error(`Default template failed to load: ${DEFAULT_TEMPLATE_ID}`);
-    }
-    return parsed;
-  }, []);
+  const initialProject = useMemo(() => loadInitialProject(), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
@@ -219,9 +210,6 @@ function AppInner() {
     );
   }, [onNodesChange, setNodes]);
 
-
-  const [saveTitle, setSaveTitle] = useState(initialProject?.metadata?.title ?? "Untitled Template");
-  const [saveDescription, setSaveDescription] = useState(initialProject?.metadata?.description ?? "");
 
   const nodeTypes = useMemo(() => ({
   junction: JunctionNode,
@@ -264,11 +252,7 @@ function AppInner() {
   const [interfaceMetaById, setInterfaceMetaById] = useState(initialProject.interfaceMetaById ?? {});
 
   // Event log
-  const [events, setEvents] = useState<EventLogItem[]>([]);
-  const [filters, setFilters] = useState<Record<EventCategory, boolean>>({ info: true, warn: true, error: true, debug: false });
-  const appendEvent = useCallback((category: EventCategory, msg: string) => {
-    setEvents((ev) => [{ ts: Date.now(), category, msg }, ...ev].slice(0, 500));
-  }, []);
+  const { events, filters, appendEvent, onToggleFilter } = useEventLog();
 
   // Selection/operate gating
   const lastDragEndTsRef = useRef<number>(0);
@@ -326,6 +310,42 @@ function AppInner() {
 
   // Interlocks state
   const [interlocks, setInterlocks] = useState(initialProject.interlocks ?? []);
+
+  const {
+    saveTitle,
+    setSaveTitle,
+    saveDescription,
+    setSaveDescription,
+    templates,
+    onLoadTemplate,
+    onLoadFile,
+    onDownload,
+  } = useTemplates({
+    appendEvent,
+    bayTypeOverrides,
+    bp109MetaById,
+    edges,
+    interlocks,
+    labelMode,
+    labelOverrides,
+    labelScheme,
+    nodes,
+    setBayTypeOverrides,
+    setBp109MetaById,
+    setEdges,
+    setInterlocks,
+    setInterfaceMetaById,
+    setLabelMode,
+    setLabelOverrides,
+    setLabelScheme,
+    setNodes,
+    initialProject,
+  });
+
+  const onLoadTemplateWithClose = useCallback((id: string) => {
+    onLoadTemplate(id);
+    setOpenSaveLoad(false);
+  }, [onLoadTemplate, setOpenSaveLoad]);
 
   // Derived maps
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
@@ -413,30 +433,6 @@ const isValidConnection = useCallback(
   [edges, nodeById]
 );
 
-  // Get latest version of nodes
-  const normalizeNodes = useCallback((loaded: Node[]) => {
-    return loaded.map((n) => {
-      const md = getMimicData(n) ?? (n.data as any)?.mimic ?? null;
-      const kind = md?.kind;
-
-      const type =
-        kind === "junction" ? "junction" :
-        kind === "iface" ? "iface" :
-        "scada";
-
-      return {
-        ...n,
-        type,
-        selectable: n.selectable ?? true,
-        draggable: n.draggable ?? (type !== "junction"),
-        data: {
-          ...(n.data as any),
-          mimic: md ?? { kind: "ds", label: n.id },
-          label: (n.data as any)?.label ?? md?.label ?? n.id,
-        },
-      };
-    });
-  }, []);
 
   // Energization/grounding
   const { nodes: mimicNodes, edges: mimicEdges } = useMemo(() => flowToMimicLocal(nodes, edges), [nodes, edges]);
@@ -589,81 +585,12 @@ const isValidConnection = useCallback(
   }, [interlocks, nodes]);
 
   // Command simulation
-  const pendingRef = useRef<Map<string, any>>(new Map());
-  const setNodeSwitchState = useCallback((nodeId: string, to: SwitchState) => {
-    setNodes((ns) => ns.map((n) => {
-      if (n.id !== nodeId) return n;
-      const md = getMimicData(n);
-      if (!md) return n;
-      return { ...n, data: { ...(n.data as any), mimic: { ...md, state: to } } };
-    }));
-  }, [setNodes]);
-
-  // DBI while moving (double bit indication)
-  const setNodeMoving = useCallback((nodeId: string, moving: boolean) => {
-    setNodes((ns) =>
-      ns.map((n) => {
-        if (n.id !== nodeId) return n;
-        const md = getMimicData(n);
-        if (!md) return n;
-        return { ...n, data: { ...(n.data as any), mimic: { ...md, moving } } };
-      })
-    );
-  }, [setNodes]);
-
-	const scheduleSwitchCommand = useCallback((nodeId: string, kind: NodeKind, to: SwitchState) => {
-	  const blocked = checkInterlock(nodeId, to);
-	  if (blocked) { appendEvent("warn", blocked); return; }
-
-	  if (pendingRef.current.has(nodeId)) {
-		appendEvent("warn", `CMD REJECTED ${kind.toUpperCase()} ${nodeId} (already in progress)`);
-		return;
-	  }
-
-	  let completionMs = 1000;
-	  let timeoutMs = 4000;
-	  if (kind === "cb") { completionMs = Math.round(60 + Math.random() * 60); timeoutMs = 500; }
-	  else if (kind === "ds" || kind === "es") { completionMs = Math.round(2000 + Math.random() * 1000); timeoutMs = 6000; }
-
-	  const cmdId = `cmd-${crypto.randomUUID().slice(0, 6)}`;
-	  appendEvent("info", `CMD ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
-
-	  // DBI while operating
-	  setNodeMoving(nodeId, true);
-
-	  const willFail = Math.random() < (kind === "cb" ? 0.01 : 0.03);
-
-	  const completeTimer = window.setTimeout(() => {
-		const pending = pendingRef.current.get(nodeId);
-		if (!pending || pending.cmdId !== cmdId) return;
-
-		window.clearTimeout(pending.timeoutTimer);
-		pendingRef.current.delete(nodeId);
-
-		if (willFail) {
-		  setNodeMoving(nodeId, false);
-		  appendEvent("error", `RPT ${kind.toUpperCase()} ${nodeId} FAILED (${to.toUpperCase()})`);
-		  return;
-		}
-
-		setNodeSwitchState(nodeId, to);
-		setNodeMoving(nodeId, false);
-		appendEvent("info", `RPT ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
-	  }, completionMs);
-
-	  const timeoutTimer = window.setTimeout(() => {
-		const pending = pendingRef.current.get(nodeId);
-		if (!pending || pending.cmdId !== cmdId) return;
-
-		window.clearTimeout(pending.completeTimer);
-		pendingRef.current.delete(nodeId);
-
-		setNodeMoving(nodeId, false);
-		appendEvent("error", `TIMEOUT ${kind.toUpperCase()} ${nodeId} (${to.toUpperCase()}) after ${timeoutMs} ms`);
-	  }, timeoutMs);
-
-	  pendingRef.current.set(nodeId, { cmdId, completeTimer, timeoutTimer });
-	}, [appendEvent, checkInterlock, setNodeSwitchState, setNodeMoving]);
+  const { scheduleSwitchCommand } = useSwitchCommands({
+    appendEvent,
+    checkInterlock,
+    getMimicData,
+    setNodes,
+  });
 
 
   const onNodeClick = useCallback((_evt: any, node: Node) => {
@@ -729,401 +656,40 @@ const isValidConnection = useCallback(
     scheduleSwitchCommand(id, md.kind, to);
   }, [nodeById, scheduleSwitchCommand]);
 
-  // Faults
+  // Protection toggles
+  const { toggleDarOnCb, toggleAutoIsolateOnDs } = useProtection({
+    appendEvent,
+    setNodes,
+  });
 
-  const toggleDarOnCb = useCallback((cbNodeId: string) => {
-  	  setNodes((ns) =>
-		  ns.map((n) => {
-			  if (n.id !== cbNodeId) return n;
-			  const cur = (n.data as any)?.protection ?? {};
-			  const next = {
-			  	  ...cur,
-				  dar: !(cur.dar === true),
-				  attempts: cur.attempts ?? 1,
-				  deadTimeMs: cur.deadTimeMs ?? 800,
-				  lockout: false,
-			  };
-			  return { ...n, data: { ...(n.data as any), protection: next } };
-		  })
-	  );
-	  appendEvent("info", `DAR toggled on ${cbNodeId}`);
-  }, [appendEvent, setNodes]);
-
-  const toggleAutoIsolateOnDs = useCallback((dsNodeId: string) => {
-	  setNodes((ns) =>
-		  ns.map((n) => {
-			  if (n.id !== dsNodeId) return n;
-			  const cur = (n.data as any)?.protection ?? {};
-			  const next = {
-				  ...cur,
-				  autoIsolate: !(cur.autoIsolate === true),
-			  };
-			  return { ...n, data: { ...(n.data as any), protection: next } };
-		  })
-	  );
-	  appendEvent("info", `Auto isolation toggled on ${dsNodeId}`);
-  }, [appendEvent, setNodes]);
-
-
-  // Add right click context menu
-  const [ctxMenu, setCtxMenu] = useState<CtxMenu>(null);
-
-  const onEdgeContextMenu = useCallback((edge: Edge, pos: { x: number; y: number }) => {
-    if ((edge.data as any)?.kind !== "busbar") return;
-    setCtxMenu({ kind: "edge", edgeId: edge.id, x: pos.x, y: pos.y });
-  }, []);
-
-  const onNodeContextMenu = useCallback((node: Node, pos: { x: number; y: number }) => {
-    setCtxMenu({ kind: "node", nodeId: node.id, x: pos.x, y: pos.y });
-  }, []);
-
-  const onPaneContextMenu = useCallback((_pos: { x: number; y: number }) => {
-    // optional: later use pane menu
-    setCtxMenu(null);
-  }, []);
-
-  const onPaneClick = useCallback(() => setCtxMenu(null), []);
-
-  const getEdgeById = useCallback((id: string) => edges.find((e) => e.id === id), [edges]);
-  const getNodeById = useCallback((id: string) => nodeById.get(id), [nodeById]);
 
   const getNodeKind = useCallback((n: Node) => {
-	  const md = getMimicData(n);
-	  return md?.kind ?? null;
+    const md = getMimicData(n);
+    return md?.kind ?? null;
   }, []);
 
+  const {
+    ctxMenu,
+    onEdgeContextMenu,
+    onNodeContextMenu,
+    onPaneContextMenu,
+    onPaneClick,
+    getEdgeById,
+    getNodeById,
+    getNodeKind: getNodeKindForMenu,
+  } = useContextMenu({ edges, nodeById, getNodeKind });
 
-  // Fault Markers in Context menu
-  type FaultSeverity = "normal" | "severe" | "extreme";
-
-  type Fault = {
-	  id: string;
-	  edgeId: string;
-	  busbarId: string;
-	  aNodeId: string;
-	  bNodeId: string;
-	  x: number;
-	  y: number;
-	  severity: FaultSeverity;
-	  persistent: boolean;
-	  status: "active" | "cleared";
-	  createdAt: number;
-  };
-
-  const [faults, setFaults] = useState<Record<string, Fault>>({});
-
-  const addFaultNode = useCallback((fault: Fault) => {
-	  const nodeId = `faultnode-${fault.id}`;
-	  setNodes((ns) =>
-		  ns.concat({
-			  id: nodeId,
-			  type: "fault",
-			  position: { x: fault.x - 7, y: fault.y - 7 },
-			  data: { label: `FAULT ${fault.severity.toUpperCase()}`, faultId: fault.id, busbarId: fault.busbarId },
-			  draggable: false,
-			  selectable: true,
-		  })
-	  );
-  }, [setNodes]);
-
-  const clearFaultById = useCallback((faultId: string) => {
-	  setFaults((m) => {
-		  const next = { ...m };
-		  if (!next[faultId]) return m;
-		  next[faultId] = { ...next[faultId], status: "cleared" };
-		  return next;
-	  });
-
-	  setNodes((ns) => ns.filter((n) => !((n.type === "fault") && (n.data as any)?.faultId === faultId)));
-
-	  appendEvent("info", `FAULT CLEARED ${faultId}`);
-  }, [appendEvent, setNodes]);
-
-  const activeFaultsOnBusbar = useCallback((busbarId: string) => {
-	  return Object.values(faults).filter((f) => f.status === "active" && f.busbarId === busbarId && f.persistent);
-  }, [faults]);
-
-  const markNodeFaulted = useCallback((nodeId: string, faulted: boolean, destroyed: boolean = false) => {
-	  setNodes((ns) =>
-		  ns.map((n) => {
-			  if (n.id !== nodeId) return n;
-			  return {
-				  ...n,
-				  data: {
-					  ...(n.data as any),
-					  faulted,
-					  destroyed,
-				  },
-			  };
-		  })
-	  );
-  }, [setNodes]);
-
-  // MVP isolate logic + DAR lockout alarm
-  const isolateFault = useCallback((fault: Fault) => {
-	  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-	  const adj = new Map<string, Array<{ other: string }>>();
-
-	  for (const e of edges) {
-		  if (!adj.has(e.source)) adj.set(e.source, []);
-		  if (!adj.has(e.target)) adj.set(e.target, []);
-		  adj.get(e.source)!.push({ other: e.target });
-		  adj.get(e.target)!.push({ other: e.source });
-	  }
-
-	  const isBlocking = (nodeId: string) => {
-		  const n = nodeMap.get(nodeId);
-		  const md = n ? getMimicData(n) : null;
-		  if (!md) return false;
-		  // Stop at open DS/CB, and at CLOSED ES (ground switch blocks traversal)
-		  if ((md.kind === "ds" || md.kind === "cb") && md.state !== "closed") return true;
-		  if (md.kind === "es" && md.state === "closed") return true;
-		  return false;
-	  };
-
-	  // Find nearest closed CBs on all reachable paths from fault endpoints
-	  const tripSet = new Set<string>();
-	  const visited = new Set<string>();
-	  const q: string[] = [fault.aNodeId, fault.bNodeId];
-
-	  while (q.length) {
-		  const cur = q.shift()!;
-		  if (visited.has(cur)) continue;
-		  visited.add(cur);
-
-		  const n = nodeMap.get(cur);
-		  const md = n ? getMimicData(n) : null;
-
-		  if (md?.kind === "cb" && md.state === "closed") {
-			  tripSet.add(cur);
-			  continue;
-		  }
-
-		  if (isBlocking(cur)) continue;
-
-		  for (const { other } of adj.get(cur) ?? []) {
-			  if (!visited.has(other)) q.push(other);
-		  }
-	  }
-
-	  // If extreme fault: first breaker may be "destroyed" (busbar stuck closed)
-	  const orderedTrips = Array.from(tripSet);
-
-	  for (const cbId of orderedTrips) {
-		  if (fault.severity === "extreme") {
-		  	  // 30% chance breaker is destroyed and cannot open
-			  if (Math.random() < 0.3) {
-				  markNodeFaulted(cbId, true, true);
-				  appendEvent("error", `CB FAIL (DESTROYED) ${cbId} under EXTREME fault`);
-				  continue;
-			  }
-		  }
-
-		  // Schedule an open. If your scheduler can fail, we mark on fail by watching state later.
-		  scheduleSwitchCommand(cbId, "cb" as any, "open");
-
-		  // DAR logic (simple): if enabled, attempt a reclose once, then lockout if fault persists
-		  const cbNode = nodeMap.get(cbId);
-		  const prot = cbNode ? (cbNode.data as any)?.protection : null;
-
-		  if (prot?.dar === true && prot.lockout !== true) {
-			  const deadTimeMs = prot.deadTimeMs ?? 800;
-
-			  window.setTimeout(() => {
-				  // If fault cleared already, do nothing
-				  const stillActive = Object.values(faults).some((f) => f.id === fault.id && f.status === "active");
-				  if (!stillActive) return;
-
-				  appendEvent("warn", `DAR RECLOSE attempt on ${cbId}`);
-				  scheduleSwitchCommand(cbId, "cb" as any, "closed");
-
-				  // After reclose, if fault still active, trip again and lockout
-				  window.setTimeout(() => {
-					  const still = Object.values(faults).some((f) => f.id === fault.id && f.status === "active");
-					  if (!still) return;
-
-					  appendEvent("error", `DAR LOCKOUT on ${cbId}`);
-					  scheduleSwitchCommand(cbId, "cb" as any, "open");
-
-					  setNodes((ns) =>
-						  ns.map((n) => {
-							  if (n.id !== cbId) return n;
-							  const cur = (n.data as any)?.protection ?? {};
-							  return { ...n, data: { ...(n.data as any), protection: { ...cur, lockout: true } } };
-						  })
-					  );
-				  }, 250);
-			  }, deadTimeMs);
-		  }
-	  }
-
-	  // If no breakers found, mark nearby transformer faulted (simple heuristic: first tx in visited set)
-	  if (orderedTrips.length === 0) {
-		  const firsttx = nodes.find((n) => getMimicData(n)?.kind === "tx" && visited.has(n.id));
-		  if (firsttx) {
-			  markNodeFaulted(firsttx.id, true, false);
-			  appendEvent("error", `TX FAULTED ${firsttx.id} (no CB isolation found)`);
-		  }
-	  }
-  }, [appendEvent, edges, faults, markNodeFaulted, nodes, scheduleSwitchCommand, setNodes]);
-
-  const createFaultOnEdge = useCallback((
-	  edgeId: string,
-	  flowPos: { x: number; y: number },
-	  opts: { persistent: boolean; severity: FaultSeverity }
-  ) => {
-	  const edge = edges.find((e) => e.id === edgeId);
-	  if (!edge) return;
-
-	  const busbarId = (edge.data as any)?.busbarId ?? "bb-unknown";
-	  const faultId = `fault-${crypto.randomUUID().slice(0, 6)}`;
-
-	  const fault: Fault = {
-		  id: faultId,
-		  edgeId,
-		  busbarId,
-		  aNodeId: edge.source,
-		  bNodeId: edge.target,
-		  x: flowPos.x,
-		  y: flowPos.y,
-		  severity: opts.severity,
-		  persistent: opts.persistent,
-		  status: "active",
-		  createdAt: Date.now(),
-	  };
-
-	  setFaults((m) => ({ ...m, [faultId]: fault }));
-
-	  appendEvent("error", `ALARM FAULT (${fault.severity.toUpperCase()}) between ${edge.source} and ${edge.target} (busbar ${busbarId})`);
-
-	  if (opts.persistent) addFaultNode(fault);
-
-	  isolateFault(fault);
-
-	  // Transient fault clears automatically after response is initiated
-	  if (!opts.persistent) {
-		  window.setTimeout(() => {
-			  clearFaultById(faultId);
-		  }, 50);
-	  }
-  }, [addFaultNode, appendEvent, clearFaultById, edges, isolateFault]);
-
-
-  const resetCondition = useCallback((nodeId: string) => {
-	  setNodes((ns) =>
-		  ns.map((n) => {
-			  if (n.id !== nodeId) return n;
-
-			  const md = getMimicData(n);
-			  const protection = (n.data as any)?.protection ?? {};
-
-			  // Clear fault flags + lockout
-			  const nextProtection = { ...protection, lockout: false };
-
-			  // Clear moving/DBI if present
-			  const nextMimic = md ? { ...md, moving: false } : (n.data as any)?.mimic;
-  
-			  return {
-				  ...n,
-				  data: {
-					  ...(n.data as any),
-					  faulted: false,
-					  destroyed: false,
-					  protection: nextProtection,
-					  mimic: nextMimic,
-				  },
-			  };
-		  })
-	  );
-
-	  appendEvent("info", `RESET ${nodeId}`);
-  }, [appendEvent, setNodes]);
-
-
-
-  // Event log filters
-  const onToggleFilter = useCallback((cat: EventCategory) => setFilters((f) => ({ ...f, [cat]: !f[cat] })), []);
+  const { activeFaultsOnBusbar, createFaultOnEdge, clearFaultById, resetCondition } = useFaults({
+    appendEvent,
+    edges,
+    getMimicData,
+    nodes,
+    scheduleSwitchCommand,
+    setNodes,
+  });
 
   // Modals
   const switchgearIds = useMemo(() => Object.values(switchgear).flat().map((x) => x.id).sort(), [switchgear]);
-
-  // Save/Load
-  const serializeProject = useCallback(() => {
-    return JSON.stringify({
-      schemaVersion: "1.0",
-      metadata: { title: saveTitle, description: saveDescription },
-      nodes,
-      edges,
-      labelScheme,
-      labelMode,
-      labelOverrides,
-      bayTypeOverrides,
-      bp109MetaById,
-      interlocks,
-    }, null, 2);
-  }, [bayTypeOverrides, bp109MetaById, edges, interlocks, labelMode, labelOverrides, labelScheme, nodes, saveDescription, saveTitle]);
-
-  const onDownload = useCallback(() => {
-    const json = serializeProject();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${saveTitle.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 40) || "mimic-template"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    appendEvent("debug", "Saved template JSON");
-  }, [appendEvent, saveTitle, serializeProject]);
-
-  const onLoadFile = useCallback(async (file: File) => {
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    if (!parsed?.nodes || !parsed?.edges) { appendEvent("error", "Load failed: invalid file format"); return; }
-    setNodes(normalizeNodes(parsed.nodes));
-
-    setEdges(parsed.edges);
-    if (parsed?.metadata?.title) setSaveTitle(parsed.metadata.title);
-    if (parsed?.metadata?.description) setSaveDescription(parsed.metadata.description);
-    if (parsed.labelScheme) setLabelScheme(parsed.labelScheme);
-    if (parsed.labelMode) setLabelMode(parsed.labelMode);
-    if (parsed.labelOverrides) setLabelOverrides(parsed.labelOverrides);
-    if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
-    if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
-    if (parsed.interlocks) setInterlocks(parsed.interlocks);
-    appendEvent("debug", `Loaded ${file.name}`);
-  }, [appendEvent, setEdges, setNodes]);
-
-  const templates = useMemo(
-    () => TEMPLATE_INDEX.map((t) => ({ id: t.id, name: t.title, description: t.description, category: t.category })),
-    []
-  );
-
-  const onLoadTemplate = useCallback((id: string) => {
-    const parsed = loadTemplateById(id);
-    if (!parsed?.nodes || !parsed?.edges) {
-      appendEvent("error", `Template load failed: ${id}`);
-      return;
-    }
-
-    setNodes(normalizeNodes(parsed.nodes));
-
-    setEdges(parsed.edges);
-
-    if (parsed?.metadata?.title) setSaveTitle(parsed.metadata.title);
-    if (parsed?.metadata?.description) setSaveDescription(parsed.metadata.description);
-
-    if (parsed.labelScheme) setLabelScheme(parsed.labelScheme);
-    if (parsed.labelMode) setLabelMode(parsed.labelMode);
-    if (parsed.labelOverrides) setLabelOverrides(parsed.labelOverrides);
-    if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
-    if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
-    if (parsed.interlocks) setInterlocks(parsed.interlocks);
-    if (parsed.interfaceMetaById) setInterfaceMetaById(parsed.interfaceMetaById);
-
-    appendEvent("debug", `Loaded template: ${id}`);
-    setOpenSaveLoad(false);
-  }, [appendEvent, setNodes, setEdges]);
-
 
   // Build tag
   const buildTag = "SPLIT-001";
@@ -1218,7 +784,7 @@ const isValidConnection = useCallback(
         onDownload={onDownload}
         onLoadFile={onLoadFile}
         templates={templates}
-        onLoadTemplate={onLoadTemplate}
+        onLoadTemplate={onLoadTemplateWithClose}
       />
 	  
 	  <BusbarModal
@@ -1241,12 +807,12 @@ const isValidConnection = useCallback(
 	  
 	  <ContextMenu
 	  	ctxMenu={ctxMenu}
-	  	onClose={() => setCtxMenu(null)}
-	  	getEdgeById={(id) => edges.find((e) => e.id === id)}
-	  	getNodeById={(id) => nodeById.get(id)}
-	  	getNodeKind={(n) => getMimicData(n)?.kind ?? null}
+	  	onClose={onPaneClick}
+	  	getEdgeById={getEdgeById}
+	  	getNodeById={getNodeById}
+	  	getNodeKind={getNodeKindForMenu}
 	  	getBusbarIdForEdgeId={(edgeId) => {
-	  		const e = edges.find((x) => x.id === edgeId);
+	  		const e = getEdgeById(edgeId);
 	  		return e ? ((e.data as any)?.busbarId ?? null) : null;
 	  	}}
 	  	hasActivePersistentFaultOnBusbar={(busbarId) => activeFaultsOnBusbar(busbarId).length > 0}
