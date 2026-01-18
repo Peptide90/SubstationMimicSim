@@ -41,11 +41,11 @@ export function ScadaNode(props: NodeProps) {
   // ---- Geometry (20px grid) ----
   // CB: 3×3 = 60×60
   // DS/ES: 5×2 = 100×40
-  // XFMR: 5×4 = 100×80
+  // TX: 5×4 = 100×80
   const dims = useMemo(() => {
     if (kind === "cb") return { w: 60, h: 60 };
     if (kind === "ds" || kind === "es") return { w: 100, h: 40 };
-    if (kind === "xfmr") return { w: 100, h: 80 };
+    if (kind === "tx") return { w: 100, h: 80 };
     return { w: 120, h: 48 };
   }, [kind]);
 
@@ -62,14 +62,14 @@ export function ScadaNode(props: NodeProps) {
   const isFaulted = data?.faulted === true;
 
   const bg = useMemo(() => {
-    if (kind === "xfmr") return isFaulted ? TX_FAULT_BG : TX_BG;
+    if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
     if (!isSwitch) return "#ffffff";
     if (isPending) return SW_DBI_BG;
     return isClosed ? SW_CLOSED_BG : SW_OPEN_BG;
   }, [kind, isSwitch, isPending, isClosed, isFaulted]);
 
   const border = useMemo(() => {
-    if (kind === "xfmr") return "2px solid #64748b";
+    if (kind === "tx") return "2px solid #64748b";
     if (!isSwitch) return "2px solid #444";
     if (isPending) return "2px solid #64748b";
     return isClosed ? "2px solid #7f2a2a" : "2px solid #1f6b3f";
@@ -156,7 +156,7 @@ export function ScadaNode(props: NodeProps) {
   );
 
   // Transformer: 4 terminals (primary/secondary/tertiary/neutral) centered, no manual left offsets.
-  const XfmrHandles = () => (
+  const txHandles = () => (
     <>
       {/* L/R aligned to the same centreline as CB/DS chains */}
       {/* Visible target handles */}
@@ -202,7 +202,7 @@ export function ScadaNode(props: NodeProps) {
 
 
   const renderHandles = () => {
-    if (kind === "xfmr") return <XfmrHandles />;
+    if (kind === "tx") return <txHandles />;
     if (kind === "cb" || kind === "ds" || kind === "es") return <AxisHandles />;
     return <AxisHandles />;
   };
@@ -214,7 +214,7 @@ export function ScadaNode(props: NodeProps) {
   const statusFont = kind === "ds" || kind === "es" ? 11 : 12;
 
   // Transformer abbreviation
-  const kindShort = kind === "xfmr" ? "TX" : kind.toUpperCase();
+  const kindShort = kind === "tx" ? "TX" : kind.toUpperCase();
 
   return (
     <div
@@ -261,7 +261,7 @@ export function ScadaNode(props: NodeProps) {
 
           <div style={{ fontWeight: 900, fontSize: statusFont }}>{status}</div>
         </>
-      ) : kind === "xfmr" ? (
+      ) : kind === "tx" ? (
         <>
           <div style={{ fontWeight: 900, fontSize: 12 }}>{kindShort}</div>
 

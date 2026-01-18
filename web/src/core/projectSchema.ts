@@ -9,7 +9,7 @@ export const NodeKindSchema = z.union([
   z.literal('ds'),
   z.literal('es'),
   z.literal('load'),
-  z.literal('xfmr'),
+  z.literal('tx'),
 ]);
 
 export const MimicNodeSchema = z.object({

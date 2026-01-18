@@ -12,7 +12,7 @@ const ITEMS: PaletteItem[] = [
   { kind: 'ds', title: 'Disconnector (DS)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
   { kind: 'es', title: 'Earth Switch (ES)' },
-  { kind: 'xfmr', title: 'Transformer (XFMR)' }
+  { kind: 'tx', title: 'Transformer (TX)' }
 ];
 
 export type PaletteProps = {

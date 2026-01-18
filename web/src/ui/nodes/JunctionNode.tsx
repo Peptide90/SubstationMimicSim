@@ -25,14 +25,16 @@ export function JunctionNode(_props: NodeProps) {
         cursor: "move",
       }}
     >
-      {/* Expose all four handle IDs so templates can attach using L/R/T/B */}
-      {/* Target handles */}
+      {/* Omni handle id used by tee insertion */}
+      <Handle type="target" id="J" position={Position.Top} style={h} />
+      <Handle type="source" id="J" position={Position.Top} style={h} />
+
+      {/* Cardinal handles used by templates / manual wiring */}
       <Handle type="target" id="L" position={Position.Left} style={h} />
       <Handle type="target" id="R" position={Position.Right} style={h} />
       <Handle type="target" id="T" position={Position.Top} style={h} />
       <Handle type="target" id="B" position={Position.Bottom} style={h} />
 
-      {/* Source handles (hidden) */}
       <Handle type="source" id="L" position={Position.Left} style={h} />
       <Handle type="source" id="R" position={Position.Right} style={h} />
       <Handle type="source" id="T" position={Position.Top} style={h} />

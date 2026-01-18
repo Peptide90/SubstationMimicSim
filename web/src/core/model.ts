@@ -3,7 +3,7 @@ export type NodeKind =
   | 'cb'
   | 'ds'
   | 'es'
-  | 'xfmr'
+  | 'tx'
   | 'junction'; // new hidden/utility node type
 
 export type SwitchState = 'open' | 'closed';

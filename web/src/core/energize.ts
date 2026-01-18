@@ -9,7 +9,7 @@ function isConducting(kind: NodeKind, nodeState?: string, sourceOn?: boolean): b
   if (kind === 'source') return sourceOn === true;
   if (kind === 'cb' || kind === 'ds') return nodeState === 'closed';
   if (kind === 'es') return false; // ES is not through-conducting
-  // junction/load/xfmr are pass-through for MVP
+  // junction/load/tx are pass-through for MVP
   return true;
 }
 

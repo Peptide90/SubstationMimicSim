@@ -30,6 +30,11 @@ import { TEMPLATE_INDEX, loadTemplateById } from "./templates/manifest";
 
 import { useEffect } from "react";
 
+import { ContextMenu } from "./components/ContextMenu";
+import type { CtxMenu } from "./components/ContextMenu";
+
+import { FaultNode } from "./ui/nodes/FaultNode";
+
 import {
   computeBp109Label,
   defaultBp109Meta,
@@ -222,6 +227,7 @@ function AppInner() {
   junction: JunctionNode,
   scada: ScadaNode,
   iface: InterfaceNode,
+  fault: FaultNode,
   }), []);
   
   const edgeClickTimerRef = useRef<number | null>(null);
@@ -722,13 +728,44 @@ const isValidConnection = useCallback(
     const to: SwitchState = current === "closed" ? "open" : "closed";
     scheduleSwitchCommand(id, md.kind, to);
   }, [nodeById, scheduleSwitchCommand]);
-  
-  // Add right click context menu
-  type CtxMenu =
-    | null
-    | { kind: "edge"; edgeId: string; x: number; y: number }
-    | { kind: "node"; nodeId: string; x: number; y: number };
 
+  // Faults
+
+  const toggleDarOnCb = useCallback((cbNodeId: string) => {
+  	  setNodes((ns) =>
+		  ns.map((n) => {
+			  if (n.id !== cbNodeId) return n;
+			  const cur = (n.data as any)?.protection ?? {};
+			  const next = {
+			  	  ...cur,
+				  dar: !(cur.dar === true),
+				  attempts: cur.attempts ?? 1,
+				  deadTimeMs: cur.deadTimeMs ?? 800,
+				  lockout: false,
+			  };
+			  return { ...n, data: { ...(n.data as any), protection: next } };
+		  })
+	  );
+	  appendEvent("info", `DAR toggled on ${cbNodeId}`);
+  }, [appendEvent, setNodes]);
+
+  const toggleAutoIsolateOnDs = useCallback((dsNodeId: string) => {
+	  setNodes((ns) =>
+		  ns.map((n) => {
+			  if (n.id !== dsNodeId) return n;
+			  const cur = (n.data as any)?.protection ?? {};
+			  const next = {
+				  ...cur,
+				  autoIsolate: !(cur.autoIsolate === true),
+			  };
+			  return { ...n, data: { ...(n.data as any), protection: next } };
+		  })
+	  );
+	  appendEvent("info", `Auto isolation toggled on ${dsNodeId}`);
+  }, [appendEvent, setNodes]);
+
+
+  // Add right click context menu
   const [ctxMenu, setCtxMenu] = useState<CtxMenu>(null);
 
   const onEdgeContextMenu = useCallback((edge: Edge, pos: { x: number; y: number }) => {
@@ -747,100 +784,262 @@ const isValidConnection = useCallback(
 
   const onPaneClick = useCallback(() => setCtxMenu(null), []);
 
+  const getEdgeById = useCallback((id: string) => edges.find((e) => e.id === id), [edges]);
+  const getNodeById = useCallback((id: string) => nodeById.get(id), [nodeById]);
+
+  const getNodeKind = useCallback((n: Node) => {
+	  const md = getMimicData(n);
+	  return md?.kind ?? null;
+  }, []);
+
 
   // Fault Markers in Context menu
+  type FaultSeverity = "normal" | "severe" | "extreme";
+
   type Fault = {
-    id: string;
-    edgeId: string;
-    busbarId: string;
-    aNodeId: string;
-    bNodeId: string;
-    x: number;
-    y: number;
-    status: "active" | "cleared";
+	  id: string;
+	  edgeId: string;
+	  busbarId: string;
+	  aNodeId: string;
+	  bNodeId: string;
+	  x: number;
+	  y: number;
+	  severity: FaultSeverity;
+	  persistent: boolean;
+	  status: "active" | "cleared";
+	  createdAt: number;
   };
 
   const [faults, setFaults] = useState<Record<string, Fault>>({});
 
-  const placeFaultOnEdge = useCallback((edgeId: string, pos: { x: number; y: number }) => {
-    const edge = edges.find((e) => e.id === edgeId);
-    if (!edge) return;
+  const addFaultNode = useCallback((fault: Fault) => {
+	  const nodeId = `faultnode-${fault.id}`;
+	  setNodes((ns) =>
+		  ns.concat({
+			  id: nodeId,
+			  type: "fault",
+			  position: { x: fault.x - 7, y: fault.y - 7 },
+			  data: { label: `FAULT ${fault.severity.toUpperCase()}`, faultId: fault.id, busbarId: fault.busbarId },
+			  draggable: false,
+			  selectable: true,
+		  })
+	  );
+  }, [setNodes]);
 
-    const busbarId = (edge.data as any)?.busbarId ?? "bb-unknown";
-    const faultId = `fault-${crypto.randomUUID().slice(0, 6)}`;
+  const clearFaultById = useCallback((faultId: string) => {
+	  setFaults((m) => {
+		  const next = { ...m };
+		  if (!next[faultId]) return m;
+		  next[faultId] = { ...next[faultId], status: "cleared" };
+		  return next;
+	  });
 
-    const fault: Fault = {
-      id: faultId,
-      edgeId,
-      busbarId,
-      aNodeId: edge.source,
-      bNodeId: edge.target,
-      x: pos.x,
-      y: pos.y,
-      status: "active",
-    };
+	  setNodes((ns) => ns.filter((n) => !((n.type === "fault") && (n.data as any)?.faultId === faultId)));
 
-    setFaults((m) => ({ ...m, [faultId]: fault }));
+	  appendEvent("info", `FAULT CLEARED ${faultId}`);
+  }, [appendEvent, setNodes]);
 
-    appendEvent("error", `ALARM FAULT between ${edge.source} and ${edge.target} (busbar ${busbarId})`);
+  const activeFaultsOnBusbar = useCallback((busbarId: string) => {
+	  return Object.values(faults).filter((f) => f.status === "active" && f.busbarId === busbarId && f.persistent);
+  }, [faults]);
 
-    // Trigger isolation
-    isolateFault(fault);
-  }, [edges, appendEvent]);
+  const markNodeFaulted = useCallback((nodeId: string, faulted: boolean, destroyed: boolean = false) => {
+	  setNodes((ns) =>
+		  ns.map((n) => {
+			  if (n.id !== nodeId) return n;
+			  return {
+				  ...n,
+				  data: {
+					  ...(n.data as any),
+					  faulted,
+					  destroyed,
+				  },
+			  };
+		  })
+	  );
+  }, [setNodes]);
 
+  // MVP isolate logic + DAR lockout alarm
   const isolateFault = useCallback((fault: Fault) => {
-    // Build adjacency from current nodes/edges
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const adj = new Map<string, Array<{ other: string }>>();
+	  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+	  const adj = new Map<string, Array<{ other: string }>>();
 
-    for (const e of edges) {
-      // Ignore non-busbar edges if any; you currently treat all connections as busbar edges
-      if (!adj.has(e.source)) adj.set(e.source, []);
-      if (!adj.has(e.target)) adj.set(e.target, []);
-      adj.get(e.source)!.push({ other: e.target });
-      adj.get(e.target)!.push({ other: e.source });
-    }
+	  for (const e of edges) {
+		  if (!adj.has(e.source)) adj.set(e.source, []);
+		  if (!adj.has(e.target)) adj.set(e.target, []);
+		  adj.get(e.source)!.push({ other: e.target });
+		  adj.get(e.target)!.push({ other: e.source });
+	  }
 
-    const isClosedSwitch = (nodeId: string) => {
-      const n = nodeMap.get(nodeId);
-      const md = n ? getMimicData(n) : null;
-      if (!md) return true;
-      if (md.kind === "cb" || md.kind === "ds") return md.state === "closed";
-      if (md.kind === "es") return md.state !== "closed"; // ES closed grounds; treat as stop
-      return true;
-    };
+	  const isBlocking = (nodeId: string) => {
+		  const n = nodeMap.get(nodeId);
+		  const md = n ? getMimicData(n) : null;
+		  if (!md) return false;
+		  // Stop at open DS/CB, and at CLOSED ES (ground switch blocks traversal)
+		  if ((md.kind === "ds" || md.kind === "cb") && md.state !== "closed") return true;
+		  if (md.kind === "es" && md.state === "closed") return true;
+		  return false;
+	  };
 
-    const tripSet = new Set<string>();
-    const visited = new Set<string>();
-    const q: string[] = [fault.aNodeId, fault.bNodeId];
+	  // Find nearest closed CBs on all reachable paths from fault endpoints
+	  const tripSet = new Set<string>();
+	  const visited = new Set<string>();
+	  const q: string[] = [fault.aNodeId, fault.bNodeId];
 
-    while (q.length) {
-      const cur = q.shift()!;
-      if (visited.has(cur)) continue;
-      visited.add(cur);
+	  while (q.length) {
+		  const cur = q.shift()!;
+		  if (visited.has(cur)) continue;
+		  visited.add(cur);
 
-      const n = nodeMap.get(cur);
-      const md = n ? getMimicData(n) : null;
+		  const n = nodeMap.get(cur);
+		  const md = n ? getMimicData(n) : null;
 
-      // Stop at first closed CB: trip it and do not traverse beyond
-      if (md?.kind === "cb" && md.state === "closed") {
-        tripSet.add(cur);
-        continue;
-      }
+		  if (md?.kind === "cb" && md.state === "closed") {
+			  tripSet.add(cur);
+			  continue;
+		  }
 
-      // Stop at open DS/CB
-      if (!isClosedSwitch(cur)) continue;
+		  if (isBlocking(cur)) continue;
 
-      for (const { other } of adj.get(cur) ?? []) {
-        if (!visited.has(other)) q.push(other);
-      }
-    }
+		  for (const { other } of adj.get(cur) ?? []) {
+			  if (!visited.has(other)) q.push(other);
+		  }
+	  }
 
-    // Trip all found breakers
-    for (const cbId of tripSet) {
-      scheduleSwitchCommand(cbId, "cb" as any, "open");
-    }
-  }, [edges, nodes, scheduleSwitchCommand]);
+	  // If extreme fault: first breaker may be "destroyed" (busbar stuck closed)
+	  const orderedTrips = Array.from(tripSet);
+
+	  for (const cbId of orderedTrips) {
+		  if (fault.severity === "extreme") {
+		  	  // 30% chance breaker is destroyed and cannot open
+			  if (Math.random() < 0.3) {
+				  markNodeFaulted(cbId, true, true);
+				  appendEvent("error", `CB FAIL (DESTROYED) ${cbId} under EXTREME fault`);
+				  continue;
+			  }
+		  }
+
+		  // Schedule an open. If your scheduler can fail, we mark on fail by watching state later.
+		  scheduleSwitchCommand(cbId, "cb" as any, "open");
+
+		  // DAR logic (simple): if enabled, attempt a reclose once, then lockout if fault persists
+		  const cbNode = nodeMap.get(cbId);
+		  const prot = cbNode ? (cbNode.data as any)?.protection : null;
+
+		  if (prot?.dar === true && prot.lockout !== true) {
+			  const deadTimeMs = prot.deadTimeMs ?? 800;
+
+			  window.setTimeout(() => {
+				  // If fault cleared already, do nothing
+				  const stillActive = Object.values(faults).some((f) => f.id === fault.id && f.status === "active");
+				  if (!stillActive) return;
+
+				  appendEvent("warn", `DAR RECLOSE attempt on ${cbId}`);
+				  scheduleSwitchCommand(cbId, "cb" as any, "closed");
+
+				  // After reclose, if fault still active, trip again and lockout
+				  window.setTimeout(() => {
+					  const still = Object.values(faults).some((f) => f.id === fault.id && f.status === "active");
+					  if (!still) return;
+
+					  appendEvent("error", `DAR LOCKOUT on ${cbId}`);
+					  scheduleSwitchCommand(cbId, "cb" as any, "open");
+
+					  setNodes((ns) =>
+						  ns.map((n) => {
+							  if (n.id !== cbId) return n;
+							  const cur = (n.data as any)?.protection ?? {};
+							  return { ...n, data: { ...(n.data as any), protection: { ...cur, lockout: true } } };
+						  })
+					  );
+				  }, 250);
+			  }, deadTimeMs);
+		  }
+	  }
+
+	  // If no breakers found, mark nearby transformer faulted (simple heuristic: first tx in visited set)
+	  if (orderedTrips.length === 0) {
+		  const firsttx = nodes.find((n) => getMimicData(n)?.kind === "tx" && visited.has(n.id));
+		  if (firsttx) {
+			  markNodeFaulted(firsttx.id, true, false);
+			  appendEvent("error", `TX FAULTED ${firsttx.id} (no CB isolation found)`);
+		  }
+	  }
+  }, [appendEvent, edges, faults, markNodeFaulted, nodes, scheduleSwitchCommand, setNodes]);
+
+  const createFaultOnEdge = useCallback((
+	  edgeId: string,
+	  flowPos: { x: number; y: number },
+	  opts: { persistent: boolean; severity: FaultSeverity }
+  ) => {
+	  const edge = edges.find((e) => e.id === edgeId);
+	  if (!edge) return;
+
+	  const busbarId = (edge.data as any)?.busbarId ?? "bb-unknown";
+	  const faultId = `fault-${crypto.randomUUID().slice(0, 6)}`;
+
+	  const fault: Fault = {
+		  id: faultId,
+		  edgeId,
+		  busbarId,
+		  aNodeId: edge.source,
+		  bNodeId: edge.target,
+		  x: flowPos.x,
+		  y: flowPos.y,
+		  severity: opts.severity,
+		  persistent: opts.persistent,
+		  status: "active",
+		  createdAt: Date.now(),
+	  };
+
+	  setFaults((m) => ({ ...m, [faultId]: fault }));
+
+	  appendEvent("error", `ALARM FAULT (${fault.severity.toUpperCase()}) between ${edge.source} and ${edge.target} (busbar ${busbarId})`);
+
+	  if (opts.persistent) addFaultNode(fault);
+
+	  isolateFault(fault);
+
+	  // Transient fault clears automatically after response is initiated
+	  if (!opts.persistent) {
+		  window.setTimeout(() => {
+			  clearFaultById(faultId);
+		  }, 50);
+	  }
+  }, [addFaultNode, appendEvent, clearFaultById, edges, isolateFault]);
+
+
+  const resetCondition = useCallback((nodeId: string) => {
+	  setNodes((ns) =>
+		  ns.map((n) => {
+			  if (n.id !== nodeId) return n;
+
+			  const md = getMimicData(n);
+			  const protection = (n.data as any)?.protection ?? {};
+
+			  // Clear fault flags + lockout
+			  const nextProtection = { ...protection, lockout: false };
+
+			  // Clear moving/DBI if present
+			  const nextMimic = md ? { ...md, moving: false } : (n.data as any)?.mimic;
+  
+			  return {
+				  ...n,
+				  data: {
+					  ...(n.data as any),
+					  faulted: false,
+					  destroyed: false,
+					  protection: nextProtection,
+					  mimic: nextMimic,
+				  },
+			  };
+		  })
+	  );
+
+	  appendEvent("info", `RESET ${nodeId}`);
+  }, [appendEvent, setNodes]);
+
+
 
   // Event log filters
   const onToggleFilter = useCallback((cat: EventCategory) => setFilters((f) => ({ ...f, [cat]: !f[cat] })), []);
@@ -1040,23 +1239,29 @@ const isValidConnection = useCallback(
 	    setMetaById={setInterfaceMetaById}
 	  />
 	  
-	  {Object.values(faults).filter(f => f.status==="active").map((f) => (
-	    <div
-	  	  key={f.id}
-		  style={{
-		    position: "absolute",
-		    left: f.x - 6,
-		    top: f.y - 6,
-		    width: 12,
-		    height: 12,
-		    borderRadius: 999,
-		    background: "#facc15",
-		    border: "2px solid #92400e",
-		    pointerEvents: "none",
-		    zIndex: 2000
-		  }}
-	    />
-	  ))}
+	  <ContextMenu
+	  	ctxMenu={ctxMenu}
+	  	onClose={() => setCtxMenu(null)}
+	  	getEdgeById={(id) => edges.find((e) => e.id === id)}
+	  	getNodeById={(id) => nodeById.get(id)}
+	  	getNodeKind={(n) => getMimicData(n)?.kind ?? null}
+	  	getBusbarIdForEdgeId={(edgeId) => {
+	  		const e = edges.find((x) => x.id === edgeId);
+	  		return e ? ((e.data as any)?.busbarId ?? null) : null;
+	  	}}
+	  	hasActivePersistentFaultOnBusbar={(busbarId) => activeFaultsOnBusbar(busbarId).length > 0}
+	  	onCreateFaultOnEdge={(edgeId, screenPos, persistent, severity) => {
+	  		const flowPos = screenToFlowPosition(screenPos);
+	  		createFaultOnEdge(edgeId, flowPos, { persistent, severity });
+	  	}}
+	  	onClearPersistentFaultOnBusbar={(busbarId) => {
+	  		const list = activeFaultsOnBusbar(busbarId);
+	  		for (const f of list) clearFaultById(f.id);
+	  	}}
+	  	onToggleDar={toggleDarOnCb}
+	  	onToggleAutoIsolate={toggleAutoIsolateOnDs}
+	  	onResetCondition={resetCondition}
+	  />
     </div>
   );
 }

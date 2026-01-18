@@ -304,6 +304,7 @@ export function EditorCanvas(props: {
 
     const splitPoint = { x: center.x, y: center.y };
     const { a, b } = splitPolyline(poly, splitPoint);
+	if (a.length < 2 || b.length < 2) return remaining; // or fall back to no-split
 
     const segA: Edge = {
       id: `${bbid}-${crypto.randomUUID().slice(0, 4)}a`,
@@ -447,7 +448,7 @@ export function EditorCanvas(props: {
 		  }}
 		  onNodeContextMenu={(evt, node) => {
 		    evt.preventDefault();
-		    onEdgeContextMenu(edge, { x: evt.clientX, y: evt.clientY });
+		    onNodeContextMenu(node, { x: evt.clientX, y: evt.clientY });
 		  }}
 		  onPaneContextMenu={(evt) => {
 		    evt.preventDefault();
