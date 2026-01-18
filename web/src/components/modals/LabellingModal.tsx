@@ -141,9 +141,9 @@ export function LabellingModal(props: {
 
       <div style={{ display: "grid", gap: 10 }}>
         {nodes
-          .filter((n) => getKind(n) !== "junction")
-          .map((n) => {
-            const kind = getKind(n)!;
+          .map((n) => ({ n, kind: getKind(n) }))
+		  .filter(({ kind }) => kind !== null && kind !== "junction")
+		  .map(({ n, kind }) => {
             const display = getDisplayLabel(n.id);
 
             if (labelScheme === "NG_BP109" && !bp109MetaById[n.id]) ensureBp109Meta(n.id, kind);
