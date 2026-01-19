@@ -252,7 +252,7 @@ function AppInner() {
   const [interfaceMetaById, setInterfaceMetaById] = useState(initialProject.interfaceMetaById ?? {});
 
   // Event log
-  const { events, filters, appendEvent, onToggleFilter } = useEventLog();
+  const { events, filters, appendEvent, onToggleFilter, onAcknowledgeEvent } = useEventLog();
 
   // Selection/operate gating
   const lastDragEndTsRef = useRef<number>(0);
@@ -652,12 +652,34 @@ const isValidConnection = useCallback(
 
   // SCADA switchgear list
   const switchgear = useMemo(() => {
-    const byKind: Record<"es"|"ds"|"cb", Array<{ id: string; state: "open"|"closed"; label: string }>> = { es: [], ds: [], cb: [] };
+    const byKind: Record<
+      "es" | "ds" | "cb",
+      Array<{
+        id: string;
+        state: "open" | "closed";
+        label: string;
+        darEnabled?: boolean;
+        darLockout?: boolean;
+        failActive?: boolean;
+      }>
+    > = { es: [], ds: [], cb: [] };
     for (const n of nodes) {
       const md = getMimicData(n);
       if (!md) continue;
       if (md.kind !== "es" && md.kind !== "ds" && md.kind !== "cb") continue;
-      byKind[md.kind].push({ id: n.id, state: (md.state ?? "open") as any, label: (n.data as any)?.label ?? n.id });
+      if (md.kind === "cb") {
+        const protection = (n.data as any)?.protection ?? {};
+        byKind[md.kind].push({
+          id: n.id,
+          state: (md.state ?? "open") as any,
+          label: (n.data as any)?.label ?? n.id,
+          darEnabled: protection.dar === true,
+          darLockout: protection.lockout === true,
+          failActive: (n.data as any)?.faulted === true || (n.data as any)?.destroyed === true,
+        });
+      } else {
+        byKind[md.kind].push({ id: n.id, state: (md.state ?? "open") as any, label: (n.data as any)?.label ?? n.id });
+      }
     }
     (Object.keys(byKind) as Array<"es"|"ds"|"cb">).forEach((k) => byKind[k].sort((a,b)=>a.label.localeCompare(b.label)));
     return byKind;
@@ -750,9 +772,12 @@ const isValidConnection = useCallback(
           groundedEdgeCount={grounded.groundedEdgeIds.size}
           switchgear={switchgear}
           onToggleSwitch={onToggleSwitch}
+          onToggleDar={toggleDarOnCb}
+          onResetCondition={resetCondition}
           events={events}
           filters={filters}
           onToggleFilter={onToggleFilter}
+          onAcknowledgeEvent={onAcknowledgeEvent}
         />
       </div>
 

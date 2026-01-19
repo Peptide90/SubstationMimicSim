@@ -1,10 +1,13 @@
 import React from "react";
 
 export type EventCategory = "info" | "warn" | "error" | "debug";
+export type EventLogFilters = Record<EventCategory, boolean> & { acknowledged: boolean };
 export type EventLogItem = {
+  id: string;
   ts: number;
   category: EventCategory;
   msg: string;
+  acknowledged?: boolean;
 };
 
 function formatTime(ts: number): string {
@@ -18,12 +21,17 @@ function formatTime(ts: number): string {
 
 export function EventLog(props: {
   events: EventLogItem[];
-  filters: Record<EventCategory, boolean>;
-  onToggleFilter: (cat: EventCategory) => void;
+  filters: EventLogFilters;
+  onToggleFilter: (cat: EventCategory | "acknowledged") => void;
+  onAcknowledgeEvent: (eventId: string) => void;
 }) {
-  const { events, filters, onToggleFilter } = props;
+  const { events, filters, onToggleFilter, onAcknowledgeEvent } = props;
 
-  const filtered = events.filter((e) => filters[e.category]);
+  const filtered = events.filter((e) => {
+    if (!filters[e.category]) return false;
+    if (!filters.acknowledged && e.acknowledged) return false;
+    return true;
+  });
 
   return (
     <div style={{ padding: 14, overflow: "auto", minHeight: 0, color: "#fff" }}>
@@ -36,15 +44,35 @@ export function EventLog(props: {
             {cat.toUpperCase()}
           </label>
         ))}
+        <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#fff", fontSize: 13 }}>
+          <input type="checkbox" checked={filters.acknowledged} onChange={() => onToggleFilter("acknowledged")} />
+          ACK
+        </label>
       </div>
 
       {filtered.length === 0 ? (
         <div style={{ color: "#94a3b8" }}>No events.</div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {filtered.map((e, idx) => (
+          {filtered.map((e, idx) => {
+            const isAcked = e.acknowledged === true;
+            const shouldFlash = !isAcked && (e.category === "info" || e.category === "error");
+            const flashAnim =
+              e.category === "info" ? "scada-flash-green 2s linear infinite" : "scada-flash-red 2s linear infinite";
+            const ackedBackground = e.category === "error" ? "#f2b4b4" : "#ffffff";
+            const defaultBackground = "#0f172a";
+            const baseBackground = shouldFlash ? undefined : (isAcked ? ackedBackground : defaultBackground);
+            const baseColor = isAcked
+              ? "#111827"
+              : e.category === "info"
+              ? "#0b1220"
+              : e.category === "error"
+              ? "#fff"
+              : "#fff";
+            return (
             <div
-              key={`${e.ts}-${idx}`}
+              key={e.id ?? `${e.ts}-${idx}`}
+              onClick={() => onAcknowledgeEvent(e.id)}
               style={{
                 display: "grid",
                 gridTemplateColumns: "120px 1fr",
@@ -53,8 +81,10 @@ export function EventLog(props: {
                 border: "1px solid #1f2937",
                 borderRadius: 8,
                 fontSize: 13,
-                background: "#0f172a",
-                color: "#fff",
+                background: baseBackground,
+                color: baseColor,
+                cursor: "pointer",
+                animation: shouldFlash ? flashAnim : undefined,
               }}
             >
               <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace' }}>
@@ -62,7 +92,8 @@ export function EventLog(props: {
               </div>
               <div>{e.msg}</div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
