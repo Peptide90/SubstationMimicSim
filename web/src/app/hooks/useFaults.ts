@@ -273,6 +273,58 @@ export function useFaults({
     [appendEvent, edges, faults, getMimicData, markNodeFaulted, nodes, scheduleSwitchCommand, setNodes]
   );
 
+  const checkTripOnClose = useCallback(
+    (cbId: string) => {
+      const activeFaults = Object.values(faultsRef.current).filter(
+        (f) => f.status === "active" && f.persistent
+      );
+      if (!activeFaults.length) return false;
+
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+      const adj = new Map<string, Array<{ other: string }>>();
+
+      for (const e of edges) {
+        if (!adj.has(e.source)) adj.set(e.source, []);
+        if (!adj.has(e.target)) adj.set(e.target, []);
+        adj.get(e.source)!.push({ other: e.target });
+        adj.get(e.target)!.push({ other: e.source });
+      }
+
+      const isBlocking = (nodeId: string) => {
+        if (nodeId === cbId) return false;
+        const n = nodeMap.get(nodeId);
+        const md = n ? getMimicData(n) : null;
+        if (!md) return false;
+        if ((md.kind === "ds" || md.kind === "cb") && md.state !== "closed") return true;
+        if (md.kind === "es" && md.state === "closed") return true;
+        return false;
+      };
+
+      const visited = new Set<string>();
+      const q: string[] = [cbId];
+
+      while (q.length) {
+        const cur = q.shift()!;
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        if (isBlocking(cur)) continue;
+        for (const { other } of adj.get(cur) ?? []) {
+          if (!visited.has(other)) q.push(other);
+        }
+      }
+
+      for (const fault of activeFaults) {
+        if (!visited.has(fault.aNodeId) && !visited.has(fault.bNodeId)) continue;
+        appendEvent("error", `CB CLOSE INTO FAULT ${cbId} -> ${fault.id}`);
+        isolateFault(fault);
+        return true;
+      }
+
+      return false;
+    },
+    [appendEvent, edges, getMimicData, isolateFault, nodes]
+  );
+
   const createFaultOnEdge = useCallback(
     (
       edgeId: string,
@@ -354,5 +406,5 @@ export function useFaults({
     [appendEvent, getMimicData, setNodes]
   );
 
-  return { activeFaultsOnBusbar, clearFaultById, createFaultOnEdge, resetCondition };
+  return { activeFaultsOnBusbar, checkTripOnClose, clearFaultById, createFaultOnEdge, resetCondition };
 }

@@ -585,13 +585,30 @@ const isValidConnection = useCallback(
   }, [interlocks, nodes]);
 
   // Command simulation
+  const onSwitchCompleteRef = useRef<((nodeId: string, kind: NodeKind, to: SwitchState) => void) | null>(null);
+
   const { scheduleSwitchCommand } = useSwitchCommands({
     appendEvent,
     checkInterlock,
     getMimicData,
+    onSwitchComplete: (nodeId, kind, to) => onSwitchCompleteRef.current?.(nodeId, kind, to),
     setNodes,
   });
 
+  const { activeFaultsOnBusbar, checkTripOnClose, createFaultOnEdge, clearFaultById, resetCondition } = useFaults({
+    appendEvent,
+    edges,
+    getMimicData,
+    nodes,
+    scheduleSwitchCommand,
+    setNodes,
+  });
+
+  onSwitchCompleteRef.current = (nodeId, kind, to) => {
+    if (kind === "cb" && to === "closed") {
+      checkTripOnClose(nodeId);
+    }
+  };
 
   const onNodeClick = useCallback((_evt: any, node: Node) => {
     // If we just finished dragging, ignore clicks for a short window
@@ -679,14 +696,7 @@ const isValidConnection = useCallback(
     getNodeKind: getNodeKindForMenu,
   } = useContextMenu({ edges, nodeById, getNodeKind });
 
-  const { activeFaultsOnBusbar, createFaultOnEdge, clearFaultById, resetCondition } = useFaults({
-    appendEvent,
-    edges,
-    getMimicData,
-    nodes,
-    scheduleSwitchCommand,
-    setNodes,
-  });
+  // Switch-complete handler needs checkTripOnClose from useFaults.
 
   // Modals
   const switchgearIds = useMemo(() => Object.values(switchgear).flat().map((x) => x.id).sort(), [switchgear]);
