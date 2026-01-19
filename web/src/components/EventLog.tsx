@@ -27,6 +27,10 @@ export function EventLog(props: {
 }) {
   const { events, filters, onToggleFilter, onAcknowledgeEvent } = props;
 
+  const totalAlarms = events.filter((e) => e.category !== "debug").length;
+  const totalErrors = events.filter((e) => e.category === "error").length;
+  const acknowledgedAlarms = events.filter((e) => e.category !== "debug" && e.acknowledged).length;
+
   const filtered = events.filter((e) => {
     if (!filters[e.category]) return false;
     if (!filters.acknowledged && e.acknowledged) return false;
@@ -35,7 +39,20 @@ export function EventLog(props: {
 
   return (
     <div style={{ padding: 14, overflow: "auto", minHeight: 0, color: "#fff" }}>
-      <div style={{ fontWeight: 900, marginBottom: 10 }}>Event Log</div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontWeight: 900 }}>Event Log</div>
+        <div style={{ display: "flex", gap: 8, fontSize: 12, color: "#cbd5f5", flexWrap: "wrap" }}>
+          <span style={{ background: "#1f2937", borderRadius: 999, padding: "2px 8px" }}>
+            Alarms: {totalAlarms}
+          </span>
+          <span style={{ background: "#7f1d1d", borderRadius: 999, padding: "2px 8px" }}>
+            Errors: {totalErrors}
+          </span>
+          <span style={{ background: "#334155", borderRadius: 999, padding: "2px 8px" }}>
+            Ack: {acknowledgedAlarms}
+          </span>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         {(["info", "warn", "error", "debug"] as EventCategory[]).map((cat) => (
