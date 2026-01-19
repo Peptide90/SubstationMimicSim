@@ -27,18 +27,21 @@ Advanced planned features:
 From the `web/` directory:
 
 ```bash
+npm install
 npm run dev:client
 ```
 
 To start the multiplayer server in a separate terminal:
 
 ```bash
+npm install
 npm run dev:server
 ```
 
 Or run both together:
 
 ```bash
+npm install
 npm run dev:mp
 ```
 
