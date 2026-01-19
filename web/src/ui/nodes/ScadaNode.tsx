@@ -103,8 +103,9 @@ export function ScadaNode(props: NodeProps) {
   const orientation = useMemo(() => getOrientationForNode(nodeId, edges), [nodeId, edges]);
 
   // Show all four directions while connecting; otherwise lock to chosen axis
-  const showH = isConnecting || orientation === "NONE" || orientation === "H";
-  const showV = isConnecting || orientation === "NONE" || orientation === "V";
+  const showAllAxes = kind === "tx";
+  const showH = showAllAxes || isConnecting || orientation === "NONE" || orientation === "H";
+  const showV = showAllAxes || isConnecting || orientation === "NONE" || orientation === "V";
 
   const baseHandle: React.CSSProperties = { width: 10, height: 10, borderRadius: 2, opacity: 0.9 };
   const hiddenHandle: React.CSSProperties = { opacity: 0, pointerEvents: "none" };
