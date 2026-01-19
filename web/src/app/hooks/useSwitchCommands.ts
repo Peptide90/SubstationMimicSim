@@ -16,6 +16,7 @@ type UseSwitchCommandsParams = {
   appendEvent: (category: EventCategory, msg: string) => void;
   checkInterlock: (actionNodeId: string, actionTo: SwitchState) => string | null;
   getMimicData: (node: Node) => MimicData | null;
+  onSwitchComplete?: (nodeId: string, kind: NodeKind, to: SwitchState) => void;
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
 };
 
@@ -23,6 +24,7 @@ export function useSwitchCommands({
   appendEvent,
   checkInterlock,
   getMimicData,
+  onSwitchComplete,
   setNodes,
 }: UseSwitchCommandsParams) {
   const pendingRef = useRef<Map<string, any>>(new Map());
@@ -101,6 +103,7 @@ export function useSwitchCommands({
         setNodeSwitchState(nodeId, to);
         setNodeMoving(nodeId, false);
         appendEvent("info", `RPT ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
+        onSwitchComplete?.(nodeId, kind, to);
       }, completionMs);
 
       const timeoutTimer = window.setTimeout(() => {
@@ -116,7 +119,7 @@ export function useSwitchCommands({
 
       pendingRef.current.set(nodeId, { cmdId, completeTimer, timeoutTimer });
     },
-    [appendEvent, checkInterlock, setNodeMoving, setNodeSwitchState]
+    [appendEvent, checkInterlock, onSwitchComplete, setNodeMoving, setNodeSwitchState]
   );
 
   return { scheduleSwitchCommand };

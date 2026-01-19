@@ -54,29 +54,37 @@ export function ScadaNode(props: NodeProps) {
   const SW_OPEN_BG = "#cfead6";   // muted light green
   const SW_CLOSED_BG = "#f0c9c9"; // muted light red
   const SW_DBI_BG = "#e5e7eb";    // light grey (unknown/in transit)
+  const SW_LOCKOUT_BG = "#fde68a"; // muted yellow (DAR lockout)
+  const SW_FAIL_BG = "#111827";    // near-black (CB fail)
 
   const TX_BG = "#e5e7eb";        // transformer base grey
   const TX_FAULT_BG = "#fde68a";  // muted yellow (faulted/failed isolation)
 
   // If in future you flag a transformer as faulted, set data.faulted = true
   const isFaulted = data?.faulted === true;
+  const isLockout = data?.protection?.lockout === true;
+  const isDestroyed = data?.destroyed === true;
 
   const bg = useMemo(() => {
     if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
     if (!isSwitch) return "#ffffff";
+    if (isDestroyed) return SW_FAIL_BG;
+    if (isLockout) return SW_LOCKOUT_BG;
     if (isPending) return SW_DBI_BG;
     return isClosed ? SW_CLOSED_BG : SW_OPEN_BG;
-  }, [kind, isSwitch, isPending, isClosed, isFaulted]);
+  }, [kind, isSwitch, isPending, isClosed, isFaulted, isDestroyed, isLockout]);
 
   const border = useMemo(() => {
     if (kind === "tx") return "2px solid #64748b";
     if (!isSwitch) return "2px solid #444";
+    if (isDestroyed) return "2px solid #0f172a";
+    if (isLockout) return "2px solid #b45309";
     if (isPending) return "2px solid #64748b";
     return isClosed ? "2px solid #7f2a2a" : "2px solid #1f6b3f";
-  }, [kind, isSwitch, isPending, isClosed]);
+  }, [kind, isSwitch, isPending, isClosed, isDestroyed, isLockout]);
 
   // All text black (as requested)
-  const textPrimary = "#111111";
+  const textPrimary = isDestroyed ? "#f8fafc" : "#111111";
 
   const stopClick = (e: any) => e.stopPropagation();
 
