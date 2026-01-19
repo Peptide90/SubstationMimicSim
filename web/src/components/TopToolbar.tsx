@@ -5,6 +5,7 @@ import { BrandingCluster } from "./BrandingCluster";
 type Props = {
   buildTag: string;
   onOpenMenu: () => void;
+  onOpenHelp: () => void;
   onOpenInterlocking: () => void;
   onOpenLabelling: () => void;
   onOpenSaveLoad: () => void;
@@ -14,6 +15,7 @@ type Props = {
 export function TopToolbar({
   buildTag,
   onOpenMenu,
+  onOpenHelp,
   onOpenInterlocking,
   onOpenLabelling,
   onOpenSaveLoad,
@@ -55,6 +57,9 @@ export function TopToolbar({
         onClick={onOpenMenu}
       >
         ☰ Menu
+      </button>
+      <button style={btn} onClick={onOpenHelp}>
+        Help
       </button>
       <div style={{ fontWeight: 700, color: "#e5e7eb", marginRight: 12 }}>
         Substation Mimic

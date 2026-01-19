@@ -29,7 +29,7 @@ export function MainMenu({ buildTag, onStartSolo }: Props) {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        height: "100vh",
         background: "radial-gradient(circle at top, #0b1220, #060b12 65%)",
         color: "#e2e8f0",
         display: "flex",
@@ -38,6 +38,8 @@ export function MainMenu({ buildTag, onStartSolo }: Props) {
         justifyContent: "center",
         padding: "40px 20px",
         gap: 32,
+        overflow: "hidden",
+        position: "relative",
       }}
     >
       <div style={{ textAlign: "center", display: "grid", gap: 10 }}>
@@ -56,7 +58,7 @@ export function MainMenu({ buildTag, onStartSolo }: Props) {
         </button>
       </div>
 
-      <div style={{ marginTop: "auto", paddingTop: 40 }}>
+      <div style={{ position: "absolute", bottom: 24, left: 0, right: 0 }}>
         <BrandingCluster buildTag={buildTag} variant="footer" align="center" />
       </div>
     </div>

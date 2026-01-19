@@ -23,6 +23,7 @@ import { BusbarModal } from "./components/modals/BusbarModal";
 
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
 import { ConfirmModal } from "./components/modals/ConfirmModal";
+import { HelpModal } from "./components/modals/HelpModal";
 import { MainMenu } from "./components/MainMenu";
 
 import { ContextMenu } from "./components/ContextMenu";
@@ -182,6 +183,7 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
   const [confirmMenuOpen, setConfirmMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   
   const GRID = 20;
   const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -720,6 +722,7 @@ const isValidConnection = useCallback(
       <TopToolbar
         buildTag={buildTag}
         onOpenMenu={() => setConfirmMenuOpen(true)}
+        onOpenHelp={() => setHelpOpen(true)}
         onOpenInterlocking={() => setOpenInterlocking(true)}
         onOpenLabelling={() => setOpenLabelling(true)}
         onOpenSaveLoad={() => setOpenSaveLoad(true)}
@@ -864,6 +867,32 @@ const isValidConnection = useCallback(
           onRequestMenu();
         }}
       />
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          Build your substation by placing nodes, wiring them with busbars, and testing behaviors in the SCADA panel.
+        </p>
+        <ul style={{ paddingLeft: 18, margin: "10px 0", display: "grid", gap: 8 }}>
+          <li>
+            <strong>Place nodes:</strong> drag components from the palette onto the canvas to add sources, breakers,
+            disconnectors, and junctions.
+          </li>
+          <li>
+            <strong>Drag busbars:</strong> connect handles between nodes to draw busbars. Double-click busbars to edit
+            metadata and use the context menu for fault actions.
+          </li>
+          <li>
+            <strong>Place faults:</strong> right-click a busbar to create temporary or persistent faults and clear them
+            from the same menu.
+          </li>
+          <li>
+            <strong>SCADA interface:</strong> use the panel on the right to operate switchgear, acknowledge events, and
+            review energized/grounded counts.
+          </li>
+          <li>
+            <strong>Save/Load:</strong> save your work using the toolbar so you can reload it later.
+          </li>
+        </ul>
+      </HelpModal>
     </div>
   );
 }
