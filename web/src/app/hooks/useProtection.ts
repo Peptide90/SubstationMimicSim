@@ -18,9 +18,10 @@ export function useProtection({ appendEvent, setNodes }: UseProtectionParams) {
           const next = {
             ...cur,
             dar: !(cur.dar === true),
-            attempts: cur.attempts ?? 1,
-            deadTimeMs: cur.deadTimeMs ?? 800,
+            attempts: cur.attempts ?? 2,
+            deadTimeMs: cur.deadTimeMs ?? 5000,
             lockout: false,
+            darAttempt: 0,
           };
           return { ...n, data: { ...(n.data as any), protection: next } };
         })

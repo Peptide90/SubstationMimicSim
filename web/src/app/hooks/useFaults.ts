@@ -158,6 +158,80 @@ export function useFaults({
 
       const orderedTrips = Array.from(tripSet);
 
+      const getAdjacentAutoIsolateDs = (cbId: string) => {
+        const neighbors = new Set<string>();
+        for (const e of edges) {
+          if (e.source === cbId) neighbors.add(e.target);
+          if (e.target === cbId) neighbors.add(e.source);
+        }
+        return Array.from(neighbors)
+          .map((id) => nodeMap.get(id))
+          .filter((n): n is Node => !!n)
+          .filter((n) => {
+            const md = getMimicData(n);
+            if (md?.kind !== "ds") return false;
+            const protection = (n.data as any)?.protection;
+            if (protection?.autoIsolate !== true) return false;
+            return md.state === "closed";
+          });
+      };
+
+      const scheduleDarAttempt = (cbId: string, attempt: number, maxAttempts: number, deadTimeMs: number) => {
+        appendEvent("warn", `DAR initiated on ${cbId} (attempt ${attempt}/${maxAttempts})`);
+
+        setNodes((ns) =>
+          ns.map((n) => {
+            if (n.id !== cbId) return n;
+            const cur = (n.data as any)?.protection ?? {};
+            return { ...n, data: { ...(n.data as any), protection: { ...cur, darAttempt: attempt } } };
+          })
+        );
+
+        window.setTimeout(() => {
+          const stillActive = Object.values(faults).some(
+            (f) => f.id === fault.id && f.status === "active"
+          );
+          if (!stillActive) return;
+
+          appendEvent("warn", `DAR RECLOSE attempt ${attempt} on ${cbId}`);
+          scheduleSwitchCommand(cbId, "cb" as NodeKind, "closed");
+
+          window.setTimeout(() => {
+            const still = Object.values(faults).some(
+              (f) => f.id === fault.id && f.status === "active"
+            );
+            if (!still) return;
+
+            appendEvent("error", `DAR TRIP on ${cbId} (attempt ${attempt})`);
+            scheduleSwitchCommand(cbId, "cb" as NodeKind, "open");
+
+            if (attempt === 2) {
+              const dsNodes = getAdjacentAutoIsolateDs(cbId);
+              if (dsNodes.length) {
+                for (const ds of dsNodes) {
+                  appendEvent("warn", `AUTO ISOLATION on ${ds.id} for ${cbId}`);
+                  scheduleSwitchCommand(ds.id, "ds" as NodeKind, "open");
+                }
+              }
+            }
+
+            if (attempt >= maxAttempts) {
+              appendEvent("error", `DAR LOCKOUT on ${cbId}`);
+              setNodes((ns) =>
+                ns.map((n) => {
+                  if (n.id !== cbId) return n;
+                  const cur = (n.data as any)?.protection ?? {};
+                  return { ...n, data: { ...(n.data as any), protection: { ...cur, lockout: true } } };
+                })
+              );
+              return;
+            }
+
+            scheduleDarAttempt(cbId, attempt + 1, maxAttempts, deadTimeMs);
+          }, 250);
+        }, deadTimeMs);
+      };
+
       for (const cbId of orderedTrips) {
         if (fault.severity === "extreme") {
           if (Math.random() < 0.3) {
@@ -173,35 +247,12 @@ export function useFaults({
         const prot = cbNode ? (cbNode.data as any)?.protection : null;
 
         if (prot?.dar === true && prot.lockout !== true) {
-          const deadTimeMs = prot.deadTimeMs ?? 800;
-
-          window.setTimeout(() => {
-            const stillActive = Object.values(faults).some(
-              (f) => f.id === fault.id && f.status === "active"
-            );
-            if (!stillActive) return;
-
-            appendEvent("warn", `DAR RECLOSE attempt on ${cbId}`);
-            scheduleSwitchCommand(cbId, "cb" as NodeKind, "closed");
-
-            window.setTimeout(() => {
-              const still = Object.values(faults).some(
-                (f) => f.id === fault.id && f.status === "active"
-              );
-              if (!still) return;
-
-              appendEvent("error", `DAR LOCKOUT on ${cbId}`);
-              scheduleSwitchCommand(cbId, "cb" as NodeKind, "open");
-
-              setNodes((ns) =>
-                ns.map((n) => {
-                  if (n.id !== cbId) return n;
-                  const cur = (n.data as any)?.protection ?? {};
-                  return { ...n, data: { ...(n.data as any), protection: { ...cur, lockout: true } } };
-                })
-              );
-            }, 250);
-          }, deadTimeMs);
+          const deadTimeMs = prot.deadTimeMs ?? 5000;
+          const maxAttempts = prot.attempts ?? 2;
+          const attempt = (prot.darAttempt ?? 0) + 1;
+          if (attempt <= maxAttempts) {
+            scheduleDarAttempt(cbId, attempt, maxAttempts, deadTimeMs);
+          }
         }
       }
 
@@ -271,7 +322,7 @@ export function useFaults({
           const md = getMimicData(n);
           const protection = (n.data as any)?.protection ?? {};
 
-          const nextProtection = { ...protection, lockout: false };
+          const nextProtection = { ...protection, lockout: false, darAttempt: 0 };
 
           const nextMimic = md ? { ...md, moving: false } : (n.data as any)?.mimic;
 
