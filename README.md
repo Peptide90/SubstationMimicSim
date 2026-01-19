@@ -24,7 +24,7 @@ Advanced planned features:
 
 ## How to Run Locally (Multiplayer MVP)
 
-From the `web/` directory:
+From the `web/` directory (recommended so the server can reuse the same node_modules):
 
 ```bash
 npm install
@@ -36,6 +36,14 @@ To start the multiplayer server in a separate terminal:
 ```bash
 npm install
 npm run dev:server
+```
+
+If you prefer running the server directly from the `server/` directory instead:
+
+```bash
+cd server
+npm install
+npm run dev
 ```
 
 Or run both together:
