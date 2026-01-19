@@ -191,7 +191,7 @@ function AppInner() {
     const movedIds = new Set<string>();
     for (const change of changes as Array<{ id?: string; type?: string; dragging?: boolean }>) {
       if (!change?.id) continue;
-      if (change.type === "position" || change.dragging) movedIds.add(change.id);
+      if (change.type === "position" && change.dragging) movedIds.add(change.id);
     }
     if (movedIds.size === 0) return;
 
