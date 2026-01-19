@@ -1,10 +1,7 @@
-import React from "react";
-import type { Node, } from "reactflow";
+import type { ReactNode, CSSProperties } from "react";
+import type { Node } from "reactflow";
 import type { NodeKind } from "../../core/model";
-import {
-  defaultBp109Meta,
-  schemaDefaultPrefix,
-} from "../../app/labeling/bp109";
+import { schemaDefaultPrefix } from "../../app/labeling/bp109";
 
 import type {
   BP109Meta,
@@ -17,7 +14,7 @@ import type {
 } from "../../app/labeling/bp109";
 
 
-function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
+function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
   const { title, open, onClose, children } = props;
   if (!open) return null;
   return (
@@ -107,7 +104,7 @@ export function LabellingModal(props: {
     ensureBp109Meta,
   } = props;
 
-  const selectStyle: React.CSSProperties = {
+  const selectStyle: CSSProperties = {
     padding: 8,
     width: "100%",
     borderRadius: 8,
@@ -142,8 +139,8 @@ export function LabellingModal(props: {
       <div style={{ display: "grid", gap: 10 }}>
         {nodes
           .map((n) => ({ n, kind: getKind(n) }))
-		  .filter(({ kind }) => kind !== null && kind !== "junction")
-		  .map(({ n, kind }) => {
+          .filter((entry): entry is { n: Node; kind: NodeKind } => entry.kind !== null && entry.kind !== "junction")
+          .map(({ n, kind }) => {
             const display = getDisplayLabel(n.id);
 
             if (labelScheme === "NG_BP109" && !bp109MetaById[n.id]) ensureBp109Meta(n.id, kind);

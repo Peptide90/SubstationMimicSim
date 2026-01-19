@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 export type InterfaceRole = "source" | "sink" | "neutral";
 
@@ -21,7 +21,7 @@ export function PowerFlowModal(props: {
   const { open, onClose, interfaces, focusedId, metaById, setMetaById } = props;
   if (!open) return null;
 
-  const selectStyle: React.CSSProperties = {
+  const selectStyle: CSSProperties = {
     padding: 8,
     width: "100%",
     borderRadius: 8,
@@ -30,7 +30,7 @@ export function PowerFlowModal(props: {
     color: "#fff",
   };
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     padding: 8,
     width: "100%",
     borderRadius: 8,

@@ -1,4 +1,3 @@
-import React from "react";
 import { EventLog } from "./EventLog";
 import type { EventCategory, EventLogFilters, EventLogItem } from "./EventLog";
 

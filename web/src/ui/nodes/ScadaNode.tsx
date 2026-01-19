@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Handle, Position, useNodeId, useStore } from "reactflow";
 import type { NodeProps, Edge } from "reactflow";
 import type { NodeKind } from "../../core/model";
@@ -103,8 +103,9 @@ export function ScadaNode(props: NodeProps) {
   const orientation = useMemo(() => getOrientationForNode(nodeId, edges), [nodeId, edges]);
 
   // Show all four directions while connecting; otherwise lock to chosen axis
-  const showH = isConnecting || orientation === "NONE" || orientation === "H";
-  const showV = isConnecting || orientation === "NONE" || orientation === "V";
+  const showAllAxes = kind === "tx";
+  const showH = showAllAxes || isConnecting || orientation === "NONE" || orientation === "H";
+  const showV = showAllAxes || isConnecting || orientation === "NONE" || orientation === "V";
 
   const baseHandle: React.CSSProperties = { width: 10, height: 10, borderRadius: 2, opacity: 0.9 };
   const hiddenHandle: React.CSSProperties = { opacity: 0, pointerEvents: "none" };
@@ -164,7 +165,7 @@ export function ScadaNode(props: NodeProps) {
   );
 
   // Transformer: 4 terminals (primary/secondary/tertiary/neutral) centered, no manual left offsets.
-  const txHandles = () => (
+  const TxHandles = () => (
     <>
       {/* L/R aligned to the same centreline as CB/DS chains */}
       {/* Visible target handles */}
@@ -183,19 +184,19 @@ export function ScadaNode(props: NodeProps) {
         onClick={stopClick}
       />
 
-      {/* Invisible-but-active source handles at same positions (bidirectional terminals) */}
+      {/* Visible source handles at same positions (bidirectional terminals) */}
       <Handle
         type="source"
         id="L"
         position={Position.Left}
-        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
+        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)" }}
         onClick={stopClick}
       />
       <Handle
         type="source"
         id="R"
         position={Position.Right}
-        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
+        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)" }}
         onClick={stopClick}
       />
 
@@ -203,14 +204,14 @@ export function ScadaNode(props: NodeProps) {
       <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
       <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
 
-      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, opacity: 0 }} onClick={stopClick} />
-      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, opacity: 0 }} onClick={stopClick} />
+      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
+      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
     </>
   );
 
 
   const renderHandles = () => {
-    if (kind === "tx") return <txHandles />;
+    if (kind === "tx") return <TxHandles />;
     if (kind === "cb" || kind === "ds" || kind === "es") return <AxisHandles />;
     return <AxisHandles />;
   };

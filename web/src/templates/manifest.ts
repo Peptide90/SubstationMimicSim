@@ -43,12 +43,11 @@ export const TEMPLATE_INDEX: TemplateEntry[] = Object.entries(modules)
     const order = c?.order ?? 9999;
     const featured = c?.featured ?? false;
 
-if (c?.hidden) return null;
+    if (c?.hidden) return null;
 
-return { id, title, description, file, category, order, featured };
-
-    return { id, title, description, file };
+    return { id, title, description, file, category, order, featured };
   })
+  .filter((entry): entry is TemplateEntry => entry !== null)
   // deterministic order
   .sort((a, b) => a.title.localeCompare(b.title));
 

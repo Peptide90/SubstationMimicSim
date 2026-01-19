@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 import type { Edge } from "reactflow";
 
 type BusRole = "MAIN" | "RESERVE" | "SECTION" | "COUPLER" | "FEEDER";
@@ -18,7 +18,7 @@ export function BusbarModal(props: {
   const voltageClass: VoltageClass = data.voltageClass ?? "400";
   const busSectionId: string = data.busSectionId ?? "";
 
-  const selectStyle: React.CSSProperties = {
+  const selectStyle: CSSProperties = {
     padding: 8,
     width: "100%",
     borderRadius: 8,
@@ -27,7 +27,7 @@ export function BusbarModal(props: {
     color: "#fff",
   };
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     padding: 8,
     width: "100%",
     borderRadius: 8,

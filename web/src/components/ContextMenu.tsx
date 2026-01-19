@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import type { Edge, Node } from "reactflow";
+import { useState } from "react";
+import type { CSSProperties } from "react";
+import type { Node } from "reactflow";
 
 export type FaultSeverity = "normal" | "severe" | "extreme";
 
@@ -12,7 +13,6 @@ export function ContextMenu(props: {
   ctxMenu: CtxMenu;
   onClose: () => void;
 
-  getEdgeById: (id: string) => Edge | undefined;
   getNodeById: (id: string) => Node | undefined;
   getNodeKind: (n: Node) => string | null;
   getBusbarIdForEdgeId: (edgeId: string) => string | null;
@@ -29,7 +29,6 @@ export function ContextMenu(props: {
   const {
     ctxMenu,
     onClose,
-    getEdgeById,
     getNodeById,
     getNodeKind,
     getBusbarIdForEdgeId,
@@ -45,7 +44,7 @@ export function ContextMenu(props: {
 
   if (!ctxMenu) return null;
 
-  const menuBtnStyle: React.CSSProperties = {
+  const menuBtnStyle: CSSProperties = {
     width: "100%",
     textAlign: "left",
     background: "#0f172a",
@@ -58,7 +57,7 @@ export function ContextMenu(props: {
     fontSize: 13,
   };
 
-  const subBtnStyle: React.CSSProperties = {
+  const subBtnStyle: CSSProperties = {
     ...menuBtnStyle,
     marginLeft: 10,
     width: "calc(100% - 10px)",

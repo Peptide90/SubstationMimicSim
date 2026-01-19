@@ -20,6 +20,8 @@ export function getMimicData(n: RFNode): MimicData | null {
   return mimic;
 }
 
+const isNotNull = <T,>(value: T | null | undefined): value is T => value != null;
+
 export function flowToMimic(nodes: RFNode[], edges: RFEdge[]): { nodes: MimicNode[]; edges: MimicEdge[] } {
   const mimicNodes: MimicNode[] = nodes
     .map((n) => {
@@ -35,7 +37,7 @@ export function flowToMimic(nodes: RFNode[], edges: RFEdge[]): { nodes: MimicNod
         sourceOn: md.sourceOn,
       } satisfies MimicNode;
     })
-    .filter((x): x is MimicNode => x !== null);
+    .filter(isNotNull);
 
   const mimicEdges: MimicEdge[] = edges
     .filter((e) => !!e.source && !!e.target)

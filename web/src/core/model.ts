@@ -1,5 +1,6 @@
 export type NodeKind =
-  | 'interface'
+  | 'iface'
+  | 'source'
   | 'cb'
   | 'ds'
   | 'es'

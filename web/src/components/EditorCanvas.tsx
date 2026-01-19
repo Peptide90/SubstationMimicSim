@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useStore } from "reactflow";
-import ReactFlow, { Background, ControlButton, Controls, MiniMap, useReactFlow } from "reactflow";
+import ReactFlow, { Background, BackgroundVariant, ControlButton, Controls, MiniMap, useReactFlow } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectStartParams } from "reactflow";
+import type { DragEvent } from "react";
 
 import { Palette } from "../ui/Palette";
 import { BusbarEdge } from "../ui/BusbarEdge";
@@ -13,17 +14,6 @@ function isBusbarEdge(e: Edge): boolean {
 
 function getBusbarId(e: Edge): string | undefined {
   return (e.data as any)?.busbarId as string | undefined;
-}
-
-// Approximate polyline for hit-testing (matches typical orthogonal routing)
-function buildStepPolyline(source: { x: number; y: number }, target: { x: number; y: number }) {
-  const mx = (source.x + target.x) / 2;
-  return [
-    { x: source.x, y: source.y },
-    { x: mx, y: source.y },
-    { x: mx, y: target.y },
-    { x: target.x, y: target.y },
-  ];
 }
 
 function closestPointOnSegment(a: { x: number; y: number }, b: { x: number; y: number }, p: { x: number; y: number }) {
@@ -117,8 +107,8 @@ export function EditorCanvas(props: {
   onEdgeClick: (_: any, edge: Edge) => void;
   onEdgeDoubleClick: (_: any, edge: Edge) => void;
 
-  onDragOver: (evt: React.DragEvent) => void;
-  onDrop: (evt: React.DragEvent) => void;
+  onDragOver: (evt: DragEvent) => void;
+  onDrop: (evt: DragEvent) => void;
 
   onAddAtCenter: (kind: any) => void;
 
@@ -161,7 +151,7 @@ export function EditorCanvas(props: {
 	onPaneClick,
   } = props;
 
-  const { screenToFlowPosition, getNode } = useReactFlow();
+  const { screenToFlowPosition } = useReactFlow();
 
   // Wire custom edge types (busbar renderer)
   const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
@@ -169,17 +159,6 @@ export function EditorCanvas(props: {
   // Track a connect gesture to decide whether to tee insert
   const connectStartRef = useRef<ConnectStart>({ nodeId: null, handleId: null, handleType: null });
   const connectWasValidRef = useRef(false);
-
-  // Snap to grid helper (matches your 20px grid)
-  const snapPoint = useCallback(
-    (p: { x: number; y: number }) => {
-      if (!snapEnabled) return p;
-      const gx = 20;
-      const gy = 20;
-      return { x: Math.round(p.x / gx) * gx, y: Math.round(p.y / gy) * gy };
-    },
-    [snapEnabled]
-  );
 
   const nodeInternals = useStore((s: any) => s.nodeInternals);
 
@@ -291,9 +270,6 @@ export function EditorCanvas(props: {
         })
       );
 
-	  const s = getNode(busbarEdge.source)!;
-	  const t = getNode(busbarEdge.target)!;
-
 	  const sPt = getHandleCenter(busbarEdge.source, busbarEdge.sourceHandle)!;
 	  const tPt = getHandleCenter(busbarEdge.target, busbarEdge.targetHandle)!;
 
@@ -364,7 +340,7 @@ export function EditorCanvas(props: {
     return remaining.concat(segA, segB, branch);
   });
     },
-    [findNearestBusbar, setEdges, setNodes, snapPoint]
+    [findNearestBusbar, setEdges, setNodes]
   );
 
 
@@ -452,11 +428,11 @@ export function EditorCanvas(props: {
 		  }}
 		  onPaneContextMenu={(evt) => {
 		    evt.preventDefault();
-		    onEdgeContextMenu(edge, { x: evt.clientX, y: evt.clientY });
+		    onPaneContextMenu({ x: evt.clientX, y: evt.clientY });
 		  }}
 		  onPaneClick={() => onPaneClick()}
         >
-          <Background variant="lines" gap={24} />
+          <Background variant={BackgroundVariant.Lines} gap={24} />
           <MiniMap />
 
           <Controls showInteractive={false} position="bottom-left">

@@ -1,4 +1,4 @@
-import React from "react";
+import type { CSSProperties } from "react";
 
 type Props = {
   buildTag: string;
@@ -15,7 +15,7 @@ export function TopToolbar({
   onOpenSaveLoad,
   onOpenPowerFlow,
 }: Props) {
-  const btn: React.CSSProperties = {
+  const btn: CSSProperties = {
     background: "#0f172a",
     color: "#e5e7eb",
     border: "1px solid #334155",
