@@ -871,27 +871,73 @@ const isValidConnection = useCallback(
         <p style={{ marginTop: 0 }}>
           Build your substation by placing nodes, wiring them with busbars, and testing behaviors in the SCADA panel.
         </p>
-        <ul style={{ paddingLeft: 18, margin: "10px 0", display: "grid", gap: 8 }}>
-          <li>
-            <strong>Place nodes:</strong> drag components from the palette onto the canvas to add sources, breakers,
-            disconnectors, and junctions.
-          </li>
-          <li>
-            <strong>Drag busbars:</strong> connect handles between nodes to draw busbars. Double-click busbars to edit
-            metadata and use the context menu for fault actions.
-          </li>
-          <li>
-            <strong>Place faults:</strong> right-click a busbar to create temporary or persistent faults and clear them
-            from the same menu.
-          </li>
-          <li>
-            <strong>SCADA interface:</strong> use the panel on the right to operate switchgear, acknowledge events, and
-            review energized/grounded counts.
-          </li>
-          <li>
-            <strong>Save/Load:</strong> save your work using the toolbar so you can reload it later.
-          </li>
-        </ul>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#e2e8f0", marginBottom: 8 }}>Controls</div>
+          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
+            <li>
+              <strong>Place nodes:</strong> drag components from the palette onto the canvas to add sources, breakers,
+              disconnectors, and junctions.
+            </li>
+            <li>
+              <strong>Drag busbars:</strong> connect handles between nodes to draw busbars. Dragging one node handle onto
+              another busbar creates a junction.
+            </li>
+            <li>
+              <strong>Busbar editing:</strong> single-click a busbar to open its properties; double-click deletes it.
+            </li>
+            <li>
+              <strong>Operate switchgear:</strong> double-click switchgear to open/close it.
+            </li>
+            <li>
+              <strong>Right-click options:</strong> right-click nodes for additional options and fault actions.
+            </li>
+            <li>
+              <strong>Multi-select:</strong> click and drag on the canvas to select multiple nodes/junctions, then press
+              delete to remove them.
+            </li>
+            <li>
+              <strong>Canvas controls:</strong> the bottom-left controls manage zoom, snapping, and lock options.
+            </li>
+            <li>
+              <strong>Interlocking:</strong> configure interlocking rules for switchgear behavior and safety logic.
+            </li>
+            <li>
+              <strong>Power flow:</strong> review interface metadata and view power flow settings per interface.
+            </li>
+            <li>
+              <strong>Labelling:</strong> set label schemes, overrides, and naming standards for the diagram.
+            </li>
+            <li>
+              <strong>Save/Load:</strong> the Save/Load menu includes templates, plus the option to name and describe
+              your build and save it locally for later loading. No session data is collected.
+            </li>
+          </ul>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#e2e8f0", marginBottom: 8 }}>Technical</div>
+          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
+            <li>
+              <strong>Components:</strong> sources energize the network, breakers interrupt current, disconnectors
+              isolate sections, and earth switches apply grounding.
+            </li>
+            <li>
+              <strong>DAR:</strong> Delayed Auto Reclose (DAR) attempts to automatically reclose a breaker after a trip
+              if conditions permit.
+            </li>
+            <li>
+              <strong>Auto Isolation:</strong> automatically isolates sections around a detected fault to protect the
+              rest of the network.
+            </li>
+            <li>
+              <strong>Persistent faults:</strong> remain active until cleared and can be used to simulate sustained
+              failure scenarios.
+            </li>
+            <li>
+              <strong>Status colors:</strong> energized paths glow brighter, grounded sections show grounded styling, and
+              faulted/destroyed nodes indicate abnormal states.
+            </li>
+          </ul>
+        </div>
       </HelpModal>
     </div>
   );
