@@ -235,27 +235,10 @@ export function EditorCanvas(props: {
       const bbid = getBusbarId(busbarEdge);
       if (!bbid) return;
 
-	  // Place junction CENTRE on the busbar, but ONLY snap along the bus direction.
-	  // This prevents snapping 1 grid square off the bar when the bar is at (grid + 10px).
+	  // Place junction center exactly on the busbar hit point.
 	  const J = 18; // must match JunctionNode.tsx size
-
-	  const dxSeg = hit.b.x - hit.a.x;
-	  const dySeg = hit.b.y - hit.a.y;
-	  const isHorizontal = Math.abs(dxSeg) >= Math.abs(dySeg);
-
-	  const snap1D = (v: number) => {
-	    const g = 20;
-	    return Math.round(v / g) * g;
-	  };
-
-	  // Snap along the segment, keep perpendicular exactly on the bar.
-	  const center = {
-	    x: isHorizontal ? snap1D(hit.point.x) : hit.point.x,
-	    y: isHorizontal ? hit.point.y : snap1D(hit.point.y),
-	  };
-
-   	  let jPos = { x: center.x - J / 2, y: center.y - J / 2 };
-  	  jPos = { x: Math.round(jPos.x), y: Math.round(jPos.y) };
+	  const center = { x: hit.point.x, y: hit.point.y };
+   	  const jPos = { x: center.x - J / 2, y: center.y - J / 2 };
 
       const jId = `J-${bbid}-${crypto.randomUUID().slice(0, 4)}`;
 

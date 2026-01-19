@@ -188,12 +188,20 @@ function AppInner() {
     // apply React Flow changes first
     onNodesChange(changes);
 
-    // then snap switchgear + junction + iface nodes to grid to keep busbars perfectly straight
+    const movedIds = new Set<string>();
+    for (const change of changes as Array<{ id?: string; type?: string; dragging?: boolean }>) {
+      if (!change?.id) continue;
+      if (change.type === "position" && change.dragging) movedIds.add(change.id);
+    }
+    if (movedIds.size === 0) return;
+
+    // then snap only moved nodes to grid to keep busbars straight without shifting others
     setNodes((ns) =>
-      ns.map((n) => ({
-        ...n,
-        position: { x: snap(n.position.x), y: snap(n.position.y) },
-      }))
+      ns.map((n) =>
+        movedIds.has(n.id)
+          ? { ...n, position: { x: snap(n.position.x), y: snap(n.position.y) } }
+          : n
+      )
     );
   }, [onNodesChange, setNodes]);
 
@@ -249,11 +257,14 @@ function AppInner() {
   }, []);
 
   const onNodeDragStop: NodeDragHandler = useCallback((_e, n) => {
+    if (!n) return;
     lastDragEndTsRef.current = Date.now();
     setNodes((ns) =>
-      ns.map((x) =>
-        x.id !== n.id ? x : { ...x, position: { x: snap(x.position.x), y: snap(x.position.y) } }
-      )
+      ns.some((x) => x.id === n.id)
+        ? ns.map((x) =>
+            x.id !== n.id ? x : { ...x, position: { x: snap(x.position.x), y: snap(x.position.y) } }
+          )
+        : ns
     );
   }, [setNodes]);
 
