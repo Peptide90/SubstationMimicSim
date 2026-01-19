@@ -39,6 +39,7 @@ export function MultiplayerApp({ onExit }: Props) {
   const [tick, setTick] = useState<GameTick | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     const socket = io(MP_SERVER_URL, { transports: ["websocket"] });
@@ -96,23 +97,52 @@ export function MultiplayerApp({ onExit }: Props) {
             {roomState ? ` • Room ${roomState.code}` : ""}
           </span>
         </div>
-        <button
-          style={{
-            background: "#1e293b",
-            color: "#e2e8f0",
-            border: "1px solid #334155",
-            padding: "8px 12px",
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-          onClick={onExit}
-        >
-          Back to menu
-        </button>
+        {roomState ? (
+          <div style={{ display: "grid", gap: 4, textAlign: "right", fontSize: 12, color: "#cbd5f5" }}>
+            <span>
+              {roomState.scenario?.name ?? "No scenario"} •{" "}
+              {tick?.remainingSec !== undefined ? `${tick.remainingSec}s remaining` : "Timer idle"}
+            </span>
+            {currentPlayer ? (
+              <span>
+                {currentPlayer.name ?? "Unnamed"} •{" "}
+                {currentPlayer.isGM ? "Game Master" : roomState.teams.find((team) => team.id === currentPlayer.teamId)?.name ?? "No team"} •{" "}
+                {currentPlayer.role ? ROLE_LABELS[currentPlayer.role] : "No role"}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            style={secondaryButton}
+            onClick={() => setHelpOpen((prev) => !prev)}
+            title="Role help"
+          >
+            Help
+          </button>
+          <button
+            style={{
+              background: "#1e293b",
+              color: "#e2e8f0",
+              border: "1px solid #334155",
+              padding: "8px 12px",
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+            onClick={onExit}
+          >
+            Back to menu
+          </button>
+        </div>
       </header>
 
       {error ? (
         <div style={{ padding: "12px 24px", background: "#7f1d1d", color: "#fee2e2" }}>{error}</div>
+      ) : null}
+      {helpOpen ? (
+        <div style={{ padding: "12px 24px" }}>
+          <RoleHelpPanel />
+        </div>
       ) : null}
 
       {!roomState || !socket ? (
@@ -220,10 +250,6 @@ function RoomView({
         room={room}
         tick={tick}
         currentPlayer={currentPlayer}
-        nameInput={nameInput}
-        onNameInputChange={setNameInput}
-        roleChoice={roleChoice}
-        onRoleChoiceChange={setRoleChoice}
       />
     );
   }
@@ -278,7 +304,7 @@ function PlayerLayout({
   }
 
   return (
-    <div style={{ padding: "24px", display: "grid", gap: 16 }}>
+    <div style={{ padding: "24px", display: "grid", gap: 16, minHeight: "calc(100vh - 72px)" }}>
       {currentPlayer?.role ? (
         <RoleView role={currentPlayer.role} socket={socket} room={room} />
       ) : (
@@ -314,7 +340,7 @@ function LobbyDetails({
   return (
     <div style={{ padding: "24px", display: "grid", gap: 24 }}>
       <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-        {!currentPlayer?.name ? <strong>Choose a username</strong> : <strong>Lobby Setup</strong>}
+        {!currentPlayer?.name ? <strong>Choose a display name</strong> : <strong>Lobby Setup</strong>}
         {!currentPlayer?.name ? (
           <>
             <input
@@ -327,7 +353,7 @@ function LobbyDetails({
               style={primaryButton}
               onClick={() => socket.emit("mp/setUsername", { name: nameInput.trim() })}
             >
-              Confirm Name
+              Confirm Display Name
             </button>
           </>
         ) : null}
@@ -367,6 +393,8 @@ function LobbyDetails({
           Game starts in {countdown ?? 0}s
         </div>
       ) : null}
+
+      <RoleHelpPanel />
     </div>
   );
 }
@@ -445,19 +473,11 @@ function GameMasterLayout({
   room,
   tick,
   currentPlayer,
-  nameInput,
-  onNameInputChange,
-  roleChoice,
-  onRoleChoiceChange,
 }: {
   socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   room: RoomState;
   tick: GameTick | null;
   currentPlayer: Player | null;
-  nameInput: string;
-  onNameInputChange: (value: string) => void;
-  roleChoice: Role;
-  onRoleChoiceChange: (value: Role) => void;
 }) {
   const [viewRole, setViewRole] = useState<Role>("operator");
   const [viewTeam, setViewTeam] = useState(room.teams[0]?.id ?? "");
@@ -478,23 +498,7 @@ function GameMasterLayout({
     <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) 2fr", minHeight: "100vh" }}>
       <div style={{ padding: "24px", borderRight: "1px solid #1e293b", display: "grid", gap: 16 }}>
         <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-          {!currentPlayer?.name ? <strong>Choose a username</strong> : <strong>Game Master Console</strong>}
-          {!currentPlayer?.name ? (
-            <>
-              <input
-                value={nameInput}
-                onChange={(event) => onNameInputChange(event.target.value)}
-                placeholder="Letters only (3-12)"
-                style={inputStyle}
-              />
-              <button
-                style={primaryButton}
-                onClick={() => socket.emit("mp/setUsername", { name: nameInput.trim() })}
-              >
-                Confirm Name
-              </button>
-            </>
-          ) : null}
+          <strong>Game Master Console</strong>
         </div>
 
         <RoomSummary room={room} tick={tick} countdown={useCountdown(room.countdownEndsAt)} />
@@ -523,29 +527,6 @@ function GameMasterLayout({
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-
-        <div style={{ padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Role Selection</h3>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <select
-              value={roleChoice}
-              onChange={(event) => onRoleChoiceChange(event.target.value as Role)}
-              style={inputStyle}
-            >
-              {room.availableRoles.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
-            <button style={primaryButton} onClick={() => socket.emit("mp/setRole", { role: roleChoice })}>
-              Request Role
-            </button>
-            {currentPlayer?.role ? (
-              <span style={{ color: "#94a3b8" }}>Current: {ROLE_LABELS[currentPlayer.role]}</span>
-            ) : null}
           </div>
         </div>
 
@@ -597,6 +578,11 @@ function GameMasterPanel({
   }, [room.teams, room.availableRoles, room.orgName]);
 
   const scenarios = [sampleScenario];
+  const injectEventOptions = [
+    { value: "fault", label: "Fault" },
+    { value: "alarm", label: "Alarm" },
+    { value: "note", label: "Operational Note" },
+  ];
 
   return (
     <div style={{ display: "grid", gap: 16, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
@@ -620,6 +606,13 @@ function GameMasterPanel({
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
+        <strong>Organisation</strong>
+        <input
+          value={orgName}
+          onChange={(event) => setOrgName(event.target.value)}
+          placeholder="School, company, or organisation"
+          style={inputStyle}
+        />
         <strong>Team Names</strong>
         {teamNames.map((name, idx) => (
           <input
@@ -631,12 +624,6 @@ function GameMasterPanel({
             style={inputStyle}
           />
         ))}
-        <input
-          value={orgName}
-          onChange={(event) => setOrgName(event.target.value)}
-          placeholder="Organisation name (optional)"
-          style={inputStyle}
-        />
         <button
           style={primaryButton}
           onClick={() => socket.emit("mp/setTeamNames", { names: teamNames, orgName })}
@@ -734,12 +721,13 @@ function GameMasterPanel({
 
       <div style={{ display: "grid", gap: 8 }}>
         <strong>Inject Event</strong>
-        <input
-          value={eventType}
-          onChange={(event) => setEventType(event.target.value)}
-          placeholder="type"
-          style={inputStyle}
-        />
+        <select value={eventType} onChange={(event) => setEventType(event.target.value)} style={inputStyle}>
+          {injectEventOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         <input
           value={eventMessage}
           onChange={(event) => setEventMessage(event.target.value)}
@@ -986,6 +974,28 @@ function EventLog({ events }: { events: RoomState["eventLog"] }) {
             [{new Date(event.timestamp).toLocaleTimeString()}] {event.type.toUpperCase()} — {event.message}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function RoleHelpPanel() {
+  return (
+    <div style={{ padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+      <h3 style={{ marginTop: 0 }}>Role Help</h3>
+      <div style={{ display: "grid", gap: 12, color: "#cbd5f5" }}>
+        <div>
+          <strong>{ROLE_LABELS.operator}:</strong> Controls switching and alarm response. Best for players who enjoy
+          quick decision-making and operational safety.
+        </div>
+        <div>
+          <strong>{ROLE_LABELS.field}:</strong> Inspects equipment and reports local conditions. Ideal for hands-on
+          troubleshooting and situational awareness.
+        </div>
+        <div>
+          <strong>{ROLE_LABELS.planner}:</strong> Monitors demand/supply trends and forecasts. Suited to strategic
+          thinkers and system-level analysis.
+        </div>
       </div>
     </div>
   );
