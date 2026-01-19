@@ -39,7 +39,25 @@ export type GameEvent = {
   teamId?: string;
 };
 
-export type RoomStatus = "lobby" | "running" | "finished";
+export type RoomStatus = "lobby" | "countdown" | "running" | "finished";
+
+export type AwardCategory =
+  | "fastest_switching"
+  | "alarm_management"
+  | "forecasting"
+  | "field_experience"
+  | "team_management"
+  | "gm_best_switching_instruction"
+  | "gm_best_communication";
+
+export type Award = {
+  id: string;
+  title: string;
+  description: string;
+  category: AwardCategory;
+  playerId?: string;
+  teamId?: string;
+};
 
 export type RoomState = {
   code: string;
@@ -51,8 +69,12 @@ export type RoomState = {
   scenario?: Scenario;
   startedAt?: number;
   timeElapsedSec?: number;
+  countdownEndsAt?: number;
   eventLog: GameEvent[];
   orgName?: string;
+  resultsVisible: boolean;
+  autoAnnounceResults: boolean;
+  awards: Award[];
 };
 
 export type GameTick = {
@@ -104,6 +126,25 @@ export type SetAvailableRolesPayload = {
   roles: Role[];
 };
 
+export type GrantPointsPayload = {
+  teamId: string;
+  points: number;
+  reason: string;
+};
+
+export type SetResultsVisibilityPayload = {
+  visible: boolean;
+};
+
+export type SetAutoAnnounceResultsPayload = {
+  enabled: boolean;
+};
+
+export type SetGmAwardsPayload = {
+  bestSwitchingInstructionPlayerId?: string;
+  bestCommunicationTeamId?: string;
+};
+
 export type InjectEventPayload = {
   type: string;
   message: string;
@@ -130,6 +171,10 @@ export interface ClientToServerEvents {
   "mp/injectEvent": (payload: InjectEventPayload) => void;
   "mp/loadScenario": (payload: LoadScenarioPayload) => void;
   "mp/scoreAction": (payload: ScoreActionPayload) => void;
+  "mp/grantPoints": (payload: GrantPointsPayload) => void;
+  "mp/setResultsVisibility": (payload: SetResultsVisibilityPayload) => void;
+  "mp/setAutoAnnounceResults": (payload: SetAutoAnnounceResultsPayload) => void;
+  "mp/setGmAwards": (payload: SetGmAwardsPayload) => void;
 }
 
 export interface ServerToClientEvents {
