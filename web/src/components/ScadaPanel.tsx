@@ -1,19 +1,36 @@
 import React from "react";
 import { EventLog } from "./EventLog";
-import type { EventCategory, EventLogItem } from "./EventLog";
+import type { EventCategory, EventLogFilters, EventLogItem } from "./EventLog";
 
 export function ScadaPanel(props: {
   energizedEdgeCount: number;
   groundedEdgeCount: number;
 
-  switchgear: Record<"es" | "ds" | "cb", Array<{ id: string; state: "open" | "closed"; label: string }>>;
+  switchgear: Record<
+    "es" | "ds" | "cb",
+    Array<{ id: string; state: "open" | "closed"; label: string; darEnabled?: boolean; darLockout?: boolean; failActive?: boolean }>
+  >;
   onToggleSwitch: (id: string) => void;
+  onToggleDar: (id: string) => void;
+  onResetCondition: (id: string) => void;
 
   events: EventLogItem[];
-  filters: Record<EventCategory, boolean>;
-  onToggleFilter: (cat: EventCategory) => void;
+  filters: EventLogFilters;
+  onToggleFilter: (cat: EventCategory | "acknowledged") => void;
+  onAcknowledgeEvent: (eventId: string) => void;
 }) {
-  const { energizedEdgeCount, groundedEdgeCount, switchgear, onToggleSwitch, events, filters, onToggleFilter } = props;
+  const {
+    energizedEdgeCount,
+    groundedEdgeCount,
+    switchgear,
+    onToggleSwitch,
+    onToggleDar,
+    onResetCondition,
+    events,
+    filters,
+    onToggleFilter,
+    onAcknowledgeEvent,
+  } = props;
 
   return (
     <div
@@ -58,24 +75,69 @@ export function ScadaPanel(props: {
                 ) : (
                   switchgear[k].map((sw) => {
                     const isClosed = sw.state === "closed";
+                    const isCb = k === "cb";
+                    const darState = sw.darLockout ? "lockout" : sw.darEnabled ? "active" : "inactive";
+                    const darBg = darState === "lockout" ? "#b91c1c" : darState === "active" ? "#15803d" : "#4b5563";
+                    const darTitle = darState === "lockout" ? "DAR LOCKOUT (click to toggle)" : "DAR (click to toggle)";
+                    const failActive = sw.failActive === true;
+                    const failBg = failActive ? "#dc2626" : "#4b5563";
                     return (
-                      <button
-                        key={sw.id}
-                        onClick={() => onToggleSwitch(sw.id)}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "8px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #334155",
-                          background: isClosed ? "#3f0d0d" : "#0d3f1d",
-                          color: "#fff",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {sw.label}
-                      </button>
+                      <div key={sw.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                        <button
+                          onClick={() => onToggleSwitch(sw.id)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #334155",
+                            background: isClosed ? "#3f0d0d" : "#0d3f1d",
+                            color: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {sw.label}
+                        </button>
+                        {isCb && (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <button
+                              onClick={() => onToggleDar(sw.id)}
+                              title={darTitle}
+                              style={{
+                                minWidth: 44,
+                                padding: "4px 6px",
+                                borderRadius: 6,
+                                border: "1px solid #1f2937",
+                                background: darBg,
+                                color: "#f8fafc",
+                                fontSize: 10,
+                                fontWeight: 900,
+                                cursor: "pointer",
+                              }}
+                            >
+                              DAR
+                            </button>
+                            <button
+                              onClick={() => onResetCondition(sw.id)}
+                              title={failActive ? "Reset breaker fail" : "No breaker fail"}
+                              style={{
+                                minWidth: 44,
+                                padding: "4px 6px",
+                                borderRadius: 6,
+                                border: "1px solid #1f2937",
+                                background: failBg,
+                                color: "#f8fafc",
+                                fontSize: 10,
+                                fontWeight: 900,
+                                cursor: "pointer",
+                              }}
+                            >
+                              FAIL
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     );
                   })
                 )}
@@ -90,7 +152,12 @@ export function ScadaPanel(props: {
       </div>
 
       {/* Event log scrolls */}
-      <EventLog events={events} filters={filters} onToggleFilter={onToggleFilter} />
+      <EventLog
+        events={events}
+        filters={filters}
+        onToggleFilter={onToggleFilter}
+        onAcknowledgeEvent={onAcknowledgeEvent}
+      />
     </div>
   );
 }

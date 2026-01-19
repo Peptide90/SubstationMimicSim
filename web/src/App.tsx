@@ -252,7 +252,7 @@ function AppInner() {
   const [interfaceMetaById, setInterfaceMetaById] = useState(initialProject.interfaceMetaById ?? {});
 
   // Event log
-  const { events, filters, appendEvent, onToggleFilter } = useEventLog();
+  const { events, filters, appendEvent, onToggleFilter, onAcknowledgeEvent } = useEventLog();
 
   // Selection/operate gating
   const lastDragEndTsRef = useRef<number>(0);
@@ -550,14 +550,14 @@ const isValidConnection = useCallback(
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
     setNodes((ns) => ns.concat(makeNode(kind, id, pos.x, pos.y, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
     ensureBp109Meta(id, kind);
-    appendEvent("debug", `DROP ${kind.toUpperCase()} ${id}`);
+    appendEvent("debug", `DROP ${kind.toUpperCase()} ${id}`, { source: "player" });
   }, [appendEvent, ensureBp109Meta, screenToFlowPosition, setNodes]);
 
   const onAddAtCenter = useCallback((kind: NodeKind) => {
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
     setNodes((ns) => ns.concat(makeNode(kind, id, 260, 160, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
     ensureBp109Meta(id, kind);
-    appendEvent("debug", `CREATE ${kind.toUpperCase()} ${id}`);
+    appendEvent("debug", `CREATE ${kind.toUpperCase()} ${id}`, { source: "player" });
   }, [appendEvent, ensureBp109Meta, setNodes]);
 
   // Connect handler
@@ -566,7 +566,7 @@ const isValidConnection = useCallback(
     if (locked) return;
     const newEdge = makeBusbarEdge(c.source, c.target, c.sourceHandle ?? undefined, c.targetHandle ?? undefined);
     setEdges((eds) => addEdge(newEdge, eds));
-    appendEvent("debug", `BUSBAR ADD ${newEdge.id}`);
+    appendEvent("debug", `BUSBAR ADD ${newEdge.id}`, { source: "player" });
   }, [appendEvent, locked, setEdges]);
 
   // Interlock check
@@ -652,12 +652,34 @@ const isValidConnection = useCallback(
 
   // SCADA switchgear list
   const switchgear = useMemo(() => {
-    const byKind: Record<"es"|"ds"|"cb", Array<{ id: string; state: "open"|"closed"; label: string }>> = { es: [], ds: [], cb: [] };
+    const byKind: Record<
+      "es" | "ds" | "cb",
+      Array<{
+        id: string;
+        state: "open" | "closed";
+        label: string;
+        darEnabled?: boolean;
+        darLockout?: boolean;
+        failActive?: boolean;
+      }>
+    > = { es: [], ds: [], cb: [] };
     for (const n of nodes) {
       const md = getMimicData(n);
       if (!md) continue;
       if (md.kind !== "es" && md.kind !== "ds" && md.kind !== "cb") continue;
-      byKind[md.kind].push({ id: n.id, state: (md.state ?? "open") as any, label: (n.data as any)?.label ?? n.id });
+      if (md.kind === "cb") {
+        const protection = (n.data as any)?.protection ?? {};
+        byKind[md.kind].push({
+          id: n.id,
+          state: (md.state ?? "open") as any,
+          label: (n.data as any)?.label ?? n.id,
+          darEnabled: protection.dar === true,
+          darLockout: protection.lockout === true,
+          failActive: (n.data as any)?.faulted === true || (n.data as any)?.destroyed === true,
+        });
+      } else {
+        byKind[md.kind].push({ id: n.id, state: (md.state ?? "open") as any, label: (n.data as any)?.label ?? n.id });
+      }
     }
     (Object.keys(byKind) as Array<"es"|"ds"|"cb">).forEach((k) => byKind[k].sort((a,b)=>a.label.localeCompare(b.label)));
     return byKind;
@@ -750,9 +772,12 @@ const isValidConnection = useCallback(
           groundedEdgeCount={grounded.groundedEdgeIds.size}
           switchgear={switchgear}
           onToggleSwitch={onToggleSwitch}
+          onToggleDar={toggleDarOnCb}
+          onResetCondition={resetCondition}
           events={events}
           filters={filters}
           onToggleFilter={onToggleFilter}
+          onAcknowledgeEvent={onAcknowledgeEvent}
         />
       </div>
 
@@ -762,7 +787,7 @@ const isValidConnection = useCallback(
         switchgearIds={switchgearIds}
         rules={interlocks}
         setRules={setInterlocks}
-        appendDebug={(m) => appendEvent("debug", m)}
+        appendDebug={(m) => appendEvent("debug", m, { source: "player" })}
       />
 
       <LabellingModal
@@ -832,7 +857,7 @@ const isValidConnection = useCallback(
 	  	}}
 	  	onClearPersistentFaultOnBusbar={(busbarId) => {
 	  		const list = activeFaultsOnBusbar(busbarId);
-	  		for (const f of list) clearFaultById(f.id);
+	  		for (const f of list) clearFaultById(f.id, "player");
 	  	}}
 	  	onToggleDar={toggleDarOnCb}
 	  	onToggleAutoIsolate={toggleAutoIsolateOnDs}

@@ -13,7 +13,7 @@ type MimicData = {
 };
 
 type UseSwitchCommandsParams = {
-  appendEvent: (category: EventCategory, msg: string) => void;
+  appendEvent: (category: EventCategory, msg: string, options?: { source?: "player" | "system" }) => void;
   checkInterlock: (actionNodeId: string, actionTo: SwitchState) => string | null;
   getMimicData: (node: Node) => MimicData | null;
   onSwitchComplete?: (nodeId: string, kind: NodeKind, to: SwitchState) => void;
@@ -81,7 +81,7 @@ export function useSwitchCommands({
       }
 
       const cmdId = `cmd-${crypto.randomUUID().slice(0, 6)}`;
-      appendEvent("info", `CMD ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`);
+      appendEvent("info", `CMD ${kind.toUpperCase()} ${nodeId} ${to.toUpperCase()}`, { source: "player" });
 
       setNodeMoving(nodeId, true);
 
