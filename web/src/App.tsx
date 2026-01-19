@@ -1,6 +1,6 @@
 import "reactflow/dist/style.css";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, addEdge } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler } from "reactflow";
 
@@ -22,8 +22,9 @@ import { InterfaceNode } from "./ui/nodes/InterfaceNode";
 import { BusbarModal } from "./components/modals/BusbarModal";
 
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
-
-import { useEffect } from "react";
+import { ConfirmModal } from "./components/modals/ConfirmModal";
+import { HelpModal } from "./components/modals/HelpModal";
+import { MainMenu } from "./components/MainMenu";
 
 import { ContextMenu } from "./components/ContextMenu";
 
@@ -37,6 +38,7 @@ import { useProtection } from "./app/hooks/useProtection";
 import { useFaults } from "./app/hooks/useFaults";
 import { loadInitialProject, useTemplates } from "./app/hooks/useTemplates";
 import { useContextMenu } from "./app/hooks/useContextMenu";
+import { BUILD_TAG } from "./app/constants/branding";
 
 
 // ---------- minimal helpers (kept in App to avoid more files now) ----------
@@ -174,12 +176,14 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
 
 
 // ---------- AppInner ----------
-function AppInner() {
+function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu: () => void }) {
   const { screenToFlowPosition } = useReactFlow();
   const initialProject = useMemo(() => loadInitialProject(), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
+  const [confirmMenuOpen, setConfirmMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   
   const GRID = 20;
   const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -724,13 +728,12 @@ const isValidConnection = useCallback(
   // Modals
   const switchgearIds = useMemo(() => Object.values(switchgear).flat().map((x) => x.id).sort(), [switchgear]);
 
-  // Build tag
-  const buildTag = "SPLIT-001";
-
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#060b12" }}>
       <TopToolbar
         buildTag={buildTag}
+        onOpenMenu={() => setConfirmMenuOpen(true)}
+        onOpenHelp={() => setHelpOpen(true)}
         onOpenInterlocking={() => setOpenInterlocking(true)}
         onOpenLabelling={() => setOpenLabelling(true)}
         onOpenSaveLoad={() => setOpenSaveLoad(true)}
@@ -863,14 +866,104 @@ const isValidConnection = useCallback(
 	  	onToggleAutoIsolate={toggleAutoIsolateOnDs}
 	  	onResetCondition={resetCondition}
 	  />
+      <ConfirmModal
+        open={confirmMenuOpen}
+        title="Return to main menu?"
+        description="Returning to the main menu will discard any unsaved work. Make sure you save before leaving."
+        confirmLabel="Return to menu"
+        cancelLabel="Stay here"
+        onCancel={() => setConfirmMenuOpen(false)}
+        onConfirm={() => {
+          setConfirmMenuOpen(false);
+          onRequestMenu();
+        }}
+      />
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)}>
+        <p style={{ marginTop: 0 }}>
+          Build your substation by placing nodes, wiring them with busbars, and testing behaviors in the SCADA panel.
+        </p>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#e2e8f0", marginBottom: 8 }}>Controls</div>
+          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
+            <li>
+              <strong>Place nodes:</strong> drag components from the palette onto the canvas to add sources, breakers,
+              disconnectors, and junctions.
+            </li>
+            <li>
+              <strong>Drag busbars:</strong> connect handles between nodes to draw busbars. Dragging one node handle onto
+              another busbar creates a junction.
+            </li>
+            <li>
+              <strong>Busbar editing:</strong> single-click a busbar to open its properties; double-click deletes it.
+            </li>
+            <li>
+              <strong>Operate switchgear:</strong> double-click switchgear to open/close it.
+            </li>
+            <li>
+              <strong>Right-click options:</strong> right-click nodes for additional options and fault actions.
+            </li>
+            <li>
+              <strong>Multi-select:</strong> click and drag on the canvas to select multiple nodes/junctions, then press
+              delete to remove them.
+            </li>
+            <li>
+              <strong>Canvas controls:</strong> the bottom-left controls manage zoom, snapping, and lock options.
+            </li>
+            <li>
+              <strong>Interlocking:</strong> configure interlocking rules for switchgear behavior and safety logic.
+            </li>
+            <li>
+              <strong>Power flow:</strong> review interface metadata and view power flow settings per interface.
+            </li>
+            <li>
+              <strong>Labelling:</strong> set label schemes, overrides, and naming standards for the diagram.
+            </li>
+            <li>
+              <strong>Save/Load:</strong> the Save/Load menu includes templates, plus the option to name and describe
+              your build and save it locally for later loading. No session data is collected.
+            </li>
+          </ul>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#e2e8f0", marginBottom: 8 }}>Technical</div>
+          <ul style={{ paddingLeft: 18, margin: 0, display: "grid", gap: 8 }}>
+            <li>
+              <strong>Components:</strong> sources energize the network, breakers interrupt current, disconnectors
+              isolate sections, and earth switches apply grounding.
+            </li>
+            <li>
+              <strong>DAR:</strong> Delayed Auto Reclose (DAR) attempts to automatically reclose a breaker after a trip
+              if conditions permit.
+            </li>
+            <li>
+              <strong>Auto Isolation:</strong> automatically isolates sections around a detected fault to protect the
+              rest of the network.
+            </li>
+            <li>
+              <strong>Persistent faults:</strong> remain active until cleared and can be used to simulate sustained
+              failure scenarios.
+            </li>
+            <li>
+              <strong>Status colors:</strong> energized paths glow brighter, grounded sections show grounded styling, and
+              faulted/destroyed nodes indicate abnormal states.
+            </li>
+          </ul>
+        </div>
+      </HelpModal>
     </div>
   );
 }
 
 export default function App() {
+  const [view, setView] = useState<"menu" | "editor">("menu");
+
   return (
     <ReactFlowProvider>
-      <AppInner />
+      {view === "menu" ? (
+        <MainMenu buildTag={BUILD_TAG} onStartSolo={() => setView("editor")} />
+      ) : (
+        <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
+      )}
     </ReactFlowProvider>
   );
 }
