@@ -183,19 +183,19 @@ export function ScadaNode(props: NodeProps) {
         onClick={stopClick}
       />
 
-      {/* Invisible-but-active source handles at same positions (bidirectional terminals) */}
+      {/* Visible source handles at same positions (bidirectional terminals) */}
       <Handle
         type="source"
         id="L"
         position={Position.Left}
-        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
+        style={{ ...baseHandle, left: -6, top: 30, transform: "translateY(-50%)" }}
         onClick={stopClick}
       />
       <Handle
         type="source"
         id="R"
         position={Position.Right}
-        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)", opacity: 0 }}
+        style={{ ...baseHandle, right: -6, top: 30, transform: "translateY(-50%)" }}
         onClick={stopClick}
       />
 
@@ -203,8 +203,8 @@ export function ScadaNode(props: NodeProps) {
       <Handle type="target" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
       <Handle type="target" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
 
-      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6, opacity: 0 }} onClick={stopClick} />
-      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6, opacity: 0 }} onClick={stopClick} />
+      <Handle type="source" id="T" position={Position.Top} style={{ ...baseHandle, top: -6 }} onClick={stopClick} />
+      <Handle type="source" id="B" position={Position.Bottom} style={{ ...baseHandle, bottom: -6 }} onClick={stopClick} />
     </>
   );
 
