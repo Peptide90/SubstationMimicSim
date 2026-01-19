@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import type { Edge, Node } from "reactflow";
+import type { Node } from "reactflow";
 
 export type FaultSeverity = "normal" | "severe" | "extreme";
 
