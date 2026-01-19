@@ -165,62 +165,63 @@ function Lobby({
   const [teamCount, setTeamCount] = useState(2);
 
   return (
-      <div
-        style={{
-          padding: "32px 24px",
-          display: "grid",
-          gap: 20,
-          width: "min(1100px, 100%)",
-          margin: "0 auto",
-        }}
-      >
-        <div>
-          <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
-        <p style={{ color: "#94a3b8" }}>
-          Create a room or join an existing session with a code.
-        </p>
+    <div
+      style={{
+        padding: "40px 24px",
+        display: "grid",
+        gap: 24,
+        width: "100%",
+        maxWidth: 1400,
+        margin: "0 auto",
+      }}
+    >
+      <div>
+        <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
+        <p style={{ color: "#94a3b8" }}>Create a room or join an existing session with a code.</p>
       </div>
 
-      <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-        <strong>Create Game</strong>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>Number of teams (2-4)</span>
-          <input
-            type="number"
-            min={2}
-            max={4}
-            value={teamCount}
-            onChange={(event) => setTeamCount(Number(event.target.value))}
-            style={inputStyle}
-          />
-        </label>
-        <button
-          style={primaryButton}
-          disabled={!connected || !socket}
-          onClick={() => socket?.emit("mp/createRoom", { teamCount })}
-        >
-          Create Game
-        </button>
-      </div>
+      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+          <strong>Create Game</strong>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>Number of teams (2-4)</span>
+            <input
+              type="number"
+              min={2}
+              max={4}
+              value={teamCount}
+              onChange={(event) => setTeamCount(Number(event.target.value))}
+              style={inputStyle}
+            />
+          </label>
+          <button
+            style={primaryButton}
+            disabled={!connected || !socket}
+            onClick={() => socket?.emit("mp/createRoom", { teamCount })}
+          >
+            Create Game
+          </button>
+        </div>
 
-      <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-        <strong>Join Game</strong>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>Join code</span>
-          <input
-            value={joinCode}
-            onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-            placeholder="ABC123"
-            style={inputStyle}
-          />
-        </label>
-        <button
-          style={primaryButton}
-          disabled={!connected || joinCode.trim().length < 4 || !socket}
-          onClick={() => socket?.emit("mp/joinRoom", { code: joinCode.trim() })}
-        >
-          Join Game
-        </button>
+        <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+          <strong>Join Game</strong>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>Join code</span>
+            <input
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+              placeholder="ABC123"
+              style={inputStyle}
+            />
+          </label>
+          <button
+            style={primaryButton}
+            disabled={!connected || joinCode.trim().length < 4 || !socket}
+            onClick={() => socket?.emit("mp/joinRoom", { code: joinCode.trim() })}
+          >
+            Join Game
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -346,7 +347,16 @@ function LobbyDetails({
 }) {
   const countdown = useCountdown(room.countdownEndsAt);
   return (
-    <div style={{ padding: "24px", display: "grid", gap: 24, width: "min(1200px, 100%)", margin: "0 auto" }}>
+    <div
+      style={{
+        padding: "40px 24px",
+        display: "grid",
+        gap: 24,
+        width: "100%",
+        maxWidth: 1400,
+        margin: "0 auto",
+      }}
+    >
       <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
         {!currentPlayer?.name ? <strong>Choose a display name</strong> : <strong>Lobby Setup</strong>}
         {!currentPlayer?.name ? (
