@@ -98,9 +98,25 @@ export function MultiplayerApp({ onExit }: Props) {
   const socket = socketRef.current;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#020617", color: "#e2e8f0" }}>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        zIndex: 50,
+        background: "#020617",
+        color: "#e2e8f0",
+      }}
+    >
       <header
         style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -164,11 +180,13 @@ export function MultiplayerApp({ onExit }: Props) {
         </div>
       ) : null}
 
-      {!roomState || !socket ? (
-        <Lobby socket={socketRef.current} connected={connected} />
-      ) : (
-        <RoomView socket={socket} room={roomState} tick={tick} currentPlayer={currentPlayer} />
-      )}
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {!roomState || !socket ? (
+          <Lobby socket={socketRef.current} connected={connected} />
+        ) : (
+          <RoomView socket={socket} room={roomState} tick={tick} currentPlayer={currentPlayer} />
+        )}
+      </div>
     </div>
   );
 }
@@ -184,61 +202,55 @@ function Lobby({
   const [teamCount, setTeamCount] = useState(2);
 
   return (
-    <div
-      style={{
-        padding: "40px 24px",
-        display: "grid",
-        gap: 24,
-        width: "100%",
-        maxWidth: "none",
-      }}
-    >
-      <div>
-        <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
-        <p style={{ color: "#94a3b8" }}>Create a room or join an existing session with a code.</p>
-      </div>
-
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-          <strong>Create Game</strong>
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>Number of teams (2-4)</span>
-            <input
-              type="number"
-              min={2}
-              max={4}
-              value={teamCount}
-              onChange={(event) => setTeamCount(Number(event.target.value))}
-              style={inputStyle}
-            />
-          </label>
-          <button
-            style={primaryButton}
-            disabled={!connected || !socket}
-            onClick={() => socket?.emit("mp/createRoom", { teamCount })}
-          >
-            Create Game
-          </button>
+    <div style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: "40px 24px" }}>
+      <div style={{ width: "100%", maxWidth: 960, display: "grid", gap: 24 }}>
+        <div>
+          <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
+          <p style={{ color: "#94a3b8" }}>Create a room or join an existing session with a code.</p>
         </div>
 
-        <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-          <strong>Join Game</strong>
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>Join code</span>
-            <input
-              value={joinCode}
-              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-              placeholder="ABC123"
-              style={inputStyle}
-            />
-          </label>
-          <button
-            style={primaryButton}
-            disabled={!connected || joinCode.trim().length < 4 || !socket}
-            onClick={() => socket?.emit("mp/joinRoom", { code: joinCode.trim() })}
-          >
-            Join Game
-          </button>
+        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+          <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+            <strong>Create Game</strong>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>Number of teams (2-4)</span>
+              <input
+                type="number"
+                min={2}
+                max={4}
+                value={teamCount}
+                onChange={(event) => setTeamCount(Number(event.target.value))}
+                style={inputStyle}
+              />
+            </label>
+            <button
+              style={primaryButton}
+              disabled={!connected || !socket}
+              onClick={() => socket?.emit("mp/createRoom", { teamCount })}
+            >
+              Create Game
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+            <strong>Join Game</strong>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>Join code</span>
+              <input
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                placeholder="ABC123"
+                style={inputStyle}
+              />
+            </label>
+            <button
+              style={primaryButton}
+              disabled={!connected || joinCode.trim().length < 4 || !socket}
+              onClick={() => socket?.emit("mp/joinRoom", { code: joinCode.trim() })}
+            >
+              Join Game
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -331,7 +343,7 @@ function PlayerLayout({
   }
 
   return (
-    <div style={{ padding: "24px", display: "grid", gap: 16, minHeight: "calc(100vh - 72px)" }}>
+    <div style={{ padding: "24px", display: "grid", gap: 16, minHeight: "100%" }}>
       {currentPlayer?.role ? (
         <RoleView role={currentPlayer.role} socket={socket} room={room} />
       ) : (
@@ -365,71 +377,65 @@ function LobbyDetails({
 }) {
   const countdown = useCountdown(room.countdownEndsAt);
   return (
-    <div
-      style={{
-        padding: "40px 24px",
-        display: "grid",
-        gap: 24,
-        width: "100%",
-        maxWidth: "none",
-      }}
-    >
-      <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
-        {!currentPlayer?.name ? <strong>Choose a display name</strong> : <strong>Lobby Setup</strong>}
-        {!currentPlayer?.name ? (
-          <>
-            <input
-              value={nameInput}
-              onChange={(event) => onNameInputChange(event.target.value)}
-              placeholder="Letters only (3-12)"
-              style={inputStyle}
-            />
-            <button
-              style={primaryButton}
-              onClick={() => socket.emit("mp/setUsername", { name: nameInput.trim() })}
-            >
-              Confirm Display Name
-            </button>
-          </>
-        ) : null}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
-        <RoomSummary room={room} tick={tick} countdown={countdown} />
-        <TeamScoreboard teams={room.teams} />
-        <PlayerList players={room.players} teams={room.teams} />
-      </div>
-
-      <div style={{ padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Role Selection</h3>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <select
-            value={roleChoice}
-            onChange={(event) => onRoleChoiceChange(event.target.value as Role)}
-            style={inputStyle}
-          >
-            {room.availableRoles.map((role) => (
-              <option key={role} value={role}>
-                {ROLE_LABELS[role]}
-              </option>
-            ))}
-          </select>
-          <button style={primaryButton} onClick={() => socket.emit("mp/setRole", { role: roleChoice })}>
-            Request Role
-          </button>
-          {currentPlayer?.role ? (
-            <span style={{ color: "#94a3b8" }}>Current: {ROLE_LABELS[currentPlayer.role]}</span>
+    <div style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: "40px 24px" }}>
+      <div style={{ width: "100%", maxWidth: 960, display: "grid", gap: 24 }}>
+        <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
+          {!currentPlayer?.name ? <strong>Choose a display name</strong> : <strong>Lobby Setup</strong>}
+          {!currentPlayer?.name ? (
+            <>
+              <input
+                value={nameInput}
+                onChange={(event) => onNameInputChange(event.target.value)}
+                placeholder="Letters only (3-12)"
+                style={inputStyle}
+              />
+              <button
+                style={primaryButton}
+                onClick={() => socket.emit("mp/setUsername", { name: nameInput.trim() })}
+              >
+                Confirm Display Name
+              </button>
+            </>
           ) : null}
         </div>
-      </div>
 
-      {room.status === "countdown" ? (
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#fde047" }}>
-          Game starts in {countdown ?? 0}s
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+          <RoomSummary room={room} tick={tick} countdown={countdown} />
+          <TeamScoreboard teams={room.teams} />
+          <PlayerList players={room.players} teams={room.teams} />
         </div>
-      ) : null}
 
-      <RoleHelpPanel />
+        <div style={{ padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Role Selection</h3>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <select
+              value={roleChoice}
+              onChange={(event) => onRoleChoiceChange(event.target.value as Role)}
+              style={inputStyle}
+            >
+              {room.availableRoles.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+            <button style={primaryButton} onClick={() => socket.emit("mp/setRole", { role: roleChoice })}>
+              Request Role
+            </button>
+            {currentPlayer?.role ? (
+              <span style={{ color: "#94a3b8" }}>Current: {ROLE_LABELS[currentPlayer.role]}</span>
+            ) : null}
+          </div>
+        </div>
+
+        {room.status === "countdown" ? (
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#fde047" }}>
+            Game starts in {countdown ?? 0}s
+          </div>
+        ) : null}
+
+        <RoleHelpPanel />
+      </div>
     </div>
   );
 }
@@ -530,7 +536,7 @@ function GameMasterLayout({
   }, [room.teams, viewTeam]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) 2fr", minHeight: "100vh" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) 2fr", minHeight: "100%" }}>
       <div style={{ padding: "24px", borderRight: "1px solid #1e293b", display: "grid", gap: 16 }}>
         <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
           <strong>Game Master Console</strong>
