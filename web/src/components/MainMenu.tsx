@@ -50,7 +50,7 @@ export function MainMenu({ buildTag, onStartSolo, onStartMultiplayer }: Props) {
           Solo: Substation Mimic Builder
         </button>
         <button style={buttonStyle} onClick={onStartMultiplayer}>
-          Multiplayer Lobby
+          Multiplayer Grid Game
         </button>
       </div>
 

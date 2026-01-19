@@ -91,7 +91,7 @@ export function MultiplayerApp({ onExit }: Props) {
         }}
       >
         <div style={{ display: "grid" }}>
-          <strong>Multiplayer Command Center</strong>
+          <strong>The Electric Brit&apos;s Grid Game</strong>
           <span style={{ color: "#94a3b8", fontSize: 12 }}>
             Status: {connected ? "Connected" : "Disconnected"}
             {roomState ? ` • Room ${roomState.code}` : ""}
@@ -112,7 +112,7 @@ export function MultiplayerApp({ onExit }: Props) {
             ) : null}
           </div>
         ) : null}
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 12, paddingLeft: 12 }}>
           <button
             style={secondaryButton}
             onClick={() => setHelpOpen((prev) => !prev)}
@@ -165,9 +165,17 @@ function Lobby({
   const [teamCount, setTeamCount] = useState(2);
 
   return (
-    <div style={{ padding: "32px 24px", display: "grid", gap: 20, maxWidth: 520 }}>
-      <div>
-        <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
+      <div
+        style={{
+          padding: "32px 24px",
+          display: "grid",
+          gap: 20,
+          width: "min(1100px, 100%)",
+          margin: "0 auto",
+        }}
+      >
+        <div>
+          <h2 style={{ marginBottom: 8 }}>Multiplayer Lobby</h2>
         <p style={{ color: "#94a3b8" }}>
           Create a room or join an existing session with a code.
         </p>
@@ -338,7 +346,7 @@ function LobbyDetails({
 }) {
   const countdown = useCountdown(room.countdownEndsAt);
   return (
-    <div style={{ padding: "24px", display: "grid", gap: 24 }}>
+    <div style={{ padding: "24px", display: "grid", gap: 24, width: "min(1200px, 100%)", margin: "0 auto" }}>
       <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
         {!currentPlayer?.name ? <strong>Choose a display name</strong> : <strong>Lobby Setup</strong>}
         {!currentPlayer?.name ? (
@@ -417,7 +425,7 @@ function RoomSummary({
         <div>Scenario: {room.scenario?.name ?? "None selected"}</div>
         <div>Organisation: {room.orgName || "Not set"}</div>
         <div>
-          Time: {tick ? `${tick.elapsedSec}s elapsed` : room.timeElapsedSec ?? 0}s
+          Time elapsed: {tick ? `${tick.elapsedSec}s` : `${room.timeElapsedSec ?? 0}s`}
           {tick?.remainingSec !== undefined ? ` • ${tick.remainingSec}s remaining` : ""}
         </div>
         {room.status === "countdown" && countdown !== null ? <div>Countdown: {countdown}s</div> : null}
