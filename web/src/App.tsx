@@ -469,6 +469,7 @@ const isValidConnection = useCallback(
 
   // Busbar delete (double-click)
   const onEdgeDoubleClick = useCallback((_evt: any, edge: Edge) => {
+    if (locked) return;
     const bbid = (edge.data as any)?.busbarId as string | undefined;
     if (!bbid) return;
 
@@ -488,7 +489,7 @@ const isValidConnection = useCallback(
       window.setTimeout(() => cleanupOrphanJunctions(next), 0);
       return next;
     });
-  }, [cleanupOrphanJunctions, setEdges]);
+  }, [cleanupOrphanJunctions, locked, setEdges]);
 
 
   
@@ -531,6 +532,7 @@ const isValidConnection = useCallback(
 
   const onDrop = useCallback((evt: React.DragEvent) => {
     evt.preventDefault();
+    if (locked) return;
     const kind = evt.dataTransfer.getData("application/mimic-node-kind") as NodeKind;
     if (!kind) return;
     const pos = screenToFlowPosition({ x: evt.clientX, y: evt.clientY });
@@ -538,14 +540,15 @@ const isValidConnection = useCallback(
     setNodes((ns) => ns.concat(makeNode(kind, id, pos.x, pos.y, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
     ensureBp109Meta(id, kind);
     appendEvent("debug", `DROP ${kind.toUpperCase()} ${id}`, { source: "player" });
-  }, [appendEvent, ensureBp109Meta, screenToFlowPosition, setNodes]);
+  }, [appendEvent, ensureBp109Meta, locked, screenToFlowPosition, setNodes]);
 
   const onAddAtCenter = useCallback((kind: NodeKind) => {
+    if (locked) return;
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
     setNodes((ns) => ns.concat(makeNode(kind, id, 260, 160, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
     ensureBp109Meta(id, kind);
     appendEvent("debug", `CREATE ${kind.toUpperCase()} ${id}`, { source: "player" });
-  }, [appendEvent, ensureBp109Meta, setNodes]);
+  }, [appendEvent, ensureBp109Meta, locked, setNodes]);
 
   // Connect handler
   const onConnect = useCallback((c: Connection) => {

@@ -316,13 +316,14 @@ export function useFaults({
       for (const fault of activeFaults) {
         if (!visited.has(fault.aNodeId) && !visited.has(fault.bNodeId)) continue;
         appendEvent("error", `CB CLOSE INTO FAULT ${cbId} -> ${fault.id}`);
+        scheduleSwitchCommand(cbId, "cb" as NodeKind, "open");
         isolateFault(fault);
         return true;
       }
 
       return false;
     },
-    [appendEvent, edges, getMimicData, isolateFault, nodes]
+    [appendEvent, edges, getMimicData, isolateFault, nodes, scheduleSwitchCommand]
   );
 
   const createFaultOnEdge = useCallback(

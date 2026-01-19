@@ -33,7 +33,8 @@ export function EventLog(props: {
   const flashAnchorRef = useRef(Date.now());
   const flashPhase = ((Date.now() - flashAnchorRef.current) % 2000) / 1000;
 
-  const filtered = events.filter((e) => {
+  const sorted = [...events].sort((a, b) => b.ts - a.ts);
+  const filtered = sorted.filter((e) => {
     if (!filters[e.category]) return false;
     if (!filters.acknowledged && e.acknowledged) return false;
     return true;
@@ -67,6 +68,9 @@ export function EventLog(props: {
           <input type="checkbox" checked={filters.acknowledged} onChange={() => onToggleFilter("acknowledged")} />
           ACK
         </label>
+      </div>
+      <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 10 }}>
+        Tip: click an event to acknowledge it.
       </div>
 
       {filtered.length === 0 ? (
