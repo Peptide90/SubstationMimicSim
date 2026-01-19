@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Edge, Node } from "reactflow";
 
 import type { EventCategory } from "../../components/EventLog";
@@ -46,6 +46,11 @@ export function useFaults({
   setNodes,
 }: UseFaultsParams) {
   const [faults, setFaults] = useState<Record<string, Fault>>({});
+  const faultsRef = useRef<Record<string, Fault>>({});
+
+  useEffect(() => {
+    faultsRef.current = faults;
+  }, [faults]);
 
   const addFaultNode = useCallback(
     (fault: Fault) => {
@@ -74,6 +79,7 @@ export function useFaults({
         const next = { ...m };
         if (!next[faultId]) return m;
         next[faultId] = { ...next[faultId], status: "cleared" };
+        faultsRef.current = next;
         return next;
       });
 
@@ -188,7 +194,7 @@ export function useFaults({
         );
 
         window.setTimeout(() => {
-          const stillActive = Object.values(faults).some(
+          const stillActive = Object.values(faultsRef.current).some(
             (f) => f.id === fault.id && f.status === "active"
           );
           if (!stillActive) return;
@@ -197,7 +203,7 @@ export function useFaults({
           scheduleSwitchCommand(cbId, "cb" as NodeKind, "closed");
 
           window.setTimeout(() => {
-            const still = Object.values(faults).some(
+            const still = Object.values(faultsRef.current).some(
               (f) => f.id === fault.id && f.status === "active"
             );
             if (!still) return;
@@ -293,7 +299,11 @@ export function useFaults({
         createdAt: Date.now(),
       };
 
-      setFaults((m) => ({ ...m, [faultId]: fault }));
+      setFaults((m) => {
+        const next = { ...m, [faultId]: fault };
+        faultsRef.current = next;
+        return next;
+      });
 
       appendEvent(
         "error",
