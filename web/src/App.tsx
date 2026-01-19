@@ -1,6 +1,6 @@
 import "reactflow/dist/style.css";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useEdgesState, useNodesState, useReactFlow, addEdge } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler } from "reactflow";
 
@@ -22,8 +22,8 @@ import { InterfaceNode } from "./ui/nodes/InterfaceNode";
 import { BusbarModal } from "./components/modals/BusbarModal";
 
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
-
-import { useEffect } from "react";
+import { ConfirmModal } from "./components/modals/ConfirmModal";
+import { MainMenu } from "./components/MainMenu";
 
 import { ContextMenu } from "./components/ContextMenu";
 
@@ -37,6 +37,7 @@ import { useProtection } from "./app/hooks/useProtection";
 import { useFaults } from "./app/hooks/useFaults";
 import { loadInitialProject, useTemplates } from "./app/hooks/useTemplates";
 import { useContextMenu } from "./app/hooks/useContextMenu";
+import { BUILD_TAG } from "./app/constants/branding";
 
 
 // ---------- minimal helpers (kept in App to avoid more files now) ----------
@@ -174,12 +175,13 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
 
 
 // ---------- AppInner ----------
-function AppInner() {
+function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu: () => void }) {
   const { screenToFlowPosition } = useReactFlow();
   const initialProject = useMemo(() => loadInitialProject(), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
+  const [confirmMenuOpen, setConfirmMenuOpen] = useState(false);
   
   const GRID = 20;
   const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -713,13 +715,11 @@ const isValidConnection = useCallback(
   // Modals
   const switchgearIds = useMemo(() => Object.values(switchgear).flat().map((x) => x.id).sort(), [switchgear]);
 
-  // Build tag
-  const buildTag = "SPLIT-001";
-
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#060b12" }}>
       <TopToolbar
         buildTag={buildTag}
+        onOpenMenu={() => setConfirmMenuOpen(true)}
         onOpenInterlocking={() => setOpenInterlocking(true)}
         onOpenLabelling={() => setOpenLabelling(true)}
         onOpenSaveLoad={() => setOpenSaveLoad(true)}
@@ -852,14 +852,32 @@ const isValidConnection = useCallback(
 	  	onToggleAutoIsolate={toggleAutoIsolateOnDs}
 	  	onResetCondition={resetCondition}
 	  />
+      <ConfirmModal
+        open={confirmMenuOpen}
+        title="Return to main menu?"
+        description="Returning to the main menu will discard any unsaved work. Make sure you save before leaving."
+        confirmLabel="Return to menu"
+        cancelLabel="Stay here"
+        onCancel={() => setConfirmMenuOpen(false)}
+        onConfirm={() => {
+          setConfirmMenuOpen(false);
+          onRequestMenu();
+        }}
+      />
     </div>
   );
 }
 
 export default function App() {
+  const [view, setView] = useState<"menu" | "editor">("menu");
+
   return (
     <ReactFlowProvider>
-      <AppInner />
+      {view === "menu" ? (
+        <MainMenu buildTag={BUILD_TAG} onStartSolo={() => setView("editor")} />
+      ) : (
+        <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
+      )}
     </ReactFlowProvider>
   );
 }

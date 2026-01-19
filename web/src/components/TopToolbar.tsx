@@ -1,7 +1,10 @@
 import type { CSSProperties } from "react";
 
+import { BrandingCluster } from "./BrandingCluster";
+
 type Props = {
   buildTag: string;
+  onOpenMenu: () => void;
   onOpenInterlocking: () => void;
   onOpenLabelling: () => void;
   onOpenSaveLoad: () => void;
@@ -10,6 +13,7 @@ type Props = {
 
 export function TopToolbar({
   buildTag,
+  onOpenMenu,
   onOpenInterlocking,
   onOpenLabelling,
   onOpenSaveLoad,
@@ -42,6 +46,16 @@ export function TopToolbar({
         zIndex: 1000,
       }}
     >
+      <button
+        style={{
+          ...btn,
+          background: "#1e293b",
+          borderColor: "#475569",
+        }}
+        onClick={onOpenMenu}
+      >
+        ☰ Menu
+      </button>
       <div style={{ fontWeight: 700, color: "#e5e7eb", marginRight: 12 }}>
         Substation Mimic
       </div>
@@ -59,8 +73,8 @@ export function TopToolbar({
         Power Flow
       </button>
 
-      <div style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 12 }}>
-        {buildTag}
+      <div style={{ marginLeft: "auto" }}>
+        <BrandingCluster buildTag={buildTag} variant="compact" />
       </div>
     </div>
   );
