@@ -190,8 +190,7 @@ function Lobby({
         display: "grid",
         gap: 24,
         width: "100%",
-        maxWidth: 1400,
-        margin: "0 auto",
+        maxWidth: "none",
       }}
     >
       <div>
@@ -372,8 +371,7 @@ function LobbyDetails({
         display: "grid",
         gap: 24,
         width: "100%",
-        maxWidth: 1400,
-        margin: "0 auto",
+        maxWidth: "none",
       }}
     >
       <div style={{ display: "grid", gap: 12, maxWidth: 360 }}>
