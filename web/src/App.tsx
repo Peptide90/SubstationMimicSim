@@ -25,6 +25,7 @@ import { PowerFlowModal } from "./components/modals/PowerFlowModal";
 import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { HelpModal } from "./components/modals/HelpModal";
 import { MainMenu } from "./components/MainMenu";
+import { MultiplayerApp } from "./mp/MultiplayerApp";
 
 import { ContextMenu } from "./components/ContextMenu";
 
@@ -955,15 +956,21 @@ const isValidConnection = useCallback(
 }
 
 export default function App() {
-  const [view, setView] = useState<"menu" | "editor">("menu");
+  const [view, setView] = useState<"menu" | "editor" | "mp">("menu");
 
   return (
     <ReactFlowProvider>
       {view === "menu" ? (
-        <MainMenu buildTag={BUILD_TAG} onStartSolo={() => setView("editor")} />
-      ) : (
+        <MainMenu
+          buildTag={BUILD_TAG}
+          onStartSolo={() => setView("editor")}
+          onStartMultiplayer={() => setView("mp")}
+        />
+      ) : null}
+      {view === "editor" ? (
         <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
-      )}
+      ) : null}
+      {view === "mp" ? <MultiplayerApp onExit={() => setView("menu")} /> : null}
     </ReactFlowProvider>
   );
 }
