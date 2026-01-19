@@ -1,4 +1,5 @@
-import React from "react";
+import { useState } from "react";
+import type { ReactNode } from "react";
 import type { SwitchState } from "../../core/model";
 
 export type InterlockRule = {
@@ -9,7 +10,7 @@ export type InterlockRule = {
   condState: SwitchState;
 };
 
-function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
+function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
   const { title, open, onClose, children } = props;
   if (!open) return null;
   return (
@@ -64,10 +65,10 @@ export function InterlockingModal(props: {
 }) {
   const { open, onClose, switchgearIds, rules, setRules, appendDebug } = props;
 
-  const [actionNodeId, setActionNodeId] = React.useState("DS1");
-  const [actionTo, setActionTo] = React.useState<SwitchState>("closed");
-  const [condNodeId, setCondNodeId] = React.useState("ES1");
-  const [condState, setCondState] = React.useState<SwitchState>("closed");
+  const [actionNodeId, setActionNodeId] = useState("DS1");
+  const [actionTo, setActionTo] = useState<SwitchState>("closed");
+  const [condNodeId, setCondNodeId] = useState("ES1");
+  const [condState, setCondState] = useState<SwitchState>("closed");
 
   const addRule = () => {
     const id = `il-${crypto.randomUUID().slice(0, 6)}`;

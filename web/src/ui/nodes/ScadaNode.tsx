@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Handle, Position, useNodeId, useStore } from "reactflow";
 import type { NodeProps, Edge } from "reactflow";
 import type { NodeKind } from "../../core/model";
@@ -164,7 +164,7 @@ export function ScadaNode(props: NodeProps) {
   );
 
   // Transformer: 4 terminals (primary/secondary/tertiary/neutral) centered, no manual left offsets.
-  const txHandles = () => (
+  const TxHandles = () => (
     <>
       {/* L/R aligned to the same centreline as CB/DS chains */}
       {/* Visible target handles */}
@@ -210,7 +210,7 @@ export function ScadaNode(props: NodeProps) {
 
 
   const renderHandles = () => {
-    if (kind === "tx") return <txHandles />;
+    if (kind === "tx") return <TxHandles />;
     if (kind === "cb" || kind === "ds" || kind === "es") return <AxisHandles />;
     return <AxisHandles />;
   };

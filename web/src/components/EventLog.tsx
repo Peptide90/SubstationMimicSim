@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import { useRef } from "react";
 
 export type EventCategory = "info" | "warn" | "error" | "debug";
 export type EventLogFilters = Record<EventCategory, boolean> & { acknowledged: boolean };

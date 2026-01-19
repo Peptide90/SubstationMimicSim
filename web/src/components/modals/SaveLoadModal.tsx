@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import type { ReactNode } from "react";
 
-function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
+function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
   const { title, open, onClose, children } = props;
   if (!open) return null;
   return (
@@ -73,7 +74,7 @@ export function SaveLoadModal(props: {
     onLoadTemplate,
   } = props;
 
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Group templates by category (minimal changes, derived here)
   const { grouped, categories } = useMemo(() => {

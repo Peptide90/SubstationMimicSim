@@ -1,5 +1,4 @@
 import type { DragEvent } from 'react';
-import React from 'react';
 import type { NodeKind } from '../core/model';
 
 type PaletteItem = {

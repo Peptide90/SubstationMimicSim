@@ -12,7 +12,6 @@ import { EditorCanvas } from "./components/EditorCanvas";
 import { ScadaPanel } from "./components/ScadaPanel";
 
 import { InterlockingModal } from "./components/modals/InterlockingModal";
-import type { InterlockRule } from "./components/modals/InterlockingModal";
 import { LabellingModal } from "./components/modals/LabellingModal";
 import { SaveLoadModal } from "./components/modals/SaveLoadModal";
 
@@ -23,7 +22,6 @@ import { InterfaceNode } from "./ui/nodes/InterfaceNode";
 import { BusbarModal } from "./components/modals/BusbarModal";
 
 import { PowerFlowModal } from "./components/modals/PowerFlowModal";
-import type { InterfaceMeta } from "./components/modals/PowerFlowModal";
 
 import { useEffect } from "react";
 
@@ -31,18 +29,7 @@ import { ContextMenu } from "./components/ContextMenu";
 
 import { FaultNode } from "./ui/nodes/FaultNode";
 
-import {
-  computeBp109Label,
-  defaultBp109Meta,
-  schemaDefaultPrefix,
-} from "./app/labeling/bp109";
-
-import type {
-  BP109Meta,
-  LabelMode,
-  LabelScheme,
-  BayType,
-} from "./app/labeling/bp109";
+import { computeBp109Label, defaultBp109Meta } from "./app/labeling/bp109";
 
 import { useEventLog } from "./app/hooks/useEventLog";
 import { useSwitchCommands } from "./app/hooks/useSwitchCommands";
@@ -843,7 +830,6 @@ const isValidConnection = useCallback(
 	  <ContextMenu
 	  	ctxMenu={ctxMenu}
 	  	onClose={onPaneClick}
-	  	getEdgeById={getEdgeById}
 	  	getNodeById={getNodeById}
 	  	getNodeKind={getNodeKindForMenu}
 	  	getBusbarIdForEdgeId={(edgeId) => {

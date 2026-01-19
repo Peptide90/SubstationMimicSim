@@ -1,11 +1,11 @@
-import React from "react";
+import type { CSSProperties } from "react";
 import { Handle, Position } from "reactflow";
 import type { NodeProps } from "reactflow";
 
 export function JunctionNode(_props: NodeProps) {
   const size = 18;
 
-  const h: React.CSSProperties = {
+  const h: CSSProperties = {
     width: size,
     height: size,
     opacity: 0,
