@@ -31,10 +31,9 @@ npm install
 npm run dev:client
 ```
 
-To start the multiplayer server in a separate terminal:
+To start the multiplayer server in a separate terminal (recommended from `web/` so it uses the server's own dependencies):
 
 ```bash
-npm install
 npm run dev:server
 ```
 
