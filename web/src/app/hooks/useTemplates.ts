@@ -34,7 +34,7 @@ export function loadInitialProject(): TemplateProject {
 }
 
 type UseTemplatesParams = {
-  appendEvent: (category: EventCategory, msg: string) => void;
+  appendEvent: (category: EventCategory, msg: string, options?: { source?: "player" | "system" }) => void;
   bayTypeOverrides: Record<string, BayType>;
   bp109MetaById: Record<string, BP109Meta>;
   edges: Edge[];
@@ -124,7 +124,7 @@ export function useTemplates({
     a.download = `${saveTitle.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 40) || "mimic-template"}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    appendEvent("debug", "Saved template JSON");
+    appendEvent("debug", "Saved template JSON", { source: "player" });
   }, [appendEvent, saveTitle, serializeProject]);
 
   const onLoadFile = useCallback(
@@ -146,7 +146,7 @@ export function useTemplates({
       if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
       if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
       if (parsed.interlocks) setInterlocks(parsed.interlocks);
-      appendEvent("debug", `Loaded ${file.name}`);
+      appendEvent("debug", `Loaded ${file.name}`, { source: "player" });
     },
     [
       appendEvent,
@@ -195,7 +195,7 @@ export function useTemplates({
       if (parsed.interlocks) setInterlocks(parsed.interlocks);
       if (parsed.interfaceMetaById) setInterfaceMetaById(parsed.interfaceMetaById);
 
-      appendEvent("debug", `Loaded template: ${id}`);
+      appendEvent("debug", `Loaded template: ${id}`, { source: "player" });
     },
     [
       appendEvent,

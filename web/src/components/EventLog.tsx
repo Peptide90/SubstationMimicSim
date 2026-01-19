@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 
 export type EventCategory = "info" | "warn" | "error" | "debug";
 export type EventLogFilters = Record<EventCategory, boolean> & { acknowledged: boolean };
@@ -30,6 +30,8 @@ export function EventLog(props: {
   const totalAlarms = events.filter((e) => e.category !== "debug").length;
   const totalErrors = events.filter((e) => e.category === "error").length;
   const acknowledgedAlarms = events.filter((e) => e.category !== "debug" && e.acknowledged).length;
+  const flashAnchorRef = useRef(Date.now());
+  const flashPhase = ((Date.now() - flashAnchorRef.current) % 2000) / 1000;
 
   const filtered = events.filter((e) => {
     if (!filters[e.category]) return false;
@@ -102,6 +104,7 @@ export function EventLog(props: {
                 color: baseColor,
                 cursor: "pointer",
                 animation: shouldFlash ? flashAnim : undefined,
+                animationDelay: shouldFlash ? `-${flashPhase}s` : undefined,
               }}
             >
               <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace' }}>

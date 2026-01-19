@@ -4,7 +4,7 @@ import type { Node } from "reactflow";
 import type { EventCategory } from "../../components/EventLog";
 
 type UseProtectionParams = {
-  appendEvent: (category: EventCategory, msg: string) => void;
+  appendEvent: (category: EventCategory, msg: string, options?: { source?: "player" | "system" }) => void;
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
 };
 
@@ -26,7 +26,7 @@ export function useProtection({ appendEvent, setNodes }: UseProtectionParams) {
           return { ...n, data: { ...(n.data as any), protection: next } };
         })
       );
-      appendEvent("info", `DAR toggled on ${cbNodeId}`);
+      appendEvent("info", `DAR toggled on ${cbNodeId}`, { source: "player" });
     },
     [appendEvent, setNodes]
   );
@@ -44,7 +44,7 @@ export function useProtection({ appendEvent, setNodes }: UseProtectionParams) {
           return { ...n, data: { ...(n.data as any), protection: next } };
         })
       );
-      appendEvent("info", `Auto isolation toggled on ${dsNodeId}`);
+      appendEvent("info", `Auto isolation toggled on ${dsNodeId}`, { source: "player" });
     },
     [appendEvent, setNodes]
   );

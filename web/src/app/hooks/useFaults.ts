@@ -29,7 +29,7 @@ export type Fault = {
 };
 
 type UseFaultsParams = {
-  appendEvent: (category: EventCategory, msg: string) => void;
+  appendEvent: (category: EventCategory, msg: string, options?: { source?: "player" | "system" }) => void;
   edges: Edge[];
   getMimicData: (node: Node) => MimicData | null;
   nodes: Node[];
@@ -74,7 +74,7 @@ export function useFaults({
   );
 
   const clearFaultById = useCallback(
-    (faultId: string) => {
+    (faultId: string, source: "player" | "system" = "system") => {
       setFaults((m) => {
         const next = { ...m };
         if (!next[faultId]) return m;
@@ -85,7 +85,7 @@ export function useFaults({
 
       setNodes((ns) => ns.filter((n) => !((n.type === "fault") && (n.data as any)?.faultId === faultId)));
 
-      appendEvent("info", `FAULT CLEARED ${faultId}`);
+      appendEvent("info", `FAULT CLEARED ${faultId}`, { source });
     },
     [appendEvent, setNodes]
   );
@@ -401,7 +401,7 @@ export function useFaults({
         })
       );
 
-      appendEvent("info", `RESET ${nodeId}`);
+      appendEvent("info", `RESET ${nodeId}`, { source: "player" });
     },
     [appendEvent, getMimicData, setNodes]
   );

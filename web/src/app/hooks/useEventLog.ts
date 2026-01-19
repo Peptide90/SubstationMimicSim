@@ -2,6 +2,10 @@ import { useCallback, useState } from "react";
 
 import type { EventCategory, EventLogFilters, EventLogItem } from "../../components/EventLog";
 
+type AppendEventOptions = {
+  source?: "player" | "system";
+};
+
 export function useEventLog() {
   const [events, setEvents] = useState<EventLogItem[]>([]);
   const [filters, setFilters] = useState<EventLogFilters>({
@@ -12,9 +16,11 @@ export function useEventLog() {
     acknowledged: true,
   });
 
-  const appendEvent = useCallback((category: EventCategory, msg: string) => {
+  const appendEvent = useCallback((category: EventCategory, msg: string, options?: AppendEventOptions) => {
+    const source = options?.source ?? "system";
+    const acknowledged = source === "player";
     setEvents((ev) => [
-      { id: crypto.randomUUID(), ts: Date.now(), category, msg, acknowledged: false },
+      { id: crypto.randomUUID(), ts: Date.now(), category, msg, acknowledged },
       ...ev,
     ].slice(0, 500));
   }, []);
