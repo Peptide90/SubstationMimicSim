@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { io, type Socket } from "socket.io-client";
 
 import type {
   Award,
@@ -18,6 +17,22 @@ type Props = {
   onExit: () => void;
 };
 
+type MpSocket = {
+  id?: string;
+  on: <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]) => void;
+  emit: <K extends keyof ClientToServerEvents>(
+    event: K,
+    payload: Parameters<ClientToServerEvents[K]>[0]
+  ) => void;
+  disconnect: () => void;
+};
+
+declare global {
+  interface Window {
+    io?: (url: string, options?: { transports?: string[] }) => MpSocket;
+  }
+}
+
 const MP_SERVER_URL = import.meta.env.VITE_MP_SERVER_URL ?? "http://localhost:3001";
 const ROLE_LABELS: Record<Role, string> = {
   gm: "Game Master",
@@ -33,7 +48,7 @@ const ROLE_ACTIONS: Array<{ id: Role; label: string }> = [
 ];
 
 export function MultiplayerApp({ onExit }: Props) {
-  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
+  const socketRef = useRef<MpSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [tick, setTick] = useState<GameTick | null>(null);
@@ -42,7 +57,11 @@ export function MultiplayerApp({ onExit }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
-    const socket = io(MP_SERVER_URL, { transports: ["websocket"] });
+    if (!window.io) {
+      setError("Socket.IO client failed to load. Please refresh the page.");
+      return undefined;
+    }
+    const socket = window.io(MP_SERVER_URL, { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -158,7 +177,7 @@ function Lobby({
   socket,
   connected,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  socket: MpSocket | null;
   connected: boolean;
 }) {
   const [joinCode, setJoinCode] = useState("");
@@ -233,7 +252,7 @@ function RoomView({
   tick,
   currentPlayer,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   room: RoomState;
   tick: GameTick | null;
   currentPlayer: Player | null;
@@ -287,7 +306,7 @@ function PlayerLayout({
   roleChoice,
   onRoleChoiceChange,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   room: RoomState;
   tick: GameTick | null;
   currentPlayer: Player | null;
@@ -336,7 +355,7 @@ function LobbyDetails({
   roleChoice,
   onRoleChoiceChange,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   room: RoomState;
   tick: GameTick | null;
   currentPlayer: Player | null;
@@ -492,7 +511,7 @@ function GameMasterLayout({
   tick,
   currentPlayer,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   room: RoomState;
   tick: GameTick | null;
   currentPlayer: Player | null;
@@ -572,7 +591,7 @@ function GameMasterPanel({
   socket,
 }: {
   room: RoomState;
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
 }) {
   const [teamCount, setTeamCount] = useState(room.teams.length);
   const [orgName, setOrgName] = useState(room.orgName ?? "");
@@ -857,7 +876,7 @@ function RoleView({
   readOnly = false,
 }: {
   role: Role;
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   room: RoomState;
   readOnly?: boolean;
 }) {
@@ -887,7 +906,7 @@ function OperatorView({
   events,
   readOnly,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   events: RoomState["eventLog"];
   readOnly: boolean;
 }) {
@@ -924,7 +943,7 @@ function FieldView({
   socket,
   readOnly,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   readOnly: boolean;
 }) {
   const [status, setStatus] = useState("Awaiting inspection command.");
@@ -959,7 +978,7 @@ function PlannerView({
   socket,
   readOnly,
 }: {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  socket: MpSocket;
   readOnly: boolean;
 }) {
   return (
