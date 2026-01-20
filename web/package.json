@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc -b --noEmit",
     "format": "prettier . --write"
   },
   "dependencies": {
