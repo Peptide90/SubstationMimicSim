@@ -5,9 +5,10 @@ import { BrandingCluster } from "./BrandingCluster";
 type Props = {
   buildTag: string;
   onStartSolo: () => void;
+  onStartMultiplayer: () => void;
 };
 
-export function MainMenu({ buildTag, onStartSolo }: Props) {
+export function MainMenu({ buildTag, onStartSolo, onStartMultiplayer }: Props) {
   const buttonStyle: CSSProperties = {
     width: "min(420px, 90vw)",
     padding: "14px 18px",
@@ -20,11 +21,6 @@ export function MainMenu({ buildTag, onStartSolo }: Props) {
     cursor: "pointer",
   };
 
-  const disabledStyle: CSSProperties = {
-    ...buttonStyle,
-    opacity: 0.5,
-    cursor: "not-allowed",
-  };
 
   return (
     <div
@@ -53,8 +49,8 @@ export function MainMenu({ buildTag, onStartSolo }: Props) {
         <button style={buttonStyle} onClick={onStartSolo}>
           Solo: Substation Mimic Builder
         </button>
-        <button style={disabledStyle} disabled>
-          Multiplayer (Coming soon)
+        <button style={buttonStyle} onClick={onStartMultiplayer}>
+          Multiplayer Grid Game
         </button>
       </div>
 

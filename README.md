@@ -21,3 +21,35 @@ Advanced planned features:
 - [ ] Control panel event log (SCADA like)
 
 ## How to Build
+
+## How to Run Locally (Multiplayer MVP)
+
+From the `web/` directory (recommended so the server can reuse the same node_modules):
+
+```bash
+npm install
+npm run dev:client
+```
+
+To start the multiplayer server in a separate terminal (this script will ensure the server dependencies are installed):
+
+```bash
+npm run dev:server
+```
+
+If you prefer running the server directly from the `server/` directory instead:
+
+```bash
+cd server
+npm install
+npm run dev
+```
+
+Or run both together:
+
+```bash
+npm install
+npm run dev:mp
+```
+
+By default, the multiplayer server listens on `http://localhost:3001`. Set `VITE_MP_SERVER_URL` to point the client at a different endpoint if needed.

@@ -1,0 +1,28 @@
+{
+  "id": "baseline-restoration",
+  "name": "Baseline Restoration",
+  "durationSec": 300,
+  "events": [
+    {
+      "id": "evt-1",
+      "atSec": 15,
+      "type": "fault",
+      "description": "Feeder F1 trips - investigate protection relay logs.",
+      "points": 5
+    },
+    {
+      "id": "evt-2",
+      "atSec": 75,
+      "type": "alarm",
+      "description": "Transformer T2 temperature alarm.",
+      "points": 3
+    },
+    {
+      "id": "evt-3",
+      "atSec": 140,
+      "type": "fault",
+      "description": "Busbar differential relay pickup at BB-2.",
+      "points": 8
+    }
+  ]
+}
