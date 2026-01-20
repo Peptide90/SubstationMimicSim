@@ -17,9 +17,18 @@ type Props = {
   onExit: () => void;
 };
 
+type ReservedSocketEvents = {
+  connect: () => void;
+  disconnect: (reason?: string) => void;
+  connect_error?: (err: unknown) => void;
+};
+
 type MpSocket = {
   id?: string;
-  on: <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]) => void;
+  on: {
+    <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]): void;
+    <K extends keyof ReservedSocketEvents>(event: K, handler: ReservedSocketEvents[K]): void;
+  };
   emit: <K extends keyof ClientToServerEvents>(
     event: K,
     payload: Parameters<ClientToServerEvents[K]>[0]
