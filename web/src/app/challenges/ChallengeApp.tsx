@@ -19,7 +19,6 @@ import { JunctionNode } from "../../ui/nodes/JunctionNode";
 import { ScadaNode } from "../../ui/nodes/ScadaNode";
 import { InterfaceNode } from "../../ui/nodes/InterfaceNode";
 import { FaultNode } from "../../ui/nodes/FaultNode";
-import { styleEdgesByEnergization } from "../../ui/energizedStyling";
 
 const GRID = 20;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -70,7 +69,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [view, setView] = useState<ChallengeView>("levels");
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [progress, setProgress] = useState(loadChallengeProgress());
-  const [panelTab, setPanelTab] = useState("Instructions");
 
   const scenario = activeScenarioId ? getScenarioById(activeScenarioId) : undefined;
   const initialNodes = scenario ? buildNodesFromScenario(scenario) : [];
@@ -106,7 +104,22 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     });
     return computeEnergized(nodesForEnergize as any, mimicEdges as any);
   }, [mimicEdges, mimicNodes]);
-  const styledEdges = useMemo(() => styleEdgesByEnergization(edges, energized.energizedEdgeIds), [edges, energized.energizedEdgeIds]);
+  const styledEdges = useMemo(
+    () =>
+      edges.map((edge) => {
+        const energizedEdge = energized.energizedEdgeIds.has(edge.id);
+        return {
+          ...edge,
+          style: {
+            ...(edge.style as any),
+            stroke: energizedEdge ? "#00e5ff" : "#64748b",
+            strokeWidth: energizedEdge ? 4 : 3,
+          },
+          animated: energizedEdge,
+        };
+      }),
+    [edges, energized.energizedEdgeIds]
+  );
 
   const resetScenario = useCallback(
     (nextScenario: ChallengeScenario) => {
@@ -120,7 +133,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setTutorialViolations(0);
       setLiveIssues([]);
       tutorialActionLog.current = createTutorialActionLog();
-      setPanelTab("Instructions");
     },
     [setEdges, setNodes]
   );
@@ -319,7 +331,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     });
     setEvaluation(evaluationResult);
     setIssues(evaluationResult.issues);
-    setPanelTab("Results");
     const completed = scenario.type === "tutorial" ? evaluationResult.objectives.every((o) => o.passed) : evaluationResult.stars > 0;
     const nextProgress = updateChallengeProgress(scenario.id, evaluationResult.stars, completed);
     setProgress(nextProgress);
@@ -354,18 +365,10 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setTutorialState((s) => ({ stepIndex: Math.min(s.stepIndex + 1, scenario.tutorialSteps!.length) }));
   }, [scenario?.tutorialSteps, tutorialProgress.canAdvance]);
 
-  const unlockedScenarios = useMemo(() => {
-    const unlocked = new Set<string>();
-    CHALLENGE_SCENARIOS.forEach((scenarioItem, index) => {
-      if (index === 0) {
-        unlocked.add(scenarioItem.id);
-        return;
-      }
-      const prev = CHALLENGE_SCENARIOS[index - 1];
-      if (progress[prev.id]?.completed) unlocked.add(scenarioItem.id);
-    });
-    return unlocked;
-  }, [progress]);
+  const unlockedScenarios = useMemo(
+    () => new Set(CHALLENGE_SCENARIOS.map((scenarioItem) => scenarioItem.id)),
+    []
+  );
 
   if (view === "levels") {
     return (
@@ -490,8 +493,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         <ChallengePanel
           title={scenario.title}
           description={scenario.description}
-          activeTab={panelTab}
-          onSelectTab={setPanelTab}
           objectives={scenario.objectives}
           evaluation={evaluation}
           tutorialStep={tutorialStep}

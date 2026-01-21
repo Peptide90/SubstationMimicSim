@@ -11,12 +11,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     initialGraph: {
       locked: {
         nodes: [
-          makeNode("iface", "SRC-1", 80, 140, {
+          makeNode("iface", "SRC-1", 40, 140, {
             label: "Source",
             iface: { substationId: "SUB", terminalId: "S1" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-1", 520, 140, {
+          makeNode("iface", "LOAD-1", 760, 140, {
             label: "Load",
             iface: { substationId: "SUB", terminalId: "L1" },
             locked: true,
@@ -28,7 +28,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     },
     buildRules: {
       allowedPalette: ["cb", "ds"],
-      buildZones: [{ x: 160, y: 80, width: 320, height: 160 }],
+      buildZones: [{ x: 200, y: 80, width: 400, height: 160 }],
       lockedNodes: ["SRC-1", "LOAD-1"],
       lockedEdges: [],
     },
@@ -83,12 +83,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     initialGraph: {
       locked: {
         nodes: [
-          makeNode("iface", "SRC-2", 80, 140, {
+          makeNode("iface", "SRC-2", 40, 140, {
             label: "Source",
             iface: { substationId: "SUB", terminalId: "S2" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-2", 520, 140, {
+          makeNode("iface", "LOAD-2", 760, 140, {
             label: "Load",
             iface: { substationId: "SUB", terminalId: "L2" },
             locked: true,
@@ -98,8 +98,8 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       },
       player: {
         nodes: [
-          makeNode("ds", "DS-2", 220, 140, { state: "closed" }),
-          makeNode("cb", "CB-2", 360, 140, { state: "closed" }),
+          makeNode("ds", "DS-2", 320, 140, { state: "closed" }),
+          makeNode("cb", "CB-2", 500, 140, { state: "closed" }),
         ],
         edges: [
           makeBusbarEdge("SRC-2", "DS-2", "R", "L", "bb-t2-1", "bb-t2-1"),
@@ -150,12 +150,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     initialGraph: {
       locked: {
         nodes: [
-          makeNode("iface", "SRC-3", 80, 140, {
+          makeNode("iface", "SRC-3", 40, 140, {
             label: "Source",
             iface: { substationId: "SUB", terminalId: "S3" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-3", 520, 140, {
+          makeNode("iface", "LOAD-3", 760, 140, {
             label: "Load",
             iface: { substationId: "SUB", terminalId: "L3" },
             locked: true,
@@ -165,9 +165,9 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       },
       player: {
         nodes: [
-          makeNode("ds", "DS-3A", 220, 140, { state: "open" }),
-          makeNode("cb", "CB-3", 360, 140, { state: "open" }),
-          makeNode("ds", "DS-3B", 440, 140, { state: "open" }),
+          makeNode("ds", "DS-3A", 300, 140, { state: "open" }),
+          makeNode("cb", "CB-3", 480, 140, { state: "open" }),
+          makeNode("ds", "DS-3B", 620, 140, { state: "open" }),
         ],
         edges: [
           makeBusbarEdge("SRC-3", "DS-3A", "R", "L", "bb-t3-1", "bb-t3-1"),
@@ -217,12 +217,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     initialGraph: {
       locked: {
         nodes: [
-          makeNode("iface", "SRC-L1", 80, 140, {
+          makeNode("iface", "SRC-L1", 40, 140, {
             label: "Source",
             iface: { substationId: "SUB", terminalId: "S4" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-L1", 520, 140, {
+          makeNode("iface", "LOAD-L1", 760, 140, {
             label: "Load",
             iface: { substationId: "SUB", terminalId: "L4" },
             locked: true,
@@ -235,7 +235,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     buildRules: {
       allowedPalette: ["cb", "ds", "tx"],
       maxCounts: { cb: 2, ds: 3, tx: 1 },
-      buildZones: [{ x: 160, y: 80, width: 320, height: 160 }],
+      buildZones: [{ x: 200, y: 80, width: 400, height: 160 }],
       lockedNodes: ["SRC-L1", "LOAD-L1"],
       lockedEdges: [],
     },
