@@ -2,32 +2,40 @@
   "id": "baseline-restoration",
   "name": "Baseline Restoration",
   "durationSec": 300,
+  "mimicTemplateId": "mp-training-bay",
+  "assetThresholds": {
+    "tx": {
+      "oilLevelPct": { "low": 65, "high": 95, "highHigh": 98, "lockoutLow": 40 },
+      "windingTempC": { "high": 90, "highHigh": 110 }
+    },
+    "cb": {
+      "gasLevelPct": { "low": 60, "high": 90, "highHigh": 95, "lockoutLow": 35 }
+    }
+  },
   "events": [
     {
       "id": "evt-1",
       "atSec": 12,
       "type": "dbi",
-      "description": "TX-1 telemetry went indeterminate.",
-      "assetId": "tx-1",
+      "description": "TX1 telemetry went indeterminate.",
+      "assetId": "TX1",
       "points": 3
     },
     {
       "id": "evt-2",
       "atSec": 45,
-      "type": "alarm",
-      "description": "Transformer TX-1 temperature alarm.",
-      "assetId": "tx-1",
-      "alarmSeverity": "high",
-      "messageShort": "TX-1 high temperature alarm.",
-      "messageDetail": "TX-1 winding temp 112°C. Cooling fan offline.",
+      "type": "telemetry",
+      "description": "Transformer TX1 temperature rising.",
+      "assetId": "TX1",
+      "telemetry": { "windingTempC": 112, "oilLevelPct": 58 },
       "points": 4
     },
     {
       "id": "evt-3",
       "atSec": 80,
       "type": "remote_fail",
-      "description": "CB-2 remote switching fails.",
-      "assetId": "cb-2",
+      "description": "CB1 remote switching fails.",
+      "assetId": "CB1",
       "points": 5
     },
     {
@@ -37,6 +45,15 @@
       "description": "System frequency sag from regional load spike.",
       "frequencyDelta": -0.4,
       "points": 4
+    },
+    {
+      "id": "evt-5",
+      "atSec": 150,
+      "type": "telemetry",
+      "description": "CB1 gas pressure dropping.",
+      "assetId": "CB1",
+      "telemetry": { "gasLevelPct": 30 },
+      "points": 3
     }
   ]
 }

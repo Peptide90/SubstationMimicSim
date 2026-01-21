@@ -1,17 +1,51 @@
 export type Role = "gm" | "operator" | "field" | "planner";
 
-export type AssetType = "cb" | "ds" | "tx" | "bus";
+export type AssetType = "cb" | "ds" | "es" | "tx" | "bus";
 
 export type AssetStatus = "open" | "closed" | "tripped" | "unknown";
 
-export type AssetTelemetry = {
+export type TransformerTelemetry = {
+  kind: "tx";
   windingTempC: number;
   oilLevelPct: number;
 };
 
+export type BreakerTelemetry = {
+  kind: "cb";
+  gasLevelPct: number;
+};
+
+export type EmptyTelemetry = {
+  kind: "none";
+};
+
+export type AssetTelemetry = TransformerTelemetry | BreakerTelemetry | EmptyTelemetry;
+
+export type LevelThresholds = {
+  low: number;
+  high: number;
+  highHigh: number;
+  lockoutLow: number;
+};
+
+export type TempThresholds = {
+  high: number;
+  highHigh: number;
+};
+
+export type AssetThresholds = {
+  oilLevelPct?: LevelThresholds;
+  gasLevelPct?: LevelThresholds;
+  windingTempC?: TempThresholds;
+};
+
+export type AssetThresholdsByType = Partial<Record<AssetType, AssetThresholds>>;
+
 export type AssetTruth = {
   status: AssetStatus;
   telemetry: AssetTelemetry;
+  lockout: boolean;
+  observations: string[];
   lastTruthUpdated: number;
 };
 
@@ -19,6 +53,7 @@ export type AssetScada = {
   status: AssetStatus;
   telemetry: AssetTelemetry;
   dbi: boolean;
+  lockout: boolean;
   lastScadaUpdated: number;
 };
 
@@ -28,6 +63,7 @@ export type Asset = {
   type: AssetType;
   remoteControllable: boolean;
   remoteFails?: boolean;
+  thresholds?: AssetThresholds;
   truth: AssetTruth;
   scada: AssetScada;
   lastUpdated: number;
@@ -47,6 +83,7 @@ export type FieldReport = {
   assetId: string;
   status: AssetStatus;
   telemetry: AssetTelemetry;
+  lockout: boolean;
   reportedBy: string;
   timestamp: number;
 };
@@ -94,6 +131,24 @@ export type AlarmEvent = {
   assetId?: string;
 };
 
+export type FieldLocation = "none" | "scadaPanel" | `asset:${string}`;
+
+export type CommsMessageType =
+  | "Switching Instruction"
+  | "Field Report"
+  | "Planner Request"
+  | "General Note";
+
+export type CommsMessage = {
+  id: string;
+  timestamp: number;
+  authorId: string;
+  authorName: string;
+  authorRole: Role;
+  type: CommsMessageType;
+  text: string;
+};
+
 export type SystemState = {
   frequencyHz: number;
   lastUpdated: number;
@@ -127,6 +182,11 @@ export type ScenarioEvent = {
   alarmSeverity?: AlarmSeverity;
   messageShort?: string;
   messageDetail?: string;
+  telemetry?: {
+    windingTempC?: number;
+    oilLevelPct?: number;
+    gasLevelPct?: number;
+  };
 };
 
 export type Scenario = {
@@ -134,6 +194,8 @@ export type Scenario = {
   name: string;
   durationSec: number;
   events: ScenarioEvent[];
+  mimicTemplateId?: string;
+  assetThresholds?: AssetThresholdsByType;
 };
 
 export type GameEvent = {
@@ -184,6 +246,8 @@ export type RoomState = {
   workOrders: WorkOrder[];
   plannerRequests: PlannerRequest[];
   systemState: SystemState;
+  commsLog: CommsMessage[];
+  fieldLocation?: FieldLocation;
   orgName?: string;
   resultsVisible: boolean;
   autoAnnounceResults: boolean;
@@ -286,14 +350,12 @@ export type FieldAcceptWorkOrderPayload = {
   workOrderId: string;
 };
 
-export type FieldInspectAssetPayload = {
-  assetId: string;
-};
 
 export type FieldReportAssetPayload = {
   assetId: string;
   status: AssetStatus;
   telemetry: AssetTelemetry;
+  lockout: boolean;
 };
 
 export type FieldManualOperatePayload = {
@@ -320,6 +382,27 @@ export type OperatorConnectGeneratorPayload = {
   amountHz?: number;
 };
 
+export type PostCommsMessagePayload = {
+  type: CommsMessageType;
+  text: string;
+};
+
+export type FieldSetLocationPayload = {
+  location: FieldLocation;
+};
+
+export type FieldResetLockoutPayload = {
+  assetId: string;
+};
+
+export type FieldPerformMaintenancePayload = {
+  assetId: string;
+};
+
+export type FieldAcknowledgeAlarmPayload = {
+  alarmId: string;
+};
+
 export interface ClientToServerEvents {
   "mp/createRoom": (payload: CreateRoomPayload) => void;
   "mp/joinRoom": (payload: JoinRoomPayload) => void;
@@ -340,13 +423,17 @@ export interface ClientToServerEvents {
   "mp/operatorRemoteSwitch": (payload: OperatorRemoteSwitchPayload) => void;
   "mp/createWorkOrder": (payload: CreateWorkOrderPayload) => void;
   "mp/fieldAcceptWorkOrder": (payload: FieldAcceptWorkOrderPayload) => void;
-  "mp/fieldInspectAsset": (payload: FieldInspectAssetPayload) => void;
   "mp/fieldReportAsset": (payload: FieldReportAssetPayload) => void;
   "mp/fieldManualOperate": (payload: FieldManualOperatePayload) => void;
   "mp/operatorConfirmAsset": (payload: OperatorConfirmAssetPayload) => void;
   "mp/plannerRequest": (payload: PlannerRequestPayload) => void;
   "mp/operatorHandlePlannerRequest": (payload: OperatorHandlePlannerRequestPayload) => void;
   "mp/operatorConnectGenerator": (payload: OperatorConnectGeneratorPayload) => void;
+  "mp/postCommsMessage": (payload: PostCommsMessagePayload) => void;
+  "mp/fieldSetLocation": (payload: FieldSetLocationPayload) => void;
+  "mp/fieldResetLockout": (payload: FieldResetLockoutPayload) => void;
+  "mp/fieldPerformMaintenance": (payload: FieldPerformMaintenancePayload) => void;
+  "mp/fieldAcknowledgeAlarm": (payload: FieldAcknowledgeAlarmPayload) => void;
 }
 
 export interface ServerToClientEvents {

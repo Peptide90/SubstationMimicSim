@@ -8,6 +8,7 @@ export type TemplateCatalogEntry = {
 
 export const TEMPLATE_CATALOG: TemplateCatalogEntry[] = [
   { id: "test-line-bay", category: "Examples", order: 10, featured: true },
+  { id: "mp-training-bay", category: "Multiplayer", order: 30, featured: false, hidden: true },
   { id: "full-busbar-arrangement", category: "Busbars", order: 20, featured: true },
 
   // Add more entries as you create templates; anything not listed will still appear.

@@ -10,8 +10,17 @@ import type {
   AssetStatus,
   AssetTelemetry,
   AssetView,
+  AssetThresholds,
+  AssetThresholdsByType,
+  BreakerTelemetry,
+  CommsMessage,
+  FieldAcknowledgeAlarmPayload,
   FieldReportAssetPayload,
   FieldReport,
+  FieldLocation,
+  FieldPerformMaintenancePayload,
+  FieldResetLockoutPayload,
+  FieldSetLocationPayload,
   GameEvent,
   GameTick,
   GrantPointsPayload,
@@ -19,6 +28,7 @@ import type {
   OperatorConfirmAssetPayload,
   OperatorRemoteSwitchPayload,
   OperatorHandlePlannerRequestPayload,
+  PostCommsMessagePayload,
   PlannerRequest,
   Player,
   RoomState,
@@ -26,6 +36,7 @@ import type {
   ScenarioEvent,
   ScoreActionPayload,
   ServerToClientEvents,
+  TransformerTelemetry,
   SetAvailableRolesPayload,
   SetAutoAnnounceResultsPayload,
   SetGmAwardsPayload,
@@ -34,6 +45,8 @@ import type {
   SetTeamsPayload,
   SetTeamNamesPayload,
   Team,
+  TempThresholds,
+  LevelThresholds,
   WorkOrder,
 } from "../shared/mpTypes";
 
@@ -49,9 +62,8 @@ type RoomRuntime = RoomState & {
   fieldReportsByAsset: Map<string, FieldReport>;
   workOrdersInternal: WorkOrder[];
   plannerRequestsInternal: PlannerRequest[];
-  eventLogShortInternal: AlarmEvent[];
-  eventLogDetailInternal: AlarmEvent[];
-  inspectionLog: Map<string, number>;
+  fieldLocations: Map<string, FieldLocation>;
+  assetAlarmStates: Map<string, AssetAlarmState>;
 };
 
 const PORT = Number(process.env.MP_SERVER_PORT ?? 3001);
@@ -64,7 +76,6 @@ const DEFAULT_TEAMS = 2;
 const DEFAULT_ROLES: Role[] = ["operator", "field", "planner"];
 const TEAM_NAME_POOL = ["Falcons", "Circuit", "Nexus", "Voltage", "Relay", "Aurora", "Grid"];
 const COUNTDOWN_SECONDS = 5;
-const INSPECTION_VALID_WINDOW_SEC = 60;
 const DEFAULT_FREQUENCY_HZ = 50.0;
 
 type PlayerStats = {
@@ -73,6 +84,12 @@ type PlayerStats = {
   inspections: number;
   planningRequests: number;
   firstSwitchAt?: number;
+};
+
+type AssetAlarmState = {
+  oilLevel?: "normal" | "low" | "high" | "highHigh" | "lockout";
+  gasLevel?: "normal" | "low" | "high" | "highHigh" | "lockout";
+  windingTemp?: "normal" | "high" | "highHigh";
 };
 
 const rooms = new Map<string, RoomRuntime>();
@@ -92,7 +109,7 @@ function generateCode(): string {
   return code;
 }
 
-function createDefaultAssets(): Asset[] {
+function createDefaultAssets(thresholdsByType?: AssetThresholdsByType): Asset[] {
   const now = Date.now();
   const makeAsset = ({
     id,
@@ -102,6 +119,8 @@ function createDefaultAssets(): Asset[] {
     status,
     telemetry,
     remoteFails,
+    thresholds,
+    observations,
   }: {
     id: string;
     name: string;
@@ -110,87 +129,102 @@ function createDefaultAssets(): Asset[] {
     status: AssetStatus;
     telemetry: AssetTelemetry;
     remoteFails?: boolean;
+    thresholds?: AssetThresholds;
+    observations?: string[];
   }): Asset => ({
     id,
     name,
     type,
     remoteControllable,
     remoteFails,
+    thresholds,
     truth: {
       status,
       telemetry,
+      lockout: false,
+      observations: observations ?? [],
       lastTruthUpdated: now,
     },
     scada: {
       status,
       telemetry,
       dbi: false,
+      lockout: false,
       lastScadaUpdated: now,
     },
     lastUpdated: now,
   });
 
+  const thresholdsFor = (type: Asset["type"]) => thresholdsByType?.[type];
+
   return [
     makeAsset({
-      id: "cb-1",
-      name: "Circuit Breaker CB-1",
+      id: "CB1",
+      name: "Circuit Breaker CB1",
       type: "cb",
       remoteControllable: true,
       status: "closed",
-      telemetry: { windingTempC: 44, oilLevelPct: 92 },
+      telemetry: { kind: "cb", gasLevelPct: 92 },
+      thresholds: thresholdsFor("cb"),
+      observations: ["Steady hum from mechanism cabinet.", "SF6 gauge reads normal."],
     }),
     makeAsset({
-      id: "cb-2",
-      name: "Circuit Breaker CB-2",
-      type: "cb",
-      remoteControllable: true,
-      status: "closed",
-      telemetry: { windingTempC: 46, oilLevelPct: 91 },
-    }),
-    makeAsset({
-      id: "ds-1",
-      name: "Disconnector DS-1",
+      id: "DS1",
+      name: "Disconnector DS1",
       type: "ds",
-      remoteControllable: false,
+      remoteControllable: true,
       status: "closed",
-      telemetry: { windingTempC: 35, oilLevelPct: 0 },
+      telemetry: { kind: "none" },
+      thresholds: thresholdsFor("ds"),
+      observations: ["Blade gap clean, no visible arcing."],
     }),
     makeAsset({
-      id: "tx-1",
-      name: "Transformer TX-1",
+      id: "DS2",
+      name: "Disconnector DS2",
+      type: "ds",
+      remoteControllable: true,
+      status: "closed",
+      telemetry: { kind: "none" },
+      thresholds: thresholdsFor("ds"),
+      observations: ["No abnormal smell near insulators."],
+    }),
+    makeAsset({
+      id: "ES1",
+      name: "Earth Switch ES1",
+      type: "es",
+      remoteControllable: false,
+      status: "open",
+      telemetry: { kind: "none" },
+      thresholds: thresholdsFor("es"),
+      observations: ["Earth switch linkage intact."],
+    }),
+    makeAsset({
+      id: "ES2",
+      name: "Earth Switch ES2",
+      type: "es",
+      remoteControllable: false,
+      status: "open",
+      telemetry: { kind: "none" },
+      thresholds: thresholdsFor("es"),
+      observations: ["No vibration felt on handle."],
+    }),
+    makeAsset({
+      id: "TX1",
+      name: "Transformer TX1",
       type: "tx",
       remoteControllable: false,
       status: "closed",
-      telemetry: { windingTempC: 68, oilLevelPct: 85 },
-    }),
-    makeAsset({
-      id: "tx-2",
-      name: "Transformer TX-2",
-      type: "tx",
-      remoteControllable: false,
-      status: "closed",
-      telemetry: { windingTempC: 64, oilLevelPct: 88 },
-    }),
-    makeAsset({
-      id: "bus-1",
-      name: "Busbar BB-1",
-      type: "bus",
-      remoteControllable: false,
-      status: "closed",
-      telemetry: { windingTempC: 32, oilLevelPct: 0 },
+      telemetry: { kind: "tx", windingTempC: 68, oilLevelPct: 85 },
+      thresholds: thresholdsFor("tx"),
+      observations: ["Oil conservator glass shows steady level.", "Cooling fans audible."],
     }),
   ];
 }
 
-function inspectionKey(playerId: string, assetId: string): string {
-  return `${playerId}:${assetId}`;
+function ensureThresholds(thresholds?: AssetThresholds): AssetThresholds {
+  return thresholds ?? {};
 }
 
-function hasRecentInspection(room: RoomRuntime, playerId: string, assetId: string): boolean {
-  const inspectedAt = room.inspectionLog.get(inspectionKey(playerId, assetId));
-  if (!inspectedAt) return false;
-  return Date.now() - inspectedAt <= INSPECTION_VALID_WINDOW_SEC * 1000;
-}
 
 function buildAssetViews(room: RoomRuntime, role?: Role, playerId?: string): AssetView[] {
   if (role === "gm") {
@@ -205,13 +239,15 @@ function buildAssetViews(room: RoomRuntime, role?: Role, playerId?: string): Ass
   }
 
   if (role === "field") {
+    const location = playerId ? room.fieldLocations.get(playerId) : "none";
+    const assetIdAtLocation = location?.startsWith("asset:") ? location.slice("asset:".length) : null;
     return room.assetsFull.map((asset) => ({
       id: asset.id,
       name: asset.name,
       type: asset.type,
       remoteControllable: asset.remoteControllable,
       scada: asset.scada,
-      truth: playerId && room.inspectionLog.has(inspectionKey(playerId, asset.id)) ? asset.truth : null,
+      truth: assetIdAtLocation === asset.id ? asset.truth : null,
     }));
   }
 
@@ -224,29 +260,185 @@ function buildAssetViews(room: RoomRuntime, role?: Role, playerId?: string): Ass
   }));
 }
 
-function updateAssetTruth(asset: Asset, status: AssetStatus, telemetry?: AssetTelemetry) {
+function updateAssetTruth(asset: Asset, status: AssetStatus, telemetry?: AssetTelemetry, lockout?: boolean) {
   asset.truth = {
     status,
     telemetry: telemetry ?? asset.truth.telemetry,
+    lockout: lockout ?? asset.truth.lockout,
+    observations: asset.truth.observations,
     lastTruthUpdated: Date.now(),
   };
   asset.lastUpdated = Date.now();
 }
 
-function updateAssetScada(asset: Asset, status: AssetStatus, telemetry?: AssetTelemetry, dbi?: boolean) {
+function updateAssetScada(
+  asset: Asset,
+  status: AssetStatus,
+  telemetry?: AssetTelemetry,
+  dbi?: boolean,
+  lockout?: boolean
+) {
   asset.scada = {
     status,
     telemetry: telemetry ?? asset.scada.telemetry,
     dbi: dbi ?? asset.scada.dbi,
+    lockout: lockout ?? asset.scada.lockout,
     lastScadaUpdated: Date.now(),
   };
   asset.lastUpdated = Date.now();
 }
 
 function addAlarmEvent(room: RoomRuntime, alarm: AlarmEvent) {
-  room.eventLogShortInternal = [...room.eventLogShortInternal, alarm].slice(-200);
-  room.eventLogDetailInternal = [...room.eventLogDetailInternal, alarm].slice(-200);
+  room.eventLogShort = [...room.eventLogShort, alarm].slice(-200);
+  room.eventLogDetail = [...room.eventLogDetail, alarm].slice(-200);
   broadcastRoom(room);
+}
+
+function addCommsMessage(room: RoomRuntime, message: CommsMessage) {
+  room.commsLog = [...room.commsLog, message].slice(-200);
+  broadcastRoom(room);
+}
+
+function evaluateLevel(
+  value: number,
+  thresholds?: LevelThresholds
+): "normal" | "low" | "high" | "highHigh" | "lockout" {
+  if (!thresholds) return "normal";
+  if (value <= thresholds.lockoutLow) return "lockout";
+  if (value <= thresholds.low) return "low";
+  if (value >= thresholds.highHigh) return "highHigh";
+  if (value >= thresholds.high) return "high";
+  return "normal";
+}
+
+function evaluateTemp(value: number, thresholds?: TempThresholds): "normal" | "high" | "highHigh" {
+  if (!thresholds) return "normal";
+  if (value >= thresholds.highHigh) return "highHigh";
+  if (value >= thresholds.high) return "high";
+  return "normal";
+}
+
+function alarmSeverityForLevel(level: "low" | "high" | "highHigh" | "lockout"): AlarmEvent["severity"] {
+  if (level === "highHigh" || level === "lockout") return "high";
+  if (level === "high") return "med";
+  return "low";
+}
+
+function ensureAlarmState(room: RoomRuntime, assetId: string): AssetAlarmState {
+  const existing = room.assetAlarmStates.get(assetId);
+  if (existing) return existing;
+  const created: AssetAlarmState = { oilLevel: "normal", gasLevel: "normal", windingTemp: "normal" };
+  room.assetAlarmStates.set(assetId, created);
+  return created;
+}
+
+function evaluateAssetTelemetry(room: RoomRuntime, asset: Asset) {
+  const thresholds = ensureThresholds(asset.thresholds);
+  const state = ensureAlarmState(room, asset.id);
+
+  if (asset.truth.telemetry.kind === "tx") {
+    const telemetry = asset.truth.telemetry as TransformerTelemetry;
+    const oilLevel = evaluateLevel(telemetry.oilLevelPct, thresholds.oilLevelPct);
+    const windingTemp = evaluateTemp(telemetry.windingTempC, thresholds.windingTempC);
+
+    if (oilLevel !== state.oilLevel) {
+      state.oilLevel = oilLevel;
+      if (oilLevel !== "normal") {
+        const severity = alarmSeverityForLevel(oilLevel);
+        addAlarmEvent(room, {
+          id: `alarm-${randomUUID()}`,
+          timestamp: Date.now(),
+          type: "alarm",
+          severity,
+          messageShort: `${asset.name} oil level ${oilLevel}.`,
+          messageDetail: `${asset.name} oil level ${oilLevel} at ${telemetry.oilLevelPct}%.`,
+          assetId: asset.id,
+        });
+      }
+    }
+
+    if (windingTemp !== state.windingTemp) {
+      state.windingTemp = windingTemp;
+      if (windingTemp !== "normal") {
+        const severity = windingTemp === "highHigh" ? "high" : "med";
+        addAlarmEvent(room, {
+          id: `alarm-${randomUUID()}`,
+          timestamp: Date.now(),
+          type: "alarm",
+          severity,
+          messageShort: `${asset.name} winding temp ${windingTemp}.`,
+          messageDetail: `${asset.name} winding temp ${telemetry.windingTempC}°C (${windingTemp}).`,
+          assetId: asset.id,
+        });
+      }
+    }
+
+    if (oilLevel === "lockout" && !asset.truth.lockout) {
+      updateAssetTruth(asset, asset.truth.status, asset.truth.telemetry, true);
+      updateAssetScada(asset, asset.scada.status, asset.scada.telemetry, asset.scada.dbi, true);
+      addAlarmEvent(room, {
+        id: `alarm-${randomUUID()}`,
+        timestamp: Date.now(),
+        type: "fault",
+        severity: "high",
+        messageShort: `${asset.name} lockout: critical oil level.`,
+        messageDetail: `${asset.name} lockout engaged. Oil level ${telemetry.oilLevelPct}%.`,
+        assetId: asset.id,
+      });
+    }
+  }
+
+  if (asset.truth.telemetry.kind === "cb") {
+    const telemetry = asset.truth.telemetry as BreakerTelemetry;
+    const gasLevel = evaluateLevel(telemetry.gasLevelPct, thresholds.gasLevelPct);
+
+    if (gasLevel !== state.gasLevel) {
+      state.gasLevel = gasLevel;
+      if (gasLevel !== "normal") {
+        const severity = alarmSeverityForLevel(gasLevel);
+        addAlarmEvent(room, {
+          id: `alarm-${randomUUID()}`,
+          timestamp: Date.now(),
+          type: "alarm",
+          severity,
+          messageShort: `${asset.name} gas level ${gasLevel}.`,
+          messageDetail: `${asset.name} SF6 gas level ${gasLevel} at ${telemetry.gasLevelPct}%.`,
+          assetId: asset.id,
+        });
+      }
+    }
+
+    if (gasLevel === "lockout" && !asset.truth.lockout) {
+      updateAssetTruth(asset, asset.truth.status, asset.truth.telemetry, true);
+      updateAssetScada(asset, asset.scada.status, asset.scada.telemetry, asset.scada.dbi, true);
+      addAlarmEvent(room, {
+        id: `alarm-${randomUUID()}`,
+        timestamp: Date.now(),
+        type: "fault",
+        severity: "high",
+        messageShort: `${asset.name} lockout: critical gas level.`,
+        messageDetail: `${asset.name} lockout engaged. Gas level ${telemetry.gasLevelPct}%.`,
+        assetId: asset.id,
+      });
+    }
+  }
+}
+
+function applyMaintenanceDefaults(asset: Asset) {
+  const thresholds = ensureThresholds(asset.thresholds);
+  if (asset.truth.telemetry.kind === "tx") {
+    const telemetry = asset.truth.telemetry as TransformerTelemetry;
+    const oilLevelPct = thresholds.oilLevelPct?.high ?? Math.min(90, telemetry.oilLevelPct);
+    const windingTempC = thresholds.windingTempC?.high
+      ? thresholds.windingTempC.high - 5
+      : Math.max(60, telemetry.windingTempC - 5);
+    updateAssetTruth(asset, asset.truth.status, { kind: "tx", oilLevelPct, windingTempC }, false);
+  }
+  if (asset.truth.telemetry.kind === "cb") {
+    const telemetry = asset.truth.telemetry as BreakerTelemetry;
+    const gasLevelPct = thresholds.gasLevelPct?.high ?? Math.max(80, telemetry.gasLevelPct);
+    updateAssetTruth(asset, asset.truth.status, { kind: "cb", gasLevelPct }, false);
+  }
 }
 
 function broadcastRoom(room: RoomRuntime) {
@@ -262,8 +454,16 @@ function buildRoomView(room: RoomRuntime, role?: Role, playerId?: string): RoomS
   const fieldReports = role === "operator" || isGM ? [...room.fieldReportsByAsset.values()] : [];
   const workOrders = role === "operator" || role === "field" || isGM ? room.workOrdersInternal : [];
   const plannerRequests = role === "operator" || role === "planner" || isGM ? room.plannerRequestsInternal : [];
-  const eventLogShort = role === "operator" || role === "planner" || isGM ? room.eventLogShortInternal : [];
-  const eventLogDetail = role === "field" || isGM ? room.eventLogDetailInternal : [];
+  const eventLogShort = role === "operator" || role === "planner" || isGM ? room.eventLogShort : [];
+  const fieldLocation = playerId ? room.fieldLocations.get(playerId) : undefined;
+  const eventLogDetail =
+    role === "field"
+      ? fieldLocation === "scadaPanel"
+        ? room.eventLogDetail
+      : []
+      : isGM
+      ? room.eventLogDetail
+      : [];
 
   return {
     code: room.code,
@@ -284,6 +484,8 @@ function buildRoomView(room: RoomRuntime, role?: Role, playerId?: string): RoomS
     workOrders,
     plannerRequests,
     systemState: room.systemState,
+    commsLog: room.commsLog,
+    fieldLocation: role === "field" || isGM ? fieldLocation : undefined,
     orgName: room.orgName,
     resultsVisible: room.resultsVisible,
     autoAnnounceResults: room.autoAnnounceResults,
@@ -308,13 +510,15 @@ function addEvent(room: RoomRuntime, event: GameEvent) {
 
 function resetRoomState(room: RoomRuntime) {
   room.eventLog = [];
-  room.eventLogShortInternal = [];
-  room.eventLogDetailInternal = [];
+  room.eventLogShort = [];
+  room.eventLogDetail = [];
   room.fieldReportsByAsset = new Map();
   room.workOrdersInternal = [];
   room.plannerRequestsInternal = [];
-  room.inspectionLog = new Map();
-  room.assetsFull = createDefaultAssets();
+  room.commsLog = [];
+  room.fieldLocations = new Map();
+  room.assetAlarmStates = new Map();
+  room.assetsFull = createDefaultAssets(room.scenario?.assetThresholds);
   room.systemState = { frequencyHz: DEFAULT_FREQUENCY_HZ, lastUpdated: Date.now() };
 }
 
@@ -365,6 +569,29 @@ function handleScenarioEvent(room: RoomRuntime, event: ScenarioEvent) {
         event.description ??
         `Frequency now ${room.systemState.frequencyHz.toFixed(2)} Hz.`,
     });
+  }
+
+  if (event.type === "telemetry" && asset && event.telemetry) {
+    const telemetry = asset.truth.telemetry;
+    if (telemetry.kind === "tx") {
+      const next: TransformerTelemetry = {
+        kind: "tx",
+        windingTempC: event.telemetry.windingTempC ?? telemetry.windingTempC,
+        oilLevelPct: event.telemetry.oilLevelPct ?? telemetry.oilLevelPct,
+      };
+      updateAssetTruth(asset, asset.truth.status, next, asset.truth.lockout);
+    }
+    if (telemetry.kind === "cb") {
+      const next: BreakerTelemetry = {
+        kind: "cb",
+        gasLevelPct: event.telemetry.gasLevelPct ?? telemetry.gasLevelPct,
+      };
+      updateAssetTruth(asset, asset.truth.status, next, asset.truth.lockout);
+    }
+    evaluateAssetTelemetry(room, asset);
+    if (!asset.scada.dbi) {
+      updateAssetScada(asset, asset.scada.status, asset.truth.telemetry, asset.scada.dbi, asset.truth.lockout);
+    }
   }
 
   if (alarmType) {
@@ -532,6 +759,14 @@ function findRoomByPlayer(playerId: string): { room: RoomRuntime; player: Player
   return null;
 }
 
+function fieldLocationFor(room: RoomRuntime, playerId: string): FieldLocation {
+  return room.fieldLocations.get(playerId) ?? "none";
+}
+
+function requireFieldAtAsset(room: RoomRuntime, playerId: string, assetId: string): boolean {
+  return fieldLocationFor(room, playerId) === `asset:${assetId}`;
+}
+
 function validateName(name: string): boolean {
   if (!USERNAME_REGEX.test(name)) return false;
   const normalized = name.toLowerCase();
@@ -606,6 +841,7 @@ io.on("connection", (socket) => {
       workOrders: [],
       plannerRequests: [],
       systemState,
+      commsLog: [],
       scenarioCursor: 0,
       orgName: "",
       resultsVisible: false,
@@ -617,9 +853,8 @@ io.on("connection", (socket) => {
       fieldReportsByAsset: new Map(),
       workOrdersInternal: [],
       plannerRequestsInternal: [],
-      eventLogShortInternal: [],
-      eventLogDetailInternal: [],
-      inspectionLog: new Map(),
+      fieldLocations: new Map(),
+      assetAlarmStates: new Map(),
     };
     rooms.set(code, room);
     socket.join(code);
@@ -808,6 +1043,19 @@ io.on("connection", (socket) => {
       socket.emit("mp/error", { message: "Asset not found." });
       return;
     }
+    if (asset.truth.lockout || asset.scada.lockout) {
+      socket.emit("mp/error", { message: `${asset.name} is in lockout.` });
+      addAlarmEvent(room, {
+        id: `alarm-${randomUUID()}`,
+        timestamp: Date.now(),
+        type: "fault",
+        severity: "high",
+        messageShort: `${asset.name} lockout prevents operation.`,
+        messageDetail: `${asset.name} lockout active. Maintenance required before operation.`,
+        assetId: asset.id,
+      });
+      return;
+    }
     if (!asset.remoteControllable || asset.remoteFails) {
       addAlarmEvent(room, {
         id: `alarm-${randomUUID()}`,
@@ -821,7 +1069,7 @@ io.on("connection", (socket) => {
       return;
     }
     updateAssetTruth(asset, payload.action);
-    updateAssetScada(asset, payload.action, asset.truth.telemetry, false);
+    updateAssetScada(asset, payload.action, asset.truth.telemetry, false, asset.truth.lockout);
     addAlarmEvent(room, {
       id: `alarm-${randomUUID()}`,
       timestamp: Date.now(),
@@ -830,6 +1078,15 @@ io.on("connection", (socket) => {
       messageShort: `${asset.name} ${payload.action}ed remotely.`,
       messageDetail: `Remote switching completed: ${asset.name} set to ${payload.action}.`,
       assetId: asset.id,
+    });
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Operator",
+      authorRole: "operator",
+      type: "Switching Instruction",
+      text: `${asset.name} ${payload.action}ed remotely.`,
     });
   });
 
@@ -856,6 +1113,15 @@ io.on("connection", (socket) => {
       status: "open",
     };
     room.workOrdersInternal = [...room.workOrdersInternal, order];
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Operator",
+      authorRole: "operator",
+      type: "Switching Instruction",
+      text: `${asset.name}: ${action.toUpperCase()} requested. ${notes ?? ""}`.trim(),
+    });
     broadcastRoom(room);
   });
 
@@ -881,20 +1147,23 @@ io.on("connection", (socket) => {
     broadcastRoom(room);
   });
 
-  socket.on("mp/fieldInspectAsset", ({ assetId }) => {
+  socket.on("mp/fieldSetLocation", ({ location }: FieldSetLocationPayload) => {
     const found = findRoomByPlayer(socket.id);
     if (!found) return;
     const { room, player } = found;
     if (player.role !== "field") {
-      socket.emit("mp/error", { message: "Only field engineers can inspect assets." });
+      socket.emit("mp/error", { message: "Only field engineers can update field location." });
       return;
     }
-    const asset = room.assetsFull.find((item) => item.id === assetId);
-    if (!asset) {
-      socket.emit("mp/error", { message: "Asset not found." });
-      return;
+    if (location.startsWith("asset:")) {
+      const assetId = location.slice("asset:".length);
+      const asset = room.assetsFull.find((item) => item.id === assetId);
+      if (!asset) {
+        socket.emit("mp/error", { message: "Asset not found." });
+        return;
+      }
     }
-    room.inspectionLog.set(inspectionKey(player.id, assetId), Date.now());
+    room.fieldLocations.set(player.id, location);
     broadcastRoom(room);
   });
 
@@ -911,8 +1180,8 @@ io.on("connection", (socket) => {
       socket.emit("mp/error", { message: "Asset not found." });
       return;
     }
-    if (!hasRecentInspection(room, player.id, assetId)) {
-      socket.emit("mp/error", { message: "Inspect the asset before sending a report." });
+    if (!requireFieldAtAsset(room, player.id, assetId)) {
+      socket.emit("mp/error", { message: "Travel to the asset before sending a report." });
       return;
     }
     const report: FieldReport = {
@@ -920,10 +1189,20 @@ io.on("connection", (socket) => {
       assetId,
       status: asset.truth.status,
       telemetry: asset.truth.telemetry,
+      lockout: asset.truth.lockout,
       reportedBy: player.id,
       timestamp: Date.now(),
     };
     room.fieldReportsByAsset.set(assetId, report);
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Field",
+      authorRole: "field",
+      type: "Field Report",
+      text: `${asset.name}: status ${asset.truth.status}.`,
+    });
     broadcastRoom(room);
   });
 
@@ -944,8 +1223,8 @@ io.on("connection", (socket) => {
       socket.emit("mp/error", { message: "Work order must be accepted before completion." });
       return;
     }
-    if (!hasRecentInspection(room, player.id, order.assetId)) {
-      socket.emit("mp/error", { message: "Inspect the asset before completing the work order." });
+    if (!requireFieldAtAsset(room, player.id, order.assetId)) {
+      socket.emit("mp/error", { message: "Travel to the asset before completing the work order." });
       return;
     }
     const asset = room.assetsFull.find((item) => item.id === order.assetId);
@@ -953,9 +1232,13 @@ io.on("connection", (socket) => {
       socket.emit("mp/error", { message: "Asset not found." });
       return;
     }
+    if (asset.truth.lockout) {
+      socket.emit("mp/error", { message: "Asset lockout prevents manual operation." });
+      return;
+    }
     if (order.action === "open" || order.action === "close") {
       updateAssetTruth(asset, order.action);
-      updateAssetScada(asset, order.action, asset.truth.telemetry, false);
+      updateAssetScada(asset, order.action, asset.truth.telemetry, false, asset.truth.lockout);
     }
     if (order.action === "inspect") {
       const report: FieldReport = {
@@ -963,6 +1246,7 @@ io.on("connection", (socket) => {
         assetId: asset.id,
         status: asset.truth.status,
         telemetry: asset.truth.telemetry,
+        lockout: asset.truth.lockout,
         reportedBy: player.id,
         timestamp: Date.now(),
       };
@@ -978,6 +1262,104 @@ io.on("connection", (socket) => {
       messageShort: `${asset.name} work order ${order.action} completed.`,
       messageDetail: `Field completed ${order.action} on ${asset.name}.`,
       assetId: asset.id,
+    });
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Field",
+      authorRole: "field",
+      type: "Switching Instruction",
+      text: `${asset.name}: ${order.action.toUpperCase()} completed.`,
+    });
+  });
+
+  socket.on("mp/fieldPerformMaintenance", ({ assetId }: FieldPerformMaintenancePayload) => {
+    const found = findRoomByPlayer(socket.id);
+    if (!found) return;
+    const { room, player } = found;
+    if (player.role !== "field") {
+      socket.emit("mp/error", { message: "Only field engineers can perform maintenance." });
+      return;
+    }
+    const asset = room.assetsFull.find((item) => item.id === assetId);
+    if (!asset) {
+      socket.emit("mp/error", { message: "Asset not found." });
+      return;
+    }
+    if (!requireFieldAtAsset(room, player.id, assetId)) {
+      socket.emit("mp/error", { message: "Travel to the asset before maintenance." });
+      return;
+    }
+    applyMaintenanceDefaults(asset);
+    updateAssetScada(asset, asset.scada.status, asset.truth.telemetry, asset.scada.dbi, false);
+    evaluateAssetTelemetry(room, asset);
+    addAlarmEvent(room, {
+      id: `alarm-${randomUUID()}`,
+      timestamp: Date.now(),
+      type: "note",
+      severity: "low",
+      messageShort: `${asset.name} maintenance completed.`,
+      messageDetail: `${asset.name} maintenance completed; lockout cleared.`,
+      assetId: asset.id,
+    });
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Field",
+      authorRole: "field",
+      type: "Field Report",
+      text: `${asset.name}: maintenance completed, lockout cleared.`,
+    });
+  });
+
+  socket.on("mp/fieldResetLockout", ({ assetId }: FieldResetLockoutPayload) => {
+    const found = findRoomByPlayer(socket.id);
+    if (!found) return;
+    const { room, player } = found;
+    if (player.role !== "field") {
+      socket.emit("mp/error", { message: "Only field engineers can reset lockouts." });
+      return;
+    }
+    const asset = room.assetsFull.find((item) => item.id === assetId);
+    if (!asset) {
+      socket.emit("mp/error", { message: "Asset not found." });
+      return;
+    }
+    if (!requireFieldAtAsset(room, player.id, assetId)) {
+      socket.emit("mp/error", { message: "Travel to the asset before resetting lockout." });
+      return;
+    }
+    updateAssetTruth(asset, asset.truth.status, asset.truth.telemetry, false);
+    updateAssetScada(asset, asset.scada.status, asset.scada.telemetry, asset.scada.dbi, false);
+    addAlarmEvent(room, {
+      id: `alarm-${randomUUID()}`,
+      timestamp: Date.now(),
+      type: "note",
+      severity: "low",
+      messageShort: `${asset.name} lockout reset.`,
+      messageDetail: `${asset.name} lockout cleared by field.`,
+      assetId: asset.id,
+    });
+  });
+
+  socket.on("mp/fieldAcknowledgeAlarm", ({ alarmId }: FieldAcknowledgeAlarmPayload) => {
+    const found = findRoomByPlayer(socket.id);
+    if (!found) return;
+    const { room, player } = found;
+    if (player.role !== "field") {
+      socket.emit("mp/error", { message: "Only field engineers can acknowledge alarms." });
+      return;
+    }
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Field",
+      authorRole: "field",
+      type: "Field Report",
+      text: `Local alarm acknowledged (${alarmId}).`,
     });
   });
 
@@ -999,7 +1381,7 @@ io.on("connection", (socket) => {
       socket.emit("mp/error", { message: "No field report available for this asset." });
       return;
     }
-    updateAssetScada(asset, payload.confirmedStatus, payload.confirmedTelemetry, false);
+    updateAssetScada(asset, payload.confirmedStatus, payload.confirmedTelemetry, false, report.lockout);
     addAlarmEvent(room, {
       id: `alarm-${randomUUID()}`,
       timestamp: Date.now(),
@@ -1008,6 +1390,15 @@ io.on("connection", (socket) => {
       messageShort: `${asset.name} SCADA updated from field report.`,
       messageDetail: `Operator confirmed ${asset.name} status: ${payload.confirmedStatus}.`,
       assetId: asset.id,
+    });
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Operator",
+      authorRole: "operator",
+      type: "Field Report",
+      text: `${asset.name} SCADA updated from field report.`,
     });
   });
 
@@ -1028,6 +1419,15 @@ io.on("connection", (socket) => {
       status: "pending",
     };
     room.plannerRequestsInternal = [...room.plannerRequestsInternal, request];
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Planner",
+      authorRole: "planner",
+      type: "Planner Request",
+      text: `${type.replace("_", " ")}${notes ? `: ${notes}` : ""}`.trim(),
+    });
     broadcastRoom(room);
   });
 
@@ -1047,6 +1447,15 @@ io.on("connection", (socket) => {
     request.status = status;
     request.updatedAt = Date.now();
     request.handledBy = player.id;
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Operator",
+      authorRole: "operator",
+      type: "Planner Request",
+      text: `Planner request ${request.type} marked ${status}.`,
+    });
     broadcastRoom(room);
   });
 
@@ -1070,6 +1479,22 @@ io.on("connection", (socket) => {
       severity: "low",
       messageShort: `Generation support applied (+${delta.toFixed(2)} Hz).`,
       messageDetail: `Operator connected generation. Frequency now ${room.systemState.frequencyHz.toFixed(2)} Hz.`,
+    });
+  });
+
+  socket.on("mp/postCommsMessage", ({ type, text }: PostCommsMessagePayload) => {
+    const found = findRoomByPlayer(socket.id);
+    if (!found) return;
+    const { room, player } = found;
+    const role: Role = player.isGM ? "gm" : (player.role ?? "operator");
+    addCommsMessage(room, {
+      id: `comms-${randomUUID()}`,
+      timestamp: Date.now(),
+      authorId: player.id,
+      authorName: player.name ?? "Player",
+      authorRole: role,
+      type,
+      text,
     });
   });
 

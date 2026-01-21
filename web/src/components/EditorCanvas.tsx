@@ -119,6 +119,8 @@ export function EditorCanvas(props: {
   onNodeContextMenu: (node: Node, pos: { x: number; y: number }) => void;
   onPaneContextMenu: (pos: { x: number; y: number }) => void;
   onPaneClick: () => void;
+  showControls?: boolean;
+  showPalette?: boolean;
 
 }) {
   const {
@@ -149,6 +151,8 @@ export function EditorCanvas(props: {
 	onNodeContextMenu,
 	onPaneContextMenu,
 	onPaneClick,
+    showControls = true,
+    showPalette = true,
   } = props;
 
   const { screenToFlowPosition } = useReactFlow();
@@ -418,42 +422,46 @@ export function EditorCanvas(props: {
           <Background variant={BackgroundVariant.Lines} gap={24} />
           <MiniMap />
 
-          <Controls showInteractive={false} position="bottom-left">
-            <ControlButton onClick={onToggleSnap} title={`Snap: ${snapEnabled ? "ON" : "OFF"}`}>
-              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                <rect x="2" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="7" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="12" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="2" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="7" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="12" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="2" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="7" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-                <rect x="12" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
-              </svg>
-            </ControlButton>
+          {showControls ? (
+            <Controls showInteractive={false} position="bottom-left">
+              <ControlButton onClick={onToggleSnap} title={`Snap: ${snapEnabled ? "ON" : "OFF"}`}>
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                  <rect x="2" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="7" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="12" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="2" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="7" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="12" y="7" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="2" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="7" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                  <rect x="12" y="12" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
+                </svg>
+              </ControlButton>
 
-            <ControlButton onClick={onToggleLock} title={locked ? "Unlock editing" : "Lock editing"}>
-              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                {locked ? (
-                  <path
-                    fill="currentColor"
-                    d="M12 1a5 5 0 0 0-5 5v4H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm-3 9V6a3 3 0 1 1 6 0v4H9Z"
-                  />
-                ) : (
-                  <path
-                    fill="currentColor"
-                    d="M17 8V6a5 5 0 0 0-10 0h2a3 3 0 1 1 6 0v2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h11a3 3 0 0 0 3-3v-9a2 2 0 0 0-2-2h-1Z"
-                  />
-                )}
-              </svg>
-            </ControlButton>
-          </Controls>
+              <ControlButton onClick={onToggleLock} title={locked ? "Unlock editing" : "Lock editing"}>
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                  {locked ? (
+                    <path
+                      fill="currentColor"
+                      d="M12 1a5 5 0 0 0-5 5v4H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm-3 9V6a3 3 0 1 1 6 0v4H9Z"
+                    />
+                  ) : (
+                    <path
+                      fill="currentColor"
+                      d="M17 8V6a5 5 0 0 0-10 0h2a3 3 0 1 1 6 0v2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h11a3 3 0 0 0 3-3v-9a2 2 0 0 0-2-2h-1Z"
+                    />
+                  )}
+                </svg>
+              </ControlButton>
+            </Controls>
+          ) : null}
         </ReactFlow>
 
-        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
-          <Palette onAddAtCenter={onAddAtCenter} />
-        </div>
+        {showPalette ? (
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
+            <Palette onAddAtCenter={onAddAtCenter} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
