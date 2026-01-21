@@ -1143,6 +1143,7 @@ function FieldView({
   const fieldAssetId = fieldLocation.startsWith("asset:") ? fieldLocation.slice("asset:".length) : null;
   const currentAsset = room.assets.find((asset) => asset.id === fieldAssetId);
   const currentTruth = currentAsset?.truth ?? null;
+  const atLocalScada = fieldLocation === "scadaPanel";
 
   const travelTo = useCallback(
     (location: FieldLocation, delayMs: number) => {
@@ -1308,8 +1309,8 @@ function FieldView({
       }
       scada={
         <ScadaPanel
-          energizedEdgeCount={edgeCounts.energized}
-          groundedEdgeCount={edgeCounts.grounded}
+          energizedEdgeCount={atLocalScada ? edgeCounts.energized : null}
+          groundedEdgeCount={atLocalScada ? edgeCounts.grounded : null}
           switchgear={emptySwitchgear()}
           onToggleSwitch={() => {}}
           onToggleDar={() => {}}

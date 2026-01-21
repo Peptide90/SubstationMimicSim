@@ -2,8 +2,8 @@ import { EventLog } from "./EventLog";
 import type { EventCategory, EventLogFilters, EventLogItem } from "./EventLog";
 
 export function ScadaPanel(props: {
-  energizedEdgeCount: number;
-  groundedEdgeCount: number;
+  energizedEdgeCount: number | null;
+  groundedEdgeCount: number | null;
 
   switchgear: Record<
     "es" | "ds" | "cb",
@@ -45,6 +45,9 @@ export function ScadaPanel(props: {
     commandHint,
   } = props;
 
+  const energizedLabel = energizedEdgeCount === null ? "Unknown" : energizedEdgeCount.toString();
+  const groundedLabel = groundedEdgeCount === null ? "Unknown" : groundedEdgeCount.toString();
+
   return (
     <div
       style={{
@@ -63,11 +66,11 @@ export function ScadaPanel(props: {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 14 }}>
           <div>
             <div style={{ color: "#94a3b8" }}>Energized edges</div>
-            <div style={{ color: "#fff" }}>{energizedEdgeCount}</div>
+            <div style={{ color: "#fff" }}>{energizedLabel}</div>
           </div>
           <div>
             <div style={{ color: "#94a3b8" }}>Grounded edges</div>
-            <div style={{ color: "#fff" }}>{groundedEdgeCount}</div>
+            <div style={{ color: "#fff" }}>{groundedLabel}</div>
           </div>
         </div>
       </div>

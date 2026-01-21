@@ -23,14 +23,25 @@ export function CommunicationsLog({ messages, onPost, role, playerName }: Props)
   const sorted = useMemo(() => [...messages].sort((a, b) => a.timestamp - b.timestamp), [messages]);
 
   return (
-    <div style={{ borderTop: "1px solid #1f2937", background: "#0b1220", color: "#e2e8f0", padding: 12 }}>
+    <div
+      style={{
+        borderTop: "1px solid #1f2937",
+        background: "#0b1220",
+        color: "#e2e8f0",
+        padding: 12,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
         <strong>Communications Log</strong>
         <span style={{ fontSize: 12, color: "#94a3b8" }}>
           {role.toUpperCase()} • {playerName ?? "Unnamed"}
         </span>
       </div>
-      <div style={{ maxHeight: 180, overflow: "auto", display: "grid", gap: 6, marginBottom: 10 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "grid", gap: 6, marginBottom: 10 }}>
         {sorted.length === 0 ? (
           <div style={{ color: "#94a3b8" }}>No messages yet.</div>
         ) : (
