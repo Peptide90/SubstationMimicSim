@@ -134,6 +134,28 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     [resetScenario]
   );
 
+  const scenarioConfig = useMemo(() => {
+    if (!scenario) return makeSandboxConfig();
+    const { nodes: lockedNodes, edges: lockedEdges } = computeLockedSets(scenario);
+    return {
+      ...makeSandboxConfig(),
+      id: "challenge",
+      label: "Solo: Substation Builder Challenges",
+      palette: {
+        enabled: scenario.buildRules.allowedPalette.length > 0,
+        allowedKinds: scenario.buildRules.allowedPalette,
+      },
+      lockedNodeIds: lockedNodes,
+      lockedEdgeIds: lockedEdges,
+      disableInterlocking: true,
+      disableLabelling: true,
+      disableSaveLoad: true,
+      disablePowerFlow: true,
+      buildZones: scenario.buildRules.buildZones,
+      allowConnections: true,
+    };
+  }, [scenario]);
+
   const onNodesChangeSnapped = useCallback(
     (changes: any) => {
       const filtered = (changes as Array<{ id?: string; type?: string }>).filter((change) => {
@@ -158,28 +180,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     },
     [onNodesChangeBase, scenarioConfig.lockedNodeIds, setNodes]
   );
-
-  const scenarioConfig = useMemo(() => {
-    if (!scenario) return makeSandboxConfig();
-    const { nodes: lockedNodes, edges: lockedEdges } = computeLockedSets(scenario);
-    return {
-      ...makeSandboxConfig(),
-      id: "challenge",
-      label: "Solo: Substation Builder Challenges",
-      palette: {
-        enabled: scenario.buildRules.allowedPalette.length > 0,
-        allowedKinds: scenario.buildRules.allowedPalette,
-      },
-      lockedNodeIds: lockedNodes,
-      lockedEdgeIds: lockedEdges,
-      disableInterlocking: true,
-      disableLabelling: true,
-      disableSaveLoad: true,
-      disablePowerFlow: true,
-      buildZones: scenario.buildRules.buildZones,
-      allowConnections: true,
-    };
-  }, [scenario]);
 
   const enforcePlacementRules = useCallback(
     (kind: NodeKind, pos: { x: number; y: number }) => {
