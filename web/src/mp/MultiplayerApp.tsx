@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type {
+  AlarmEvent,
   Award,
+  AssetView,
   ClientToServerEvents,
   GameTick,
   Player,
+  PlannerRequestType,
   Role,
   RoomState,
   ServerToClientEvents,
@@ -900,53 +903,233 @@ function RoleView({
         <p style={{ color: "#94a3b8" }}>
           Use the controls above to manage teams, roles, scenarios, and live events.
         </p>
+        <AlarmLog events={room.eventLogDetail} variant="detail" />
         <EventLog events={room.eventLog} />
       </div>
     );
   }
 
   if (role === "operator") {
-    return <OperatorView socket={socket} events={room.eventLog} readOnly={readOnly} />;
+    return <OperatorView socket={socket} room={room} readOnly={readOnly} />;
   }
   if (role === "field") {
-    return <FieldView socket={socket} readOnly={readOnly} />;
+    return <FieldView socket={socket} room={room} readOnly={readOnly} />;
   }
-  return <PlannerView socket={socket} readOnly={readOnly} />;
+  return <PlannerView socket={socket} room={room} readOnly={readOnly} />;
 }
 
 function OperatorView({
   socket,
-  events,
+  room,
   readOnly,
 }: {
   socket: MpSocket;
-  events: RoomState["eventLog"];
+  room: RoomState;
   readOnly: boolean;
 }) {
+  const reportLookup = useMemo(
+    () => new Map(room.fieldReports.map((report) => [report.assetId, report])),
+    [room.fieldReports]
+  );
+
   return (
     <div style={cardStyle}>
       <h3 style={{ marginTop: 0 }}>Control Room Operator</h3>
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ padding: 12, border: "1px dashed #334155", borderRadius: 8 }}>
-          Mimic viewport placeholder (energization view will plug in here).
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ padding: 12, border: "1px dashed #334155", borderRadius: 8 }}>
+            <strong>System Frequency:</strong> {room.systemState.frequencyHz.toFixed(2)} Hz
+          </div>
           <button
             style={primaryButton}
-            onClick={() => socket.emit("mp/scoreAction", { action: "ack_alarm" })}
+            onClick={() => socket.emit("mp/operatorConnectGenerator", { amountHz: 0.2 })}
             disabled={readOnly}
           >
-            Acknowledge Alarm
-          </button>
-          <button
-            style={primaryButton}
-            onClick={() => socket.emit("mp/scoreAction", { action: "restore_service" })}
-            disabled={readOnly}
-          >
-            Execute Restore
+            Connect Generator (+0.2 Hz)
           </button>
         </div>
-        <EventLog events={events} />
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Substation Assets</strong>
+          <div style={{ display: "grid", gap: 8 }}>
+            {room.assets.map((asset) => {
+              const report = reportLookup.get(asset.id);
+              const statusLabel = asset.scada.dbi ? "DBI / Unknown" : asset.scada.status;
+              return (
+                <div
+                  key={asset.id}
+                  style={{
+                    padding: 12,
+                    border: "1px solid #1e293b",
+                    borderRadius: 8,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <strong>{asset.name}</strong>{" "}
+                      <span style={{ color: "#94a3b8", fontSize: 12 }}>({asset.type.toUpperCase()})</span>
+                    </div>
+                    <span style={{ color: asset.scada.dbi ? "#fca5a5" : "#a7f3d0" }}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
+                    <span>
+                      Winding Temp:{" "}
+                      {asset.scada.dbi ? "--" : `${asset.scada.telemetry.windingTempC.toFixed(1)} °C`}
+                    </span>
+                    <span>
+                      Oil Level:{" "}
+                      {asset.scada.dbi ? "--" : `${asset.scada.telemetry.oilLevelPct.toFixed(0)} %`}
+                    </span>
+                    {asset.scada.dbi ? <span style={{ color: "#fbbf24" }}>DBI active</span> : null}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly || !asset.remoteControllable}
+                      onClick={() =>
+                        socket.emit("mp/operatorRemoteSwitch", { assetId: asset.id, action: "open" })
+                      }
+                    >
+                      Remote Open
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly || !asset.remoteControllable}
+                      onClick={() =>
+                        socket.emit("mp/operatorRemoteSwitch", { assetId: asset.id, action: "close" })
+                      }
+                    >
+                      Remote Close
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly}
+                      onClick={() =>
+                        socket.emit("mp/createWorkOrder", { assetId: asset.id, action: "inspect" })
+                      }
+                    >
+                      Request Field Inspection
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly}
+                      onClick={() =>
+                        socket.emit("mp/createWorkOrder", { assetId: asset.id, action: "open" })
+                      }
+                    >
+                      Switching Instruction: Open
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly}
+                      onClick={() =>
+                        socket.emit("mp/createWorkOrder", { assetId: asset.id, action: "close" })
+                      }
+                    >
+                      Switching Instruction: Close
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly || !report}
+                      onClick={() =>
+                        report &&
+                        socket.emit("mp/operatorConfirmAsset", {
+                          assetId: asset.id,
+                          confirmedStatus: report.status,
+                          confirmedTelemetry: report.telemetry,
+                        })
+                      }
+                    >
+                      Confirm From Field Report
+                    </button>
+                  </div>
+                  {report ? (
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                      Latest field report: {report.status} • {report.telemetry.windingTempC} °C,{" "}
+                      {report.telemetry.oilLevelPct}% oil
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Planner Requests</strong>
+          {room.plannerRequests.length === 0 ? (
+            <span style={{ color: "#94a3b8" }}>No requests yet.</span>
+          ) : null}
+          {room.plannerRequests.map((request) => (
+            <div
+              key={request.id}
+              style={{
+                padding: 10,
+                border: "1px solid #1e293b",
+                borderRadius: 8,
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <strong>{formatPlannerRequestType(request.type)}</strong>
+                <span style={{ color: "#94a3b8" }}>{request.status.toUpperCase()}</span>
+              </div>
+              {request.notes ? <div style={{ fontSize: 13, color: "#cbd5f5" }}>{request.notes}</div> : null}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {request.status === "pending" ? (
+                  <>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly}
+                      onClick={() =>
+                        socket.emit("mp/operatorHandlePlannerRequest", { requestId: request.id, status: "accepted" })
+                      }
+                    >
+                      Accept
+                    </button>
+                    <button
+                      style={secondaryButton}
+                      disabled={readOnly}
+                      onClick={() =>
+                        socket.emit("mp/operatorHandlePlannerRequest", { requestId: request.id, status: "rejected" })
+                      }
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : null}
+                {request.status === "accepted" ? (
+                  <button
+                    style={secondaryButton}
+                    disabled={readOnly}
+                    onClick={() =>
+                      socket.emit("mp/operatorHandlePlannerRequest", { requestId: request.id, status: "completed" })
+                    }
+                  >
+                    Mark Completed
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Work Orders</strong>
+          {room.workOrders.length === 0 ? <span style={{ color: "#94a3b8" }}>No work orders yet.</span> : null}
+          {room.workOrders.map((order) => (
+            <div key={order.id} style={{ fontSize: 13, color: "#cbd5f5" }}>
+              {order.action.toUpperCase()} — {order.assetId} • {order.status.toUpperCase()}
+            </div>
+          ))}
+        </div>
+
+        <AlarmLog events={room.eventLogShort} variant="short" />
       </div>
     </div>
   );
@@ -954,34 +1137,163 @@ function OperatorView({
 
 function FieldView({
   socket,
+  room,
   readOnly,
 }: {
   socket: MpSocket;
+  room: RoomState;
   readOnly: boolean;
 }) {
-  const [status, setStatus] = useState("Awaiting inspection command.");
+  const [walkingAssetId, setWalkingAssetId] = useState<string | null>(null);
+  const [walkStatus, setWalkStatus] = useState<string>("Awaiting assignment.");
+  const [panelAssetId, setPanelAssetId] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelLoading, setPanelLoading] = useState(false);
+
+  const beginInspection = (asset: AssetView) => {
+    if (readOnly || walkingAssetId) return;
+    const delayMs = 3000 + Math.random() * 5000;
+    setWalkingAssetId(asset.id);
+    setWalkStatus(`Walking to ${asset.name}...`);
+    setTimeout(() => {
+      socket.emit("mp/fieldInspectAsset", { assetId: asset.id });
+      setWalkStatus(`Inspection complete for ${asset.name}.`);
+      setWalkingAssetId(null);
+    }, delayMs);
+  };
+
+  const openLocalPanel = (asset: AssetView) => {
+    if (readOnly || panelLoading) return;
+    setPanelAssetId(asset.id);
+    setPanelLoading(true);
+    setPanelOpen(false);
+    setTimeout(() => {
+      setPanelLoading(false);
+      setPanelOpen(true);
+    }, 2000);
+  };
 
   return (
     <div style={cardStyle}>
       <h3 style={{ marginTop: 0 }}>Field Engineer</h3>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ padding: 12, border: "1px dashed #334155", borderRadius: 8 }}>
-          Local HMI / inspection panel placeholder.
+          <strong>Field Status:</strong> {walkStatus}
         </div>
-        <button
-          style={primaryButton}
-          disabled={readOnly}
-          onClick={() => {
-            setStatus("Inspecting equipment...");
-            setTimeout(() => {
-              setStatus("Inspection complete: relay status nominal.");
-              socket.emit("mp/scoreAction", { action: "inspect_equipment" });
-            }, 900);
-          }}
-        >
-          Inspect Equipment
-        </button>
-        <div style={{ color: "#94a3b8" }}>{status}</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Substation Map</strong>
+          {room.assets.map((asset) => (
+            <div
+              key={asset.id}
+              style={{
+                padding: 12,
+                border: "1px solid #1e293b",
+                borderRadius: 8,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <strong>{asset.name}</strong>
+                <span style={{ color: "#94a3b8", fontSize: 12 }}>{asset.type.toUpperCase()}</span>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {asset.truth ? (
+                  <>
+                    <div>Truth Status: {asset.truth.status}</div>
+                    <div>
+                      Winding Temp: {asset.truth.telemetry.windingTempC.toFixed(1)} °C • Oil Level:{" "}
+                      {asset.truth.telemetry.oilLevelPct.toFixed(0)}%
+                    </div>
+                  </>
+                ) : (
+                  <span style={{ color: "#94a3b8" }}>Truth data hidden until inspection.</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  style={secondaryButton}
+                  disabled={readOnly || !!walkingAssetId}
+                  onClick={() => beginInspection(asset)}
+                >
+                  Walk & Inspect
+                </button>
+                <button
+                  style={secondaryButton}
+                  disabled={readOnly}
+                  onClick={() => openLocalPanel(asset)}
+                >
+                  Open Local SCADA Panel
+                </button>
+                <button
+                  style={secondaryButton}
+                  disabled={readOnly || !asset.truth}
+                  onClick={() =>
+                    asset.truth &&
+                    socket.emit("mp/fieldReportAsset", {
+                      assetId: asset.id,
+                      status: asset.truth.status,
+                      telemetry: asset.truth.telemetry,
+                    })
+                  }
+                >
+                  Report to Control
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Work Orders</strong>
+          {room.workOrders.length === 0 ? <span style={{ color: "#94a3b8" }}>No work orders.</span> : null}
+          {room.workOrders.map((order) => (
+            <div key={order.id} style={{ padding: 10, border: "1px solid #1e293b", borderRadius: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <strong>
+                  {order.action.toUpperCase()} — {order.assetId}
+                </strong>
+                <span style={{ color: "#94a3b8" }}>{order.status.toUpperCase()}</span>
+              </div>
+              {order.notes ? <div style={{ fontSize: 13 }}>{order.notes}</div> : null}
+              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                {order.status === "open" ? (
+                  <button
+                    style={secondaryButton}
+                    disabled={readOnly}
+                    onClick={() => socket.emit("mp/fieldAcceptWorkOrder", { workOrderId: order.id })}
+                  >
+                    Accept
+                  </button>
+                ) : null}
+                {order.status === "accepted" ? (
+                  <button
+                    style={secondaryButton}
+                    disabled={readOnly}
+                    onClick={() => socket.emit("mp/fieldManualOperate", { workOrderId: order.id })}
+                  >
+                    Complete Work Order
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Local SCADA Panel</strong>
+          {panelLoading ? <div style={{ color: "#fcd34d" }}>Opening local panel...</div> : null}
+          {panelOpen ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ color: "#94a3b8", fontSize: 12 }}>
+                Panel open at {panelAssetId ?? "site"}
+              </div>
+              <AlarmLog events={room.eventLogDetail} variant="detail" />
+            </div>
+          ) : (
+            <div style={{ color: "#94a3b8" }}>Panel closed.</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -989,25 +1301,68 @@ function FieldView({
 
 function PlannerView({
   socket,
+  room,
   readOnly,
 }: {
   socket: MpSocket;
+  room: RoomState;
   readOnly: boolean;
 }) {
+  const [requestType, setRequestType] = useState<PlannerRequestType>("add_generation");
+  const [requestNotes, setRequestNotes] = useState("");
+
   return (
     <div style={cardStyle}>
       <h3 style={{ marginTop: 0 }}>System Planner</h3>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ padding: 12, border: "1px dashed #334155", borderRadius: 8 }}>
-          Demand / supply / frequency analysis placeholder.
+          <strong>System Frequency:</strong> {room.systemState.frequencyHz.toFixed(2)} Hz
         </div>
-        <button
-          style={primaryButton}
-          onClick={() => socket.emit("mp/scoreAction", { action: "plan_request" })}
-          disabled={readOnly}
-        >
-          Request Load Adjustment
-        </button>
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Send Request to Operator</strong>
+          <select
+            value={requestType}
+            onChange={(event) => setRequestType(event.target.value as PlannerRequestType)}
+            style={inputStyle}
+          >
+            <option value="add_generation">Add Generation</option>
+            <option value="reduce_generation">Reduce Generation</option>
+            <option value="shed_load">Shed Load</option>
+            <option value="reconfigure">Reconfigure Network</option>
+          </select>
+          <textarea
+            value={requestNotes}
+            onChange={(event) => setRequestNotes(event.target.value)}
+            placeholder="Notes for the operator"
+            style={{ ...inputStyle, minHeight: 72 }}
+          />
+          <button
+            style={primaryButton}
+            onClick={() => {
+              socket.emit("mp/plannerRequest", { type: requestType, notes: requestNotes || undefined });
+              setRequestNotes("");
+            }}
+            disabled={readOnly}
+          >
+            Submit Request
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Request Status</strong>
+          {room.plannerRequests.length === 0 ? <span style={{ color: "#94a3b8" }}>No requests yet.</span> : null}
+          {room.plannerRequests.map((request) => (
+            <div key={request.id} style={{ padding: 10, border: "1px solid #1e293b", borderRadius: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <strong>{formatPlannerRequestType(request.type)}</strong>
+                <span style={{ color: "#94a3b8" }}>{request.status.toUpperCase()}</span>
+              </div>
+              {request.notes ? <div style={{ fontSize: 13 }}>{request.notes}</div> : null}
+            </div>
+          ))}
+        </div>
+
+        <AlarmLog events={room.eventLogShort} variant="short" />
       </div>
     </div>
   );
@@ -1022,6 +1377,23 @@ function EventLog({ events }: { events: RoomState["eventLog"] }) {
         {events.map((event) => (
           <div key={event.id} style={{ fontSize: 12, color: "#cbd5f5" }}>
             [{new Date(event.timestamp).toLocaleTimeString()}] {event.type.toUpperCase()} — {event.message}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AlarmLog({ events, variant }: { events: AlarmEvent[]; variant: "short" | "detail" }) {
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <strong>{variant === "detail" ? "Detailed Alarm Log" : "Alarm Log"}</strong>
+      <div style={{ maxHeight: 180, overflow: "auto", display: "grid", gap: 4 }}>
+        {events.length === 0 ? <div style={{ color: "#94a3b8" }}>No alarms yet.</div> : null}
+        {events.map((event) => (
+          <div key={event.id} style={{ fontSize: 12, color: "#cbd5f5" }}>
+            [{new Date(event.timestamp).toLocaleTimeString()}] {event.type.toUpperCase()} ({event.severity}) —{" "}
+            {variant === "detail" ? event.messageDetail : event.messageShort}
           </div>
         ))}
       </div>
@@ -1049,6 +1421,21 @@ function RoleHelpPanel() {
       </div>
     </div>
   );
+}
+
+function formatPlannerRequestType(type: PlannerRequestType) {
+  switch (type) {
+    case "add_generation":
+      return "Add Generation";
+    case "reduce_generation":
+      return "Reduce Generation";
+    case "shed_load":
+      return "Shed Load";
+    case "reconfigure":
+      return "Reconfigure Network";
+    default:
+      return type;
+  }
 }
 
 function ResultsPanel({ room, currentPlayer }: { room: RoomState; currentPlayer: Player | null }) {

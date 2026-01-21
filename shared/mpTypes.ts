@@ -1,5 +1,104 @@
 export type Role = "gm" | "operator" | "field" | "planner";
 
+export type AssetType = "cb" | "ds" | "tx" | "bus";
+
+export type AssetStatus = "open" | "closed" | "tripped" | "unknown";
+
+export type AssetTelemetry = {
+  windingTempC: number;
+  oilLevelPct: number;
+};
+
+export type AssetTruth = {
+  status: AssetStatus;
+  telemetry: AssetTelemetry;
+  lastTruthUpdated: number;
+};
+
+export type AssetScada = {
+  status: AssetStatus;
+  telemetry: AssetTelemetry;
+  dbi: boolean;
+  lastScadaUpdated: number;
+};
+
+export type Asset = {
+  id: string;
+  name: string;
+  type: AssetType;
+  remoteControllable: boolean;
+  remoteFails?: boolean;
+  truth: AssetTruth;
+  scada: AssetScada;
+  lastUpdated: number;
+};
+
+export type AssetView = {
+  id: string;
+  name: string;
+  type: AssetType;
+  remoteControllable: boolean;
+  scada: AssetScada;
+  truth?: AssetTruth | null;
+};
+
+export type FieldReport = {
+  id: string;
+  assetId: string;
+  status: AssetStatus;
+  telemetry: AssetTelemetry;
+  reportedBy: string;
+  timestamp: number;
+};
+
+export type WorkOrderAction = "open" | "close" | "inspect";
+
+export type WorkOrderStatus = "open" | "accepted" | "completed" | "rejected";
+
+export type WorkOrder = {
+  id: string;
+  assetId: string;
+  action: WorkOrderAction;
+  notes?: string;
+  createdBy: string;
+  createdAt: number;
+  status: WorkOrderStatus;
+  acceptedBy?: string;
+  completedAt?: number;
+};
+
+export type PlannerRequestType = "add_generation" | "reduce_generation" | "shed_load" | "reconfigure";
+
+export type PlannerRequestStatus = "pending" | "accepted" | "rejected" | "completed";
+
+export type PlannerRequest = {
+  id: string;
+  type: PlannerRequestType;
+  notes?: string;
+  createdBy: string;
+  createdAt: number;
+  status: PlannerRequestStatus;
+  updatedAt?: number;
+  handledBy?: string;
+};
+
+export type AlarmSeverity = "low" | "med" | "high";
+
+export type AlarmEvent = {
+  id: string;
+  timestamp: number;
+  type: "alarm" | "fault" | "note";
+  severity: AlarmSeverity;
+  messageShort: string;
+  messageDetail: string;
+  assetId?: string;
+};
+
+export type SystemState = {
+  frequencyHz: number;
+  lastUpdated: number;
+};
+
 export type Player = {
   id: string;
   name?: string;
@@ -21,6 +120,13 @@ export type ScenarioEvent = {
   type: string;
   description: string;
   points?: number;
+  assetId?: string;
+  dbi?: boolean;
+  remoteFails?: boolean;
+  frequencyDelta?: number;
+  alarmSeverity?: AlarmSeverity;
+  messageShort?: string;
+  messageDetail?: string;
 };
 
 export type Scenario = {
@@ -71,6 +177,13 @@ export type RoomState = {
   timeElapsedSec?: number;
   countdownEndsAt?: number;
   eventLog: GameEvent[];
+  eventLogShort: AlarmEvent[];
+  eventLogDetail: AlarmEvent[];
+  assets: AssetView[];
+  fieldReports: FieldReport[];
+  workOrders: WorkOrder[];
+  plannerRequests: PlannerRequest[];
+  systemState: SystemState;
   orgName?: string;
   resultsVisible: boolean;
   autoAnnounceResults: boolean;
@@ -158,6 +271,55 @@ export type ScoreActionPayload = {
   action: "ack_alarm" | "restore_service" | "inspect_equipment" | "plan_request";
 };
 
+export type OperatorRemoteSwitchPayload = {
+  assetId: string;
+  action: "open" | "close";
+};
+
+export type CreateWorkOrderPayload = {
+  assetId: string;
+  action: WorkOrderAction;
+  notes?: string;
+};
+
+export type FieldAcceptWorkOrderPayload = {
+  workOrderId: string;
+};
+
+export type FieldInspectAssetPayload = {
+  assetId: string;
+};
+
+export type FieldReportAssetPayload = {
+  assetId: string;
+  status: AssetStatus;
+  telemetry: AssetTelemetry;
+};
+
+export type FieldManualOperatePayload = {
+  workOrderId: string;
+};
+
+export type OperatorConfirmAssetPayload = {
+  assetId: string;
+  confirmedStatus: AssetStatus;
+  confirmedTelemetry: AssetTelemetry;
+};
+
+export type PlannerRequestPayload = {
+  type: PlannerRequestType;
+  notes?: string;
+};
+
+export type OperatorHandlePlannerRequestPayload = {
+  requestId: string;
+  status: PlannerRequestStatus;
+};
+
+export type OperatorConnectGeneratorPayload = {
+  amountHz?: number;
+};
+
 export interface ClientToServerEvents {
   "mp/createRoom": (payload: CreateRoomPayload) => void;
   "mp/joinRoom": (payload: JoinRoomPayload) => void;
@@ -175,6 +337,16 @@ export interface ClientToServerEvents {
   "mp/setResultsVisibility": (payload: SetResultsVisibilityPayload) => void;
   "mp/setAutoAnnounceResults": (payload: SetAutoAnnounceResultsPayload) => void;
   "mp/setGmAwards": (payload: SetGmAwardsPayload) => void;
+  "mp/operatorRemoteSwitch": (payload: OperatorRemoteSwitchPayload) => void;
+  "mp/createWorkOrder": (payload: CreateWorkOrderPayload) => void;
+  "mp/fieldAcceptWorkOrder": (payload: FieldAcceptWorkOrderPayload) => void;
+  "mp/fieldInspectAsset": (payload: FieldInspectAssetPayload) => void;
+  "mp/fieldReportAsset": (payload: FieldReportAssetPayload) => void;
+  "mp/fieldManualOperate": (payload: FieldManualOperatePayload) => void;
+  "mp/operatorConfirmAsset": (payload: OperatorConfirmAssetPayload) => void;
+  "mp/plannerRequest": (payload: PlannerRequestPayload) => void;
+  "mp/operatorHandlePlannerRequest": (payload: OperatorHandlePlannerRequestPayload) => void;
+  "mp/operatorConnectGenerator": (payload: OperatorConnectGeneratorPayload) => void;
 }
 
 export interface ServerToClientEvents {

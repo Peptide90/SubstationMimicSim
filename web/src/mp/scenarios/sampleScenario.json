@@ -5,24 +5,38 @@
   "events": [
     {
       "id": "evt-1",
-      "atSec": 15,
-      "type": "fault",
-      "description": "Feeder F1 trips - investigate protection relay logs.",
-      "points": 5
-    },
-    {
-      "id": "evt-2",
-      "atSec": 75,
-      "type": "alarm",
-      "description": "Transformer T2 temperature alarm.",
+      "atSec": 12,
+      "type": "dbi",
+      "description": "TX-1 telemetry went indeterminate.",
+      "assetId": "tx-1",
       "points": 3
     },
     {
+      "id": "evt-2",
+      "atSec": 45,
+      "type": "alarm",
+      "description": "Transformer TX-1 temperature alarm.",
+      "assetId": "tx-1",
+      "alarmSeverity": "high",
+      "messageShort": "TX-1 high temperature alarm.",
+      "messageDetail": "TX-1 winding temp 112°C. Cooling fan offline.",
+      "points": 4
+    },
+    {
       "id": "evt-3",
-      "atSec": 140,
-      "type": "fault",
-      "description": "Busbar differential relay pickup at BB-2.",
-      "points": 8
+      "atSec": 80,
+      "type": "remote_fail",
+      "description": "CB-2 remote switching fails.",
+      "assetId": "cb-2",
+      "points": 5
+    },
+    {
+      "id": "evt-4",
+      "atSec": 110,
+      "type": "freq_delta",
+      "description": "System frequency sag from regional load spike.",
+      "frequencyDelta": -0.4,
+      "points": 4
     }
   ]
 }
