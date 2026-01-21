@@ -2,27 +2,58 @@
   "id": "baseline-restoration",
   "name": "Baseline Restoration",
   "durationSec": 300,
+  "mimicTemplateId": "mp-training-bay",
+  "assetThresholds": {
+    "tx": {
+      "oilLevelPct": { "low": 65, "high": 95, "highHigh": 98, "lockoutLow": 40 },
+      "windingTempC": { "high": 90, "highHigh": 110 }
+    },
+    "cb": {
+      "gasLevelPct": { "low": 60, "high": 90, "highHigh": 95, "lockoutLow": 35 }
+    }
+  },
   "events": [
     {
       "id": "evt-1",
-      "atSec": 15,
-      "type": "fault",
-      "description": "Feeder F1 trips - investigate protection relay logs.",
-      "points": 5
-    },
-    {
-      "id": "evt-2",
-      "atSec": 75,
-      "type": "alarm",
-      "description": "Transformer T2 temperature alarm.",
+      "atSec": 12,
+      "type": "dbi",
+      "description": "TX1 telemetry went indeterminate.",
+      "assetId": "TX1",
       "points": 3
     },
     {
+      "id": "evt-2",
+      "atSec": 45,
+      "type": "telemetry",
+      "description": "Transformer TX1 temperature rising.",
+      "assetId": "TX1",
+      "telemetry": { "windingTempC": 112, "oilLevelPct": 58 },
+      "points": 4
+    },
+    {
       "id": "evt-3",
-      "atSec": 140,
-      "type": "fault",
-      "description": "Busbar differential relay pickup at BB-2.",
-      "points": 8
+      "atSec": 80,
+      "type": "remote_fail",
+      "description": "CB1 remote switching fails.",
+      "assetId": "CB1",
+      "points": 5
+    },
+    {
+      "id": "evt-4",
+      "atSec": 110,
+      "type": "freq_delta",
+      "description": "System frequency sag from regional load spike.",
+      "frequencyDelta": -0.4,
+      "points": 4
+    },
+    {
+      "id": "evt-5",
+      "atSec": 150,
+      "type": "telemetry",
+      "description": "CB1 gas pressure dropping.",
+      "assetId": "CB1",
+      "telemetry": { "gasLevelPct": 30 },
+      "points": 3
     }
   ]
 }
