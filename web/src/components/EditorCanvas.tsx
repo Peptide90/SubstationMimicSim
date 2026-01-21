@@ -5,6 +5,7 @@ import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectSt
 import type { DragEvent } from "react";
 
 import { Palette } from "../ui/Palette";
+import type { EditorModeConfig } from "../app/mimic/EditorModeConfig";
 import { BusbarEdge } from "../ui/BusbarEdge";
 import { busbarPolyline } from "../ui/busbarRouter";
 
@@ -119,6 +120,7 @@ export function EditorCanvas(props: {
   onNodeContextMenu: (node: Node, pos: { x: number; y: number }) => void;
   onPaneContextMenu: (pos: { x: number; y: number }) => void;
   onPaneClick: () => void;
+  modeConfig?: EditorModeConfig;
 
 }) {
   const {
@@ -149,9 +151,11 @@ export function EditorCanvas(props: {
 	onNodeContextMenu,
 	onPaneContextMenu,
 	onPaneClick,
+  modeConfig,
   } = props;
 
   const { screenToFlowPosition } = useReactFlow();
+  const connectionsEnabled = modeConfig?.allowConnections ?? true;
 
   // Wire custom edge types (busbar renderer)
   const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
@@ -395,8 +399,8 @@ export function EditorCanvas(props: {
           deleteKeyCode={locked ? [] : ["Backspace", "Delete"]}
           panOnDrag={[1, 2]}
           nodesDraggable={!locked}
-          nodesConnectable={!locked}
-          edgesUpdatable={!locked}
+          nodesConnectable={!locked && connectionsEnabled}
+          edgesUpdatable={!locked && connectionsEnabled}
           elementsSelectable
           selectionOnDrag={!locked}
           snapToGrid={snapEnabled}
@@ -451,9 +455,15 @@ export function EditorCanvas(props: {
           </Controls>
         </ReactFlow>
 
-        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
-          <Palette onAddAtCenter={onAddAtCenter} />
-        </div>
+        {modeConfig?.palette?.enabled !== false && (
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
+            <Palette
+              onAddAtCenter={onAddAtCenter}
+              allowedKinds={modeConfig?.palette?.allowedKinds}
+              disabled={locked}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

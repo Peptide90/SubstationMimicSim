@@ -6,10 +6,14 @@ type Props = {
   buildTag: string;
   onOpenMenu: () => void;
   onOpenHelp: () => void;
-  onOpenInterlocking: () => void;
-  onOpenLabelling: () => void;
-  onOpenSaveLoad: () => void;
-  onOpenPowerFlow: () => void;
+  onOpenInterlocking?: () => void;
+  onOpenLabelling?: () => void;
+  onOpenSaveLoad?: () => void;
+  onOpenPowerFlow?: () => void;
+  disableInterlocking?: boolean;
+  disableLabelling?: boolean;
+  disableSaveLoad?: boolean;
+  disablePowerFlow?: boolean;
 };
 
 export function TopToolbar({
@@ -20,6 +24,10 @@ export function TopToolbar({
   onOpenLabelling,
   onOpenSaveLoad,
   onOpenPowerFlow,
+  disableInterlocking,
+  disableLabelling,
+  disableSaveLoad,
+  disablePowerFlow,
 }: Props) {
   const btn: CSSProperties = {
     background: "#0f172a",
@@ -65,18 +73,26 @@ export function TopToolbar({
         Substation Mimic
       </div>
 
-      <button style={btn} onClick={onOpenInterlocking}>
-        Interlocking
-      </button>
-      <button style={btn} onClick={onOpenLabelling}>
-        Labelling
-      </button>
-      <button style={btn} onClick={onOpenSaveLoad}>
-        Save / Load
-      </button>
-      <button style={btn} onClick={onOpenPowerFlow}>
-        Power Flow
-      </button>
+      {!disableInterlocking && (
+        <button style={btn} onClick={onOpenInterlocking}>
+          Interlocking
+        </button>
+      )}
+      {!disableLabelling && (
+        <button style={btn} onClick={onOpenLabelling}>
+          Labelling
+        </button>
+      )}
+      {!disableSaveLoad && (
+        <button style={btn} onClick={onOpenSaveLoad}>
+          Save / Load
+        </button>
+      )}
+      {!disablePowerFlow && (
+        <button style={btn} onClick={onOpenPowerFlow}>
+          Power Flow
+        </button>
+      )}
 
       <div style={{ marginLeft: "auto" }}>
         <BrandingCluster buildTag={buildTag} variant="compact" />

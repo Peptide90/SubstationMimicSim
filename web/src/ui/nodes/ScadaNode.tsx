@@ -62,12 +62,14 @@ export function ScadaNode(props: NodeProps) {
 
   // If in future you flag a transformer as faulted, set data.faulted = true
   const isFaulted = data?.faulted === true;
+  const isChallengeFailed = data?.challengeFailed === true;
   const isLockout = data?.protection?.lockout === true;
   const isDestroyed = data?.destroyed === true;
 
   const bg = useMemo(() => {
     if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
     if (!isSwitch) return "#ffffff";
+    if (isChallengeFailed) return SW_FAIL_BG;
     if (isDestroyed) return SW_FAIL_BG;
     if (isLockout) return SW_LOCKOUT_BG;
     if (isPending) return SW_DBI_BG;
@@ -77,6 +79,7 @@ export function ScadaNode(props: NodeProps) {
   const border = useMemo(() => {
     if (kind === "tx") return "2px solid #64748b";
     if (!isSwitch) return "2px solid #444";
+    if (isChallengeFailed) return "2px solid #7f1d1d";
     if (isDestroyed) return "2px solid #0f172a";
     if (isLockout) return "2px solid #b45309";
     if (isPending) return "2px solid #64748b";
@@ -236,6 +239,7 @@ export function ScadaNode(props: NodeProps) {
         background: bg,
         boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
         lineHeight: 1.05,
+        position: "relative",
         userSelect: "none",
         boxSizing: "border-box",
         display: "flex",
@@ -245,6 +249,24 @@ export function ScadaNode(props: NodeProps) {
       }}
     >
       {renderHandles()}
+      {isChallengeFailed && (
+        <div
+          style={{
+            position: "absolute",
+            top: -12,
+            right: -8,
+            background: "#dc2626",
+            color: "#fff",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          FAILED
+        </div>
+      )}
 
       {/* TEXT LAYOUT:
           - CB: stacked (CB / label / status)

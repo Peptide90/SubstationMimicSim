@@ -26,6 +26,7 @@ import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { HelpModal } from "./components/modals/HelpModal";
 import { MainMenu } from "./components/MainMenu";
 import { MultiplayerApp } from "./mp/MultiplayerApp";
+import { ChallengeApp } from "./app/challenges/ChallengeApp";
 
 import { ContextMenu } from "./components/ContextMenu";
 
@@ -40,89 +41,9 @@ import { useFaults } from "./app/hooks/useFaults";
 import { loadInitialProject, useTemplates } from "./app/hooks/useTemplates";
 import { useContextMenu } from "./app/hooks/useContextMenu";
 import { BUILD_TAG } from "./app/constants/branding";
+import { makeSandboxConfig } from "./app/mimic/EditorModeConfig";
+import { flowToMimicLocal, getMimicData, makeBusbarEdge, makeNode } from "./app/mimic/graphUtils";
 
-
-// ---------- minimal helpers (kept in App to avoid more files now) ----------
-type MimicData = { kind: NodeKind; state?: SwitchState; sourceOn?: boolean; label?: string };
-
-function getMimicData(n: Node): MimicData | null {
-  const d = n.data as any;
-  const mimic = (d?.mimic ?? d) as MimicData | undefined;
-  if (!mimic?.kind) return null;
-  return mimic;
-}
-
-function flowToMimicLocal(nodes: Node[], edges: Edge[]) {
-  const mimicNodes = nodes
-    .map((n) => {
-      const md = getMimicData(n);
-      if (!md) return null;
-      return { id: n.id, kind: md.kind, label: md.label ?? (n.data as any)?.label, state: md.state, sourceOn: md.sourceOn };
-    })
-    .filter(Boolean) as any[];
-
-  const mimicEdges = edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    kind: (e.data as any)?.kind,
-    busbarId: (e.data as any)?.busbarId,
-  }));
-
-  return { nodes: mimicNodes, edges: mimicEdges };
-}
-
-function makeBusbarEdge(source: string, target: string, sourceHandle?: string, targetHandle?: string, busbarId?: string): Edge {
-  const bbid = busbarId ?? `bb-${crypto.randomUUID().slice(0, 6)}`;
-  return {
-    id: `${bbid}-${crypto.randomUUID().slice(0, 4)}`,
-    source,
-    target,
-    sourceHandle,
-    targetHandle,
-    type: "busbar",
-    style: { strokeWidth: 6, stroke: "#64748b" },
-    data: { kind: "busbar", busbarId: bbid },
-  };
-}
-
-function makeNode(
-  kind: NodeKind,
-  id: string,
-  x: number,
-  y: number,
-  state?: SwitchState,
-  sourceOn?: boolean
-): Node {
-  const mimic = { kind, state, sourceOn, label: id };
-
-  const iface =
-    kind === "iface"
-      ? {
-          substationId: "SUB",
-          terminalId: "X1",
-          linkTo: "",
-        }
-      : undefined;
-
-  return {
-    id,
-    type:
-      kind === "junction"
-        ? "junction"
-        : kind === "iface"
-        ? "iface"
-        : "scada",
-    position: { x, y },
-    data: {
-      label: id,
-      mimic,
-      ...(iface ? { iface } : {}),
-    },
-    draggable: kind !== "junction",
-    selectable: true,
-  };
-}
 
 function isConducting(kind: NodeKind, state?: SwitchState, sourceOn?: boolean): boolean {
   if (kind === "source") return sourceOn === true;
@@ -180,6 +101,7 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
 function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu: () => void }) {
   const { screenToFlowPosition } = useReactFlow();
   const initialProject = useMemo(() => loadInitialProject(), []);
+  const modeConfig = useMemo(() => makeSandboxConfig(), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
@@ -553,7 +475,11 @@ const isValidConnection = useCallback(
     if (!kind) return;
     const pos = screenToFlowPosition({ x: evt.clientX, y: evt.clientY });
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
-    setNodes((ns) => ns.concat(makeNode(kind, id, pos.x, pos.y, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
+    setNodes((ns) =>
+      ns.concat(
+        makeNode(kind, id, pos.x, pos.y, { state: kind === "cb" || kind === "ds" || kind === "es" ? "open" : undefined })
+      )
+    );
     ensureBp109Meta(id, kind);
     appendEvent("debug", `DROP ${kind.toUpperCase()} ${id}`, { source: "player" });
   }, [appendEvent, ensureBp109Meta, locked, screenToFlowPosition, setNodes]);
@@ -561,7 +487,11 @@ const isValidConnection = useCallback(
   const onAddAtCenter = useCallback((kind: NodeKind) => {
     if (locked) return;
     const id = `${kind}-${crypto.randomUUID().slice(0, 6)}`;
-    setNodes((ns) => ns.concat(makeNode(kind, id, 260, 160, (kind === "cb" || kind === "ds" || kind === "es") ? "open" : undefined)));
+    setNodes((ns) =>
+      ns.concat(
+        makeNode(kind, id, 260, 160, { state: kind === "cb" || kind === "ds" || kind === "es" ? "open" : undefined })
+      )
+    );
     ensureBp109Meta(id, kind);
     appendEvent("debug", `CREATE ${kind.toUpperCase()} ${id}`, { source: "player" });
   }, [appendEvent, ensureBp109Meta, locked, setNodes]);
@@ -739,6 +669,10 @@ const isValidConnection = useCallback(
         onOpenLabelling={() => setOpenLabelling(true)}
         onOpenSaveLoad={() => setOpenSaveLoad(true)}
 	    onOpenPowerFlow={() => setOpenPowerFlow(true)}
+        disableInterlocking={modeConfig.disableInterlocking}
+        disableLabelling={modeConfig.disableLabelling}
+        disableSaveLoad={modeConfig.disableSaveLoad}
+        disablePowerFlow={modeConfig.disablePowerFlow}
       />
 
       <div style={{ display: "flex", height: "100vh", paddingTop: 52 }}>
@@ -766,10 +700,11 @@ const isValidConnection = useCallback(
           onAddAtCenter={onAddAtCenter}
 		  onEdgeClick={onEdgeClick}
 		  onNodeDoubleClick={onNodeDoubleClick}
-		  onEdgeContextMenu={onEdgeContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
           onNodeContextMenu={onNodeContextMenu}
 		  onPaneContextMenu={onPaneContextMenu}
 		  onPaneClick={onPaneClick}
+          modeConfig={modeConfig}
         />
 
         <ScadaPanel
@@ -956,7 +891,7 @@ const isValidConnection = useCallback(
 }
 
 export default function App() {
-  const [view, setView] = useState<"menu" | "editor" | "mp">("menu");
+  const [view, setView] = useState<"menu" | "editor" | "mp" | "challenges">("menu");
 
   return (
     <ReactFlowProvider>
@@ -964,11 +899,15 @@ export default function App() {
         <MainMenu
           buildTag={BUILD_TAG}
           onStartSolo={() => setView("editor")}
+          onStartChallenges={() => setView("challenges")}
           onStartMultiplayer={() => setView("mp")}
         />
       ) : null}
       {view === "editor" ? (
         <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
+      ) : null}
+      {view === "challenges" ? (
+        <ChallengeApp buildTag={BUILD_TAG} onExit={() => setView("menu")} />
       ) : null}
       {view === "mp" ? <MultiplayerApp onExit={() => setView("menu")} /> : null}
     </ReactFlowProvider>
