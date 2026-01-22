@@ -303,6 +303,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       if ((md.state ?? "open") !== "closed") return false;
 
       const energizedBefore = getChallengeEnergized(nodes, edges);
+      if (!energizedBefore.energizedNodeIds.has(nodeId)) return false;
       const loadIds = getChallengeLoadIds(nodes);
       const energizedLoads = loadIds.filter((id) => energizedBefore.energizedNodeIds.has(id));
       if (energizedLoads.length === 0) return false;

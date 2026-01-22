@@ -50,7 +50,9 @@ function evaluateObjective(
   switch (objective.type) {
     case "energizeTerminal": {
       const terminalId = objective.params?.terminalId as string | undefined;
-      const passed = terminalId ? energizedIds.has(terminalId) : false;
+      const shouldBeEnergized = objective.params?.shouldBeEnergized !== false;
+      const isEnergized = terminalId ? energizedIds.has(terminalId) : false;
+      const passed = shouldBeEnergized ? isEnergized : !isEnergized;
       return { id: objective.id, label: objective.label, passed };
     }
     case "connectBetween": {
