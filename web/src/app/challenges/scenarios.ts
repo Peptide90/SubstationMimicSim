@@ -151,24 +151,24 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     tutorialSteps: [
       {
         id: "t2-step-1",
-        title: "Disconnector under load",
-        body: "Open DS-2. There is no alternate path, so it will arc and fail.",
+        title: "Disconnector with alternate path",
+        body: "Open DS-2. Because DS-2B provides an alternate path, it opens without issues.",
         highlight: { nodeId: "DS-2" },
         requires: { type: "toggle", params: { nodeId: "DS-2", to: "open" } },
       },
       {
         id: "t2-step-2",
+        title: "Parallel path removed",
+        body: "Now open DS-2B. With the alternate path gone, the disconnector will arc and fail.",
+        highlight: { nodeId: "DS-2B" },
+        requires: { type: "toggle", params: { nodeId: "DS-2B", to: "open" } },
+      },
+      {
+        id: "t2-step-3",
         title: "Use the breaker",
         body: "Open CB-2 instead. The breaker safely interrupts load current.",
         highlight: { nodeId: "CB-2" },
         requires: { type: "toggle", params: { nodeId: "CB-2", to: "open" } },
-      },
-      {
-        id: "t2-step-3",
-        title: "Parallel path",
-        body: "Open DS-2A. Power reroutes through the parallel disconnector path, so there is no damage.",
-        highlight: { nodeId: "DS-2A" },
-        requires: { type: "toggle", params: { nodeId: "DS-2A", to: "open" } },
       },
     ],
   },
