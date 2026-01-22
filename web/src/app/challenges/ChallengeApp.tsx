@@ -347,7 +347,21 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         if (opening && isChallengeTutorial && md.kind === "ds" && underLoad) {
           triggerArc(node.id, "ds_arc", 1200);
           setTutorialViolations((v) => v + 1);
-          addCallout("Disconnectors are not designed to interrupt load current. The contacts arc and fail.");
+          const lockoutMessage =
+            "Disconnectors are not designed to interrupt load current. With no alternate path, the air gap forces a fierce arc.";
+          addCallout(lockoutMessage);
+          setNodes((ns) =>
+            ns.map((n) => {
+              if (n.id !== node.id) return n;
+              return {
+                ...n,
+                data: {
+                  ...(n.data as any),
+                  mimic: { ...md, state: "open" },
+                },
+              };
+            })
+          );
           window.setTimeout(() => {
             setNodes((ns) =>
               ns.map((n) => {
@@ -357,7 +371,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                   data: {
                     ...(n.data as any),
                     health: "failed",
-                    lockoutReason: "Failed after interrupting load current.",
+                    lockoutReason: lockoutMessage,
                     lastFaultAt: Date.now(),
                     mimic: { ...md, state: "open" },
                   },
