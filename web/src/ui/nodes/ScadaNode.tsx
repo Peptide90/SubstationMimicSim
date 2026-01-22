@@ -62,7 +62,8 @@ export function ScadaNode(props: NodeProps) {
 
   // If in future you flag a transformer as faulted, set data.faulted = true
   const isFaulted = data?.faulted === true;
-  const isChallengeFailed = data?.challengeFailed === true;
+  const health = data?.health ?? "ok";
+  const isChallengeFailed = data?.challengeFailed === true || health !== "ok";
   const isLockout = data?.protection?.lockout === true;
   const isDestroyed = data?.destroyed === true;
 
@@ -251,6 +252,7 @@ export function ScadaNode(props: NodeProps) {
       {renderHandles()}
       {isChallengeFailed && (
         <div
+          title={data?.lockoutReason ?? "Device damaged"}
           style={{
             position: "absolute",
             top: -12,
@@ -264,7 +266,7 @@ export function ScadaNode(props: NodeProps) {
             boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
           }}
         >
-          FAILED
+          {health === "damaged" ? "DAMAGED" : "FAILED"}
         </div>
       )}
 

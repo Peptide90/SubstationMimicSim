@@ -84,13 +84,28 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       locked: {
         nodes: [
           makeNode("iface", "SRC-2", 40, 140, {
-            label: "Source",
+            label: "Source A",
             iface: { substationId: "SUB", terminalId: "S2" },
             locked: true,
           }),
+          makeNode("iface", "SRC-2B", 40, 300, {
+            label: "Source B",
+            iface: { substationId: "SUB", terminalId: "S2B" },
+            locked: true,
+          }),
+          makeNode("iface", "SRC-2C", 40, 360, {
+            label: "Source C",
+            iface: { substationId: "SUB", terminalId: "S2C" },
+            locked: true,
+          }),
           makeNode("iface", "LOAD-2", 760, 140, {
-            label: "Load",
+            label: "Load A",
             iface: { substationId: "SUB", terminalId: "L2" },
+            locked: true,
+          }),
+          makeNode("iface", "LOAD-2B", 760, 300, {
+            label: "Load B",
+            iface: { substationId: "SUB", terminalId: "L2B" },
             locked: true,
           }),
         ],
@@ -100,18 +115,26 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         nodes: [
           makeNode("ds", "DS-2", 320, 140, { state: "closed" }),
           makeNode("cb", "CB-2", 500, 140, { state: "closed" }),
+          makeNode("ds", "DS-2B", 320, 300, { state: "closed" }),
+          makeNode("cb", "CB-2C", 320, 360, { state: "closed" }),
+          makeNode("junction", "J-2B", 620, 300, {}),
         ],
         edges: [
           makeBusbarEdge("SRC-2", "DS-2", "R", "L", "bb-t2-1", "bb-t2-1"),
           makeBusbarEdge("DS-2", "CB-2", "R", "L", "bb-t2-2", "bb-t2-2"),
           makeBusbarEdge("CB-2", "LOAD-2", "R", "L", "bb-t2-3", "bb-t2-3"),
+          makeBusbarEdge("SRC-2B", "DS-2B", "R", "L", "bb-t2-4", "bb-t2-4"),
+          makeBusbarEdge("DS-2B", "J-2B", "R", "L", "bb-t2-5", "bb-t2-5"),
+          makeBusbarEdge("SRC-2C", "CB-2C", "R", "L", "bb-t2-6", "bb-t2-6"),
+          makeBusbarEdge("CB-2C", "J-2B", "R", "B", "bb-t2-7", "bb-t2-7"),
+          makeBusbarEdge("J-2B", "LOAD-2B", "R", "L", "bb-t2-8", "bb-t2-8"),
         ],
       },
     },
     buildRules: {
       allowedPalette: [],
-      lockedNodes: ["SRC-2", "LOAD-2", "DS-2", "CB-2"],
-      lockedEdges: ["bb-t2-1", "bb-t2-2", "bb-t2-3"],
+      lockedNodes: ["SRC-2", "SRC-2B", "SRC-2C", "LOAD-2", "LOAD-2B", "DS-2", "CB-2", "DS-2B", "CB-2C", "J-2B"],
+      lockedEdges: ["bb-t2-1", "bb-t2-2", "bb-t2-3", "bb-t2-4", "bb-t2-5", "bb-t2-6", "bb-t2-7", "bb-t2-8"],
     },
     objectives: [
       {
@@ -128,16 +151,23 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       {
         id: "t2-step-1",
         title: "Disconnector under load",
-        body: "Try opening DS-2 while the load is energized.",
+        body: "Open DS-2 on Load A. This disconnector is interrupting load current and will fail.",
         highlight: { nodeId: "DS-2" },
         requires: { type: "toggle", params: { nodeId: "DS-2", to: "open" } },
       },
       {
         id: "t2-step-2",
         title: "Use the breaker",
-        body: "Now open the circuit breaker instead (CB-2).",
+        body: "Open CB-2 to interrupt load current safely (a contained arc appears).",
         highlight: { nodeId: "CB-2" },
         requires: { type: "toggle", params: { nodeId: "CB-2", to: "open" } },
+      },
+      {
+        id: "t2-step-3",
+        title: "Parallel path",
+        body: "Open DS-2B on Load B. A parallel supply keeps Load B energized, so this is safe.",
+        highlight: { nodeId: "DS-2B" },
+        requires: { type: "toggle", params: { nodeId: "DS-2B", to: "open" } },
       },
     ],
   },

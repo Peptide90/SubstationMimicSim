@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { addEdge, useEdgesState, useNodesState, useReactFlow } from "reactflow";
+import { addEdge, useEdgesState, useNodesState, useReactFlow, useStore } from "reactflow";
 import type { Connection, Edge, Node } from "reactflow";
 
 import { CHALLENGE_SCENARIOS, getScenarioById } from "./scenarios";
@@ -8,12 +8,12 @@ import { evaluateChallenge } from "./ChallengeEvaluator";
 import { createTutorialActionLog, evaluateTutorialStep } from "./tutorialRunner";
 import { loadChallengeProgress, updateChallengeProgress } from "./storage";
 import { makeSandboxConfig } from "../mimic/EditorModeConfig";
-import { flowToMimicLocal, getMimicData, makeBusbarEdge, makeNode } from "../mimic/graphUtils";
-import { computeEnergized } from "../../core/energize";
+import { getMimicData, makeBusbarEdge, makeNode } from "../mimic/graphUtils";
 import type { NodeKind, SwitchState } from "../../core/model";
 import { EditorCanvas } from "../../components/EditorCanvas";
 import { TopToolbar } from "../../components/TopToolbar";
 import { ChallengePanel } from "../../components/ChallengePanel";
+import { getChallengeEnergized, getChallengeLoadIds } from "./energizeUtils";
 
 import { JunctionNode } from "../../ui/nodes/JunctionNode";
 import { ScadaNode } from "../../ui/nodes/ScadaNode";
@@ -27,6 +27,14 @@ type ChallengeView = "levels" | "runner";
 
 type TutorialState = {
   stepIndex: number;
+};
+
+type ArcEffect = {
+  id: string;
+  nodeId: string;
+  kind: "ds_arc" | "cb_arc";
+  startedAt: number;
+  durationMs: number;
 };
 
 type Props = {
@@ -51,6 +59,14 @@ function buildEdgesFromScenario(scenario: ChallengeScenario) {
   }));
   const playerEdges = scenario.initialGraph.player?.edges ?? [];
   return [...lockedEdges, ...playerEdges];
+}
+
+function getNodeDimensions(kind: NodeKind) {
+  if (kind === "cb") return { w: 60, h: 60 };
+  if (kind === "ds" || kind === "es") return { w: 100, h: 40 };
+  if (kind === "tx") return { w: 100, h: 80 };
+  if (kind === "iface") return { w: 60, h: 60 };
+  return { w: 120, h: 48 };
 }
 
 function computeLockedSets(scenario: ChallengeScenario) {
@@ -79,6 +95,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [evaluation, setEvaluation] = useState<any>(null);
   const [issues, setIssues] = useState<string[]>([]);
   const [liveIssues, setLiveIssues] = useState<string[]>([]);
+  const [tutorialCallouts, setTutorialCallouts] = useState<string[]>([]);
+  const [arcEffects, setArcEffects] = useState<ArcEffect[]>([]);
   const [tutorialState, setTutorialState] = useState<TutorialState>({ stepIndex: 0 });
   const [tutorialViolations, setTutorialViolations] = useState(0);
   const tutorialActionLog = useRef(createTutorialActionLog());
@@ -94,16 +112,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     []
   );
 
-  const { nodes: mimicNodes, edges: mimicEdges } = useMemo(() => flowToMimicLocal(nodes, edges), [nodes, edges]);
-  const energized = useMemo(() => {
-    const nodesForEnergize = mimicNodes.map((n: any) => {
-      if (n.kind !== "iface") return n;
-      const label = n.label ?? n.id;
-      const isSource = n.id.startsWith("SRC") || String(label).toLowerCase().includes("source");
-      return isSource ? { ...n, kind: "source", sourceOn: true } : n;
-    });
-    return computeEnergized(nodesForEnergize as any, mimicEdges as any);
-  }, [mimicEdges, mimicNodes]);
+  const energized = useMemo(() => getChallengeEnergized(nodes, edges), [edges, nodes]);
   const styledEdges = useMemo(
     () =>
       edges.map((edge) => {
@@ -132,10 +141,27 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setTutorialState({ stepIndex: 0 });
       setTutorialViolations(0);
       setLiveIssues([]);
+      setTutorialCallouts([]);
+      setArcEffects([]);
       tutorialActionLog.current = createTutorialActionLog();
     },
     [setEdges, setNodes]
   );
+
+  const resetTutorialStep = useCallback(() => {
+    if (!scenario) return;
+    const nextNodes = buildNodesFromScenario(scenario);
+    const nextEdges = buildEdgesFromScenario(scenario);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setEvaluation(null);
+    setIssues([]);
+    setTutorialViolations(0);
+    setLiveIssues([]);
+    setTutorialCallouts([]);
+    setArcEffects([]);
+    tutorialActionLog.current = createTutorialActionLog();
+  }, [scenario, setEdges, setNodes]);
 
   const startScenario = useCallback(
     (scenarioToStart: ChallengeScenario) => {
@@ -146,12 +172,12 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     [resetScenario]
   );
 
-  const scenarioConfig = useMemo(() => {
+  const scenarioConfig = useMemo<import("../mimic/EditorModeConfig").EditorModeConfig>(() => {
     if (!scenario) return makeSandboxConfig();
     const { nodes: lockedNodes, edges: lockedEdges } = computeLockedSets(scenario);
     return {
       ...makeSandboxConfig(),
-      id: "challenge",
+      id: "challenge" as const,
       label: "Solo: Substation Builder Challenges",
       palette: {
         enabled: scenario.buildRules.allowedPalette.length > 0,
@@ -175,7 +201,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         if (scenarioConfig.lockedNodeIds.has(change.id) && change.type === "remove") return false;
         return true;
       });
-      onNodesChangeBase(filtered);
+      onNodesChangeBase(filtered as any);
       const movedIds = new Set<string>();
       for (const change of filtered as Array<{ id?: string; type?: string; dragging?: boolean }>) {
         if (!change?.id) continue;
@@ -256,15 +282,96 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     [scenario, setEdges]
   );
 
+  const addCallout = useCallback((message: string) => {
+    setTutorialCallouts((prev) => (prev.includes(message) ? prev : [...prev, message]));
+  }, []);
+
+  const triggerArc = useCallback((nodeId: string, kind: ArcEffect["kind"], durationMs: number) => {
+    const id = `arc-${crypto.randomUUID().slice(0, 6)}`;
+    const startedAt = Date.now();
+    setArcEffects((prev) => prev.concat({ id, nodeId, kind, startedAt, durationMs }));
+    window.setTimeout(() => {
+      setArcEffects((prev) => prev.filter((effect) => effect.id !== id));
+    }, durationMs);
+  }, []);
+
+  const isSwitchCarryingLoad = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      const md = node ? getMimicData(node) : null;
+      if (!node || !md || (md.kind !== "cb" && md.kind !== "ds" && md.kind !== "es")) return false;
+      if ((md.state ?? "open") !== "closed") return false;
+
+      const energizedBefore = getChallengeEnergized(nodes, edges);
+      const loadIds = getChallengeLoadIds(nodes);
+      const energizedLoads = loadIds.filter((id) => energizedBefore.energizedNodeIds.has(id));
+      if (energizedLoads.length === 0) return false;
+
+      const nextNodes = nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const nextData = { ...(n.data as any) };
+        const mimic = getMimicData(n);
+        if (!mimic) return n;
+        return { ...n, data: { ...nextData, mimic: { ...mimic, state: "open" } } };
+      });
+
+      const energizedAfter = getChallengeEnergized(nextNodes, edges);
+      return energizedLoads.some((loadId) => !energizedAfter.energizedNodeIds.has(loadId));
+    },
+    [edges, nodes]
+  );
+
   const onNodeClick = useCallback(
     (_evt: any, node: Node) => {
       const md = getMimicData(node);
       if (!md || md.kind === "junction") return;
-      if (scenarioConfig.lockedNodeIds.has(node.id)) return;
-      if ((node.data as any)?.challengeFailed) return;
+      if (scenarioConfig.lockedNodeIds.has(node.id) && md.kind !== "cb" && md.kind !== "ds" && md.kind !== "es") {
+        return;
+      }
+
+      const health = (node.data as any)?.health ?? "ok";
+      if (health !== "ok") {
+        addCallout((node.data as any)?.lockoutReason ?? "This device is locked out due to damage.");
+        return;
+      }
+
       if (md.kind === "cb" || md.kind === "ds" || md.kind === "es") {
         const current = md.state ?? "open";
         const to: SwitchState = current === "closed" ? "open" : "closed";
+
+        const isChallengeTutorial = scenarioConfig.id === "challenge" && scenario?.type === "tutorial";
+        const opening = to === "open";
+        const underLoad = opening && isChallengeTutorial ? isSwitchCarryingLoad(node.id) : false;
+
+        if (opening && isChallengeTutorial && md.kind === "ds" && underLoad) {
+          triggerArc(node.id, "ds_arc", 1200);
+          setTutorialViolations((v) => v + 1);
+          addCallout("Disconnectors are not designed to interrupt load current. The contacts arc and fail.");
+          window.setTimeout(() => {
+            setNodes((ns) =>
+              ns.map((n) => {
+                if (n.id !== node.id) return n;
+                return {
+                  ...n,
+                  data: {
+                    ...(n.data as any),
+                    health: "failed",
+                    lockoutReason: "Failed after interrupting load current.",
+                    lastFaultAt: Date.now(),
+                    mimic: { ...md, state: "open" },
+                  },
+                };
+              })
+            );
+          }, 1200);
+          return;
+        }
+
+        if (opening && isChallengeTutorial && md.kind === "cb" && underLoad) {
+          triggerArc(node.id, "cb_arc", 600);
+          addCallout("Circuit breakers are designed to interrupt load current and safely quench arcs.");
+        }
+
         setNodes((ns) =>
           ns.map((n) => {
             if (n.id !== node.id) return n;
@@ -272,29 +379,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           })
         );
         tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
-
-        if (scenario?.type === "tutorial" && md.kind === "ds" && current === "closed") {
-          const energizedNodes = energized.energizedNodeIds;
-          const hasLoadEnergized = nodes.some((n) => n.id.startsWith("LOAD") && energizedNodes.has(n.id));
-          const dsEnergized = energizedNodes.has(node.id);
-          if (hasLoadEnergized && dsEnergized) {
-            setTutorialViolations((v) => v + 1);
-            setLiveIssues((prev) =>
-              prev.includes("Disconnectors are not designed to break load current.")
-                ? prev
-                : [...prev, "Disconnectors are not designed to break load current."]
-            );
-            setNodes((ns) =>
-              ns.map((n) => {
-                if (n.id !== node.id) return n;
-                return { ...n, data: { ...(n.data as any), challengeFailed: true, mimic: { ...md, state: to } } };
-              })
-            );
-          }
-        }
       }
     },
-    [energized.energizedNodeIds, nodes, scenario, scenarioConfig.lockedNodeIds, setNodes]
+    [addCallout, isSwitchCarryingLoad, scenario, scenarioConfig.id, scenarioConfig.lockedNodeIds, setNodes, triggerArc]
   );
 
   const onNodeDoubleClick = useCallback(
@@ -365,10 +452,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setTutorialState((s) => ({ stepIndex: Math.min(s.stepIndex + 1, scenario.tutorialSteps!.length) }));
   }, [scenario?.tutorialSteps, tutorialProgress.canAdvance]);
 
-  const unlockedScenarios = useMemo(
-    () => new Set(CHALLENGE_SCENARIOS.map((scenarioItem) => scenarioItem.id)),
-    []
-  );
+  const unlockedScenarios = useMemo(() => new Set(CHALLENGE_SCENARIOS.map((scenarioItem) => scenarioItem.id)), []);
 
   if (view === "levels") {
     return (
@@ -445,6 +529,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
 
   const tutorialStep = scenario.tutorialSteps?.[tutorialState.stepIndex];
   const combinedIssues = Array.from(new Set([...(liveIssues ?? []), ...(issues ?? [])]));
+  const combinedCallouts = Array.from(new Set([...(tutorialCallouts ?? [])]));
 
   return (
     <div style={{ width: "100vw", height: "100vh", background: "#060b12" }}>
@@ -458,7 +543,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         disablePowerFlow
       />
 
-      <div style={{ display: "flex", height: "100vh", paddingTop: 52 }}>
+      <div style={{ display: "flex", height: "100vh", paddingTop: 52, position: "relative" }}>
         <EditorCanvas
           nodes={nodes}
           edges={styledEdges}
@@ -504,8 +589,64 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           onRetry={onRetry}
           onNext={onNext}
           issues={combinedIssues}
+          callouts={combinedCallouts}
+          showResetTutorial={scenarioConfig.id === "challenge" && scenario.type === "tutorial"}
+          onResetTutorialStep={resetTutorialStep}
         />
+        <ArcOverlay effects={arcEffects} nodes={nodes} />
       </div>
+    </div>
+  );
+}
+
+function ArcOverlay({ effects, nodes }: { effects: ArcEffect[]; nodes: Node[] }) {
+  const transform = useStore((s) => s.transform) as [number, number, number];
+  const [translateX, translateY, zoom] = transform;
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+      <style>
+        {`
+        @keyframes arcFlicker {
+          0%, 100% { opacity: 0.2; transform: scale(0.9); }
+          30% { opacity: 0.9; transform: scale(1.05); }
+          60% { opacity: 0.4; transform: scale(0.95); }
+        }
+        `}
+      </style>
+      {effects.map((effect) => {
+        const node = nodeById.get(effect.nodeId);
+        if (!node) return null;
+        const md = getMimicData(node);
+        const kind = md?.kind ?? "cb";
+        const { w, h } = getNodeDimensions(kind);
+        const x = node.position.x * zoom + translateX + (w * zoom) / 2;
+        const y = node.position.y * zoom + translateY + (h * zoom) / 2;
+        const isDisconnectorArc = effect.kind === "ds_arc";
+        const size = isDisconnectorArc ? 56 : 40;
+        const color = isDisconnectorArc ? "#f97316" : "#38bdf8";
+        const glow = isDisconnectorArc ? "0 0 18px #fb923c, 0 0 32px #f97316" : "0 0 12px #60a5fa";
+
+        return (
+          <div
+            key={effect.id}
+            style={{
+              position: "absolute",
+              left: x,
+              top: y,
+              width: size,
+              height: size,
+              marginLeft: -size / 2,
+              marginTop: -size / 2,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+              boxShadow: glow,
+              animation: "arcFlicker 0.2s infinite",
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

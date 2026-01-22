@@ -1,8 +1,8 @@
 import type { Edge, Node } from "reactflow";
 
-import { computeEnergized } from "../../core/energize";
 import type { NodeKind } from "../../core/model";
-import { flowToMimicLocal, getMimicData } from "../mimic/graphUtils";
+import { getMimicData } from "../mimic/graphUtils";
+import { getChallengeEnergized } from "./energizeUtils";
 import type { ChallengeScenario, ScenarioObjective } from "./types";
 
 type ObjectiveResult = {
@@ -23,15 +23,6 @@ export type ChallengeEvaluation = {
     resilience?: Array<{ label: string; passed: boolean }>;
   };
 };
-
-function toEnergizeNodes(nodes: any[]) {
-  return nodes.map((n) => {
-    if (n.kind !== "iface") return n;
-    const label = n.label ?? n.id;
-    const isSource = n.id.startsWith("SRC") || String(label).toLowerCase().includes("source");
-    return isSource ? { ...n, kind: "source", sourceOn: true } : n;
-  });
-}
 
 function countByKind(nodes: Node[]) {
   const counts: Partial<Record<NodeKind, number>> = {};
@@ -138,8 +129,7 @@ export function evaluateChallenge(
   edges: Edge[],
   options?: { noIllegalOperationsViolations?: number }
 ): ChallengeEvaluation {
-  const { nodes: mimicNodes, edges: mimicEdges } = flowToMimicLocal(nodes, edges);
-  const energized = computeEnergized(toEnergizeNodes(mimicNodes as any[]), mimicEdges as any);
+  const energized = getChallengeEnergized(nodes, edges);
   const objectiveResults = scenario.objectives.map((objective) => {
     if (objective.type === "noIllegalOperations") {
       return evaluateObjective(
@@ -189,8 +179,7 @@ export function evaluateChallenge(
           target.data = { ...(target.data as any), mimic: { ...md, state: "open" } };
         }
       }
-      const { nodes: mimicNodesCloned, edges: mimicEdgesCloned } = flowToMimicLocal(clonedNodes, clonedEdges);
-      const energizedCloned = computeEnergized(toEnergizeNodes(mimicNodesCloned as any[]), mimicEdgesCloned as any);
+      const energizedCloned = getChallengeEnergized(clonedNodes, clonedEdges);
       const required = test.requiredEnergized ?? [];
       const passed = required.every((id) => energizedCloned.energizedNodeIds.has(id));
       return { label: `Trip ${test.deviceId ?? test.kind ?? "device"}`, passed };

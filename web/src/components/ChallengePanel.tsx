@@ -17,6 +17,9 @@ type Props = {
   onRetry: () => void;
   onNext: () => void;
   issues: string[];
+  callouts?: string[];
+  showResetTutorial?: boolean;
+  onResetTutorialStep?: () => void;
 };
 
 export function ChallengePanel({
@@ -33,6 +36,9 @@ export function ChallengePanel({
   onRetry,
   onNext,
   issues,
+  callouts,
+  showResetTutorial,
+  onResetTutorialStep,
 }: Props) {
   const card: CSSProperties = {
     background: "#0b1220",
@@ -60,22 +66,59 @@ export function ChallengePanel({
               <div style={{ fontSize: 12, color: "#64748b" }}>
                 Step {tutorialStepIndex + 1} of {tutorialStepCount}
               </div>
-              <button
-                disabled={!canAdvanceTutorial}
-                onClick={onAdvanceTutorial}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #334155",
-                  background: canAdvanceTutorial ? "#38bdf8" : "#1e293b",
-                  color: "#0f172a",
-                  fontWeight: 700,
-                  cursor: canAdvanceTutorial ? "pointer" : "not-allowed",
-                  width: "fit-content",
-                }}
-              >
-                Next
-              </button>
+              {callouts && callouts.length > 0 && (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {callouts.map((callout) => (
+                    <div
+                      key={callout}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "#1e293b",
+                        border: "1px solid #334155",
+                        fontSize: 12,
+                        color: "#fbbf24",
+                      }}
+                    >
+                      {callout}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={!canAdvanceTutorial}
+                  onClick={onAdvanceTutorial}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #334155",
+                    background: canAdvanceTutorial ? "#38bdf8" : "#1e293b",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    cursor: canAdvanceTutorial ? "pointer" : "not-allowed",
+                    width: "fit-content",
+                  }}
+                >
+                  Next
+                </button>
+                {showResetTutorial && onResetTutorialStep && (
+                  <button
+                    onClick={onResetTutorialStep}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #334155",
+                      background: "#0f172a",
+                      color: "#e2e8f0",
+                      cursor: "pointer",
+                      width: "fit-content",
+                    }}
+                  >
+                    Reset step
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <div style={{ fontSize: 13, color: "#cbd5f5" }}>
