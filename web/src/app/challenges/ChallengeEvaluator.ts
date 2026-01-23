@@ -4,6 +4,7 @@ import type { NodeKind } from "../../core/model";
 import { getMimicData } from "../mimic/graphUtils";
 import { getChallengeEnergized } from "./energizeUtils";
 import type { ChallengeScenario, ScenarioObjective } from "./types";
+import type { TutorialActionLog } from "./tutorialRunner";
 
 type ObjectiveResult = {
   id: string;
@@ -79,6 +80,33 @@ function evaluateObjective(
       }
       return { id: objective.id, label: objective.label, passed: false };
     }
+    case "buildBay": {
+      const from = objective.params?.from as string | undefined;
+      const to = objective.params?.to as string | undefined;
+      const requiredCounts = (objective.params?.requiredCounts ?? {}) as Partial<Record<NodeKind, number>>;
+      const counts = countByKind(nodes);
+      const hasCounts = Object.entries(requiredCounts).every(([kind, required]) => (counts[kind as NodeKind] ?? 0) >= required);
+      if (!from || !to) return { id: objective.id, label: objective.label, passed: false };
+      const visited = new Set<string>();
+      const adj = new Map<string, string[]>();
+      edges.forEach((e) => {
+        if (!adj.has(e.source)) adj.set(e.source, []);
+        if (!adj.has(e.target)) adj.set(e.target, []);
+        adj.get(e.source)!.push(e.target);
+        adj.get(e.target)!.push(e.source);
+      });
+      const queue = [from];
+      while (queue.length) {
+        const id = queue.shift()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        if (id === to) return { id: objective.id, label: objective.label, passed: hasCounts };
+        (adj.get(id) ?? []).forEach((next) => {
+          if (!visited.has(next)) queue.push(next);
+        });
+      }
+      return { id: objective.id, label: objective.label, passed: false };
+    }
     case "includeComponent": {
       const kinds = (objective.params?.kinds ?? []) as NodeKind[];
       const requiredCount = Number(objective.params?.count ?? 1);
@@ -92,9 +120,98 @@ function evaluateObjective(
       const passed = expectViolation ? violations > 0 : violations === 0;
       return { id: objective.id, label: objective.label, passed };
     }
+    case "tagIsolation": {
+      const count = Number(objective.params?.count ?? 1);
+      const tagged = nodes.filter((n) => (n.data as any)?.isolationTag === true).length;
+      return { id: objective.id, label: objective.label, passed: tagged >= count };
+    }
     default:
       return { id: objective.id, label: objective.label, passed: false };
   }
+}
+
+function buildInitialNodes(scenario: ChallengeScenario, nodes: Node[]) {
+  const initialMap = new Map<string, Node>();
+  scenario.initialGraph.locked.nodes.forEach((n) => initialMap.set(n.id, n));
+  scenario.initialGraph.player?.nodes.forEach((n) => initialMap.set(n.id, n));
+  return nodes.map((n) => {
+    const md = getMimicData(n);
+    const initial = initialMap.get(n.id);
+    const initialMd = initial ? getMimicData(initial) : null;
+    if (!md) return n;
+    const initialState =
+      initialMd?.state ?? ((md.kind === "cb" || md.kind === "ds" || md.kind === "es") ? "open" : md.state);
+    return {
+      ...n,
+      data: { ...(n.data as any), mimic: { ...md, state: initialState } },
+    };
+  });
+}
+
+function evaluateSequenceObjective(
+  objective: ScenarioObjective,
+  scenario: ChallengeScenario,
+  nodes: Node[],
+  edges: Edge[],
+  actionLog?: TutorialActionLog
+): ObjectiveResult {
+  const switchIds = (objective.params?.switchIds ?? []) as string[];
+  const earthIds = (objective.params?.earthIds ?? []) as string[];
+  const switchKindCounts = (objective.params?.switchKindCounts ?? {}) as Partial<Record<NodeKind, number>>;
+  const earthKindCounts = (objective.params?.earthKindCounts ?? {}) as Partial<Record<NodeKind, number>>;
+  const terminalId = objective.params?.terminalId as string | undefined;
+  const mode = objective.params?.mode as "energize" | "isolate" | undefined;
+  const requirePriorEnergize = objective.params?.requirePriorEnergize === true;
+
+  const simulatedNodes = buildInitialNodes(scenario, nodes);
+  const toggles = actionLog?.toggles ?? [];
+
+  const hasState = (ids: string[], kindCounts: Partial<Record<NodeKind, number>>, state: string) => {
+    if (ids.length > 0) {
+      return ids.every((id) => {
+        const node = simulatedNodes.find((n) => n.id === id);
+        const md = node ? getMimicData(node) : null;
+        return md?.state === state;
+      });
+    }
+    return Object.entries(kindCounts).every(([kind, count]) => {
+      const countInState = simulatedNodes.filter((n) => {
+        const md = getMimicData(n);
+        return md?.kind === kind && md?.state === state;
+      }).length;
+      return countInState >= count;
+    });
+  };
+
+  const isLoadEnergized = () => {
+    if (!terminalId) return false;
+    return getChallengeEnergized(simulatedNodes, edges).energizedNodeIds.has(terminalId);
+  };
+
+  const meetsEnergize = () =>
+    isLoadEnergized() &&
+    hasState(switchIds, switchKindCounts, "closed") &&
+    hasState(earthIds, earthKindCounts, "open");
+  const meetsIsolate = () =>
+    !isLoadEnergized() &&
+    hasState(switchIds, switchKindCounts, "open") &&
+    hasState(earthIds, earthKindCounts, "closed");
+
+  let energizedSeen = meetsEnergize();
+  let isolateSeen = !requirePriorEnergize && meetsIsolate();
+
+  toggles.forEach((toggle) => {
+    const node = simulatedNodes.find((n) => n.id === toggle.nodeId);
+    const md = node ? getMimicData(node) : null;
+    if (node && md && (md.kind === "cb" || md.kind === "ds" || md.kind === "es")) {
+      node.data = { ...(node.data as any), mimic: { ...md, state: toggle.to } };
+    }
+    if (!energizedSeen && meetsEnergize()) energizedSeen = true;
+    if (!isolateSeen && energizedSeen && meetsIsolate()) isolateSeen = true;
+  });
+
+  const passed = mode === "isolate" ? isolateSeen : energizedSeen;
+  return { id: objective.id, label: objective.label, passed };
 }
 
 function countUnusedComponents(nodes: Node[], edges: Edge[], energizedNodes: Set<string>) {
@@ -129,7 +246,7 @@ export function evaluateChallenge(
   scenario: ChallengeScenario,
   nodes: Node[],
   edges: Edge[],
-  options?: { noIllegalOperationsViolations?: number }
+  options?: { noIllegalOperationsViolations?: number; actionLog?: TutorialActionLog }
 ): ChallengeEvaluation {
   const energized = getChallengeEnergized(nodes, edges);
   const objectiveResults = scenario.objectives.map((objective) => {
@@ -140,6 +257,9 @@ export function evaluateChallenge(
         edges,
         energized.energizedNodeIds
       );
+    }
+    if (objective.type === "sequence") {
+      return evaluateSequenceObjective(objective, scenario, nodes, edges, options?.actionLog);
     }
     return evaluateObjective(objective, nodes, edges, energized.energizedNodeIds);
   });

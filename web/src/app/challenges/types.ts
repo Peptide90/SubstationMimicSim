@@ -8,7 +8,10 @@ export type ScenarioObjectiveType =
   | "energizeTerminal"
   | "connectBetween"
   | "includeComponent"
-  | "noIllegalOperations";
+  | "noIllegalOperations"
+  | "sequence"
+  | "tagIsolation"
+  | "buildBay";
 
 export type ScenarioObjective = {
   id: string;
@@ -75,6 +78,11 @@ export type ChallengeScenario = {
   type: ScenarioType;
   difficulty: number;
   description: string;
+  briefing?: {
+    backstory: string;
+    learningObjectives: string[];
+    constraints: string[];
+  };
   initialGraph: ScenarioInitialGraph;
   buildRules: ScenarioBuildRules;
   objectives: ScenarioObjective[];

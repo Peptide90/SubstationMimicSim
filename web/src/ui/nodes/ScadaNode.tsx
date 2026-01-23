@@ -66,6 +66,7 @@ export function ScadaNode(props: NodeProps) {
   const isChallengeFailed = data?.challengeFailed === true || health !== "ok";
   const isLockout = data?.protection?.lockout === true;
   const isDestroyed = data?.destroyed === true;
+  const isIsolationTagged = data?.isolationTag === true;
 
   const bg = useMemo(() => {
     if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
@@ -267,6 +268,25 @@ export function ScadaNode(props: NodeProps) {
           }}
         >
           {health === "damaged" ? "DAMAGED" : "FAILED"}
+        </div>
+      )}
+      {isIsolationTagged && (
+        <div
+          title="Quoted as point of isolation"
+          style={{
+            position: "absolute",
+            top: -12,
+            left: -8,
+            background: "#0ea5e9",
+            color: "#0f172a",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          ISO
         </div>
       )}
 

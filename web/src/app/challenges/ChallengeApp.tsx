@@ -159,6 +159,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [tutorialViolations, setTutorialViolations] = useState(0);
   const tutorialActionLog = useRef(createTutorialActionLog());
   const [interlockOverrides, setInterlockOverrides] = useState<Set<string>>(() => new Set());
+  const [briefingOpen, setBriefingOpen] = useState(false);
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -234,6 +235,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     (scenarioToStart: ChallengeScenario) => {
       setActiveScenarioId(scenarioToStart.id);
       resetScenario(scenarioToStart);
+      setBriefingOpen(scenarioToStart.type === "level" && !!scenarioToStart.briefing);
       setView("runner");
     },
     [resetScenario]
@@ -411,8 +413,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         const opening = to === "open";
         const underLoad = opening && isChallengeTutorial ? isSwitchCarryingLoad(node.id) : false;
 
-        tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
-
         if (opening && isChallengeTutorial && md.kind === "ds" && underLoad) {
           triggerArc(node.id, "ds_arc", 1200);
           setTutorialViolations((v) => v + 1);
@@ -431,6 +431,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
               };
             })
           );
+          tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
           window.setTimeout(() => {
             setNodes((ns) =>
               ns.map((n) => {
@@ -473,6 +474,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
             return { ...n, data: { ...(n.data as any), mimic: { ...md, state: to } } };
           })
         );
+        tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
 
         if (to === "closed" && isChallengeTutorial && md.kind === "cb" && interlockOverrides.has("CB-3")) {
           addCallout("CB-3 closed with earths applied. An earth fault trips the breaker immediately.");
@@ -510,20 +512,28 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const onNodeContextMenu = useCallback(
     (node: Node, _pos: { x: number; y: number }) => {
       const md = getMimicData(node);
-      if (!md || md.kind !== "es") return;
-      setInterlockOverrides((prev) => {
-        const next = new Set(prev);
-        if (next.has("CB-3")) {
-          next.delete("CB-3");
-          addCallout("Interlock enabled for CB-3.");
-        } else {
-          next.add("CB-3");
-          addCallout("Interlock override applied: CB-3 can be operated.");
-        }
-        return next;
-      });
+      if (!md) return;
+      if (md.kind === "es" && scenario?.type === "tutorial") {
+        setInterlockOverrides((prev) => {
+          const next = new Set(prev);
+          if (next.has("CB-3")) {
+            next.delete("CB-3");
+            addCallout("Interlock enabled for CB-3.");
+          } else {
+            next.add("CB-3");
+            addCallout("Interlock override applied: CB-3 can be operated.");
+          }
+          return next;
+        });
+        return;
+      }
+      if (md.kind === "cb" || md.kind === "ds") {
+        setNodes((ns) =>
+          ns.map((n) => (n.id === node.id ? { ...n, data: { ...(n.data as any), isolationTag: !(n.data as any)?.isolationTag } } : n))
+        );
+      }
     },
-    [addCallout]
+    [addCallout, scenario?.type, setNodes]
   );
 
   const onEdgeDoubleClick = useCallback(
@@ -550,6 +560,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     if (!scenario) return;
     const evaluationResult = evaluateChallenge(scenario, nodes, edges, {
       noIllegalOperationsViolations: tutorialViolations,
+      actionLog: tutorialActionLog.current,
     });
     setEvaluation(evaluationResult);
     setIssues(evaluationResult.issues);
@@ -677,6 +688,89 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         disableSaveLoad
         disablePowerFlow
       />
+      {briefingOpen && scenario.briefing && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(2,6,23,0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: "min(720px, 100%)",
+              background: "#0b1220",
+              border: "1px solid #1f2937",
+              borderRadius: 16,
+              padding: 24,
+              color: "#e2e8f0",
+              boxShadow: "0 16px 32px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>{scenario.title}</div>
+            <div style={{ color: "#94a3b8", fontSize: 14, marginBottom: 18 }}>{scenario.description}</div>
+
+            <div style={{ display: "grid", gap: 16 }}>
+              <section>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Backstory</div>
+                <div style={{ fontSize: 13, color: "#cbd5f5" }}>{scenario.briefing.backstory}</div>
+              </section>
+              <section>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Objectives</div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+                  {scenario.objectives.map((objective) => (
+                    <li key={objective.id} style={{ fontSize: 13, color: "#cbd5f5" }}>
+                      {objective.label}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Learning objectives</div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+                  {scenario.briefing.learningObjectives.map((item) => (
+                    <li key={item} style={{ fontSize: 13, color: "#cbd5f5" }}>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Constraints</div>
+                <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+                  {scenario.briefing.constraints.map((item) => (
+                    <li key={item} style={{ fontSize: 13, color: "#cbd5f5" }}>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+
+            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setBriefingOpen(false)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 8,
+                  border: "1px solid #334155",
+                  background: "#38bdf8",
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Begin level
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", height: "100vh", paddingTop: 52, position: "relative" }}>
         <EditorCanvas
