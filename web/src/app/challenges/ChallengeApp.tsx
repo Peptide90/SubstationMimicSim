@@ -69,6 +69,64 @@ function getNodeDimensions(kind: NodeKind) {
   return { w: 120, h: 48 };
 }
 
+function isConducting(kind: NodeKind, state?: SwitchState, sourceOn?: boolean): boolean {
+  if (kind === "source") return sourceOn === true;
+  if (kind === "cb" || kind === "ds") return state === "closed";
+  if (kind === "es") return false;
+  return true;
+}
+
+function computeGroundedVisual(nodes: Node[], edges: Edge[]) {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const adj = new Map<string, Array<{ other: string; edgeId: string }>>();
+  for (const e of edges) {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    if (!adj.has(e.target)) adj.set(e.target, []);
+    adj.get(e.source)!.push({ other: e.target, edgeId: e.id });
+    adj.get(e.target)!.push({ other: e.source, edgeId: e.id });
+  }
+
+  const groundedNodeIds = new Set<string>();
+  const groundedEdgeIds = new Set<string>();
+  const queue: string[] = nodes
+    .filter((n) => {
+      const md = getMimicData(n);
+      return md?.kind === "es" && md.state === "closed";
+    })
+    .map((n) => n.id);
+
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (groundedNodeIds.has(id)) continue;
+    const node = nodeById.get(id);
+    const md = node ? getMimicData(node) : null;
+    if (!node || !md || md.kind === "source") continue;
+
+    groundedNodeIds.add(id);
+
+    for (const { other, edgeId } of adj.get(id) ?? []) {
+      const otherNode = nodeById.get(other);
+      const otherMd = otherNode ? getMimicData(otherNode) : null;
+      if (!otherNode || !otherMd) continue;
+
+      groundedEdgeIds.add(edgeId);
+      if (otherMd.kind === "source") continue;
+
+      if (otherMd.kind === "es") {
+        groundedNodeIds.add(otherNode.id);
+        continue;
+      }
+      if ((otherMd.kind === "ds" || otherMd.kind === "cb") && otherMd.state !== "closed") {
+        groundedNodeIds.add(otherNode.id);
+        continue;
+      }
+      if (isConducting(otherMd.kind, otherMd.state, otherMd.sourceOn)) queue.push(other);
+    }
+  }
+
+  return { groundedNodeIds, groundedEdgeIds };
+}
+
 function computeLockedSets(scenario: ChallengeScenario) {
   return {
     nodes: new Set([...(scenario.buildRules.lockedNodes ?? [])]),
@@ -100,6 +158,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [tutorialState, setTutorialState] = useState<TutorialState>({ stepIndex: 0 });
   const [tutorialViolations, setTutorialViolations] = useState(0);
   const tutorialActionLog = useRef(createTutorialActionLog());
+  const [interlockOverrides, setInterlockOverrides] = useState<Set<string>>(() => new Set());
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -113,21 +172,27 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   );
 
   const energized = useMemo(() => getChallengeEnergized(nodes, edges), [edges, nodes]);
+  const grounded = useMemo(() => computeGroundedVisual(nodes, edges), [edges, nodes]);
   const styledEdges = useMemo(
     () =>
       edges.map((edge) => {
         const energizedEdge = energized.energizedEdgeIds.has(edge.id);
+        const groundedEdge = grounded.groundedEdgeIds.has(edge.id);
+        const conflict = energizedEdge && groundedEdge;
+        const baseStroke = conflict ? "#ff4d4d" : groundedEdge ? "#ffb020" : energizedEdge ? "#00e5ff" : "#64748b";
+        const baseStyle = conflict || groundedEdge ? { strokeDasharray: "10 6" } : {};
         return {
           ...edge,
           style: {
             ...(edge.style as any),
-            stroke: energizedEdge ? "#00e5ff" : "#64748b",
-            strokeWidth: energizedEdge ? 4 : 3,
+            stroke: baseStroke,
+            strokeWidth: energizedEdge || groundedEdge ? 4 : 3,
+            ...baseStyle,
           },
           animated: energizedEdge,
         };
       }),
-    [edges, energized.energizedEdgeIds]
+    [edges, energized.energizedEdgeIds, grounded.groundedEdgeIds]
   );
 
   const resetScenario = useCallback(
@@ -143,9 +208,10 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setLiveIssues([]);
       setTutorialCallouts([]);
       setArcEffects([]);
+      setInterlockOverrides(new Set());
       tutorialActionLog.current = createTutorialActionLog();
     },
-    [setEdges, setNodes]
+    [setEdges, setInterlockOverrides, setNodes]
   );
 
   const resetTutorialStep = useCallback(() => {
@@ -160,8 +226,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setLiveIssues([]);
     setTutorialCallouts([]);
     setArcEffects([]);
+    setInterlockOverrides(new Set());
     tutorialActionLog.current = createTutorialActionLog();
-  }, [scenario, setEdges, setNodes]);
+  }, [scenario, setEdges, setInterlockOverrides, setNodes]);
 
   const startScenario = useCallback(
     (scenarioToStart: ChallengeScenario) => {
@@ -344,6 +411,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         const opening = to === "open";
         const underLoad = opening && isChallengeTutorial ? isSwitchCarryingLoad(node.id) : false;
 
+        tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
+
         if (opening && isChallengeTutorial && md.kind === "ds" && underLoad) {
           triggerArc(node.id, "ds_arc", 1200);
           setTutorialViolations((v) => v + 1);
@@ -387,16 +456,48 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           addCallout("Circuit breakers are designed to interrupt load current and safely quench arcs.");
         }
 
+        if (to === "closed" && isChallengeTutorial && md.kind === "cb") {
+          const closedEarths = nodes.filter((n) => {
+            const data = getMimicData(n);
+            return data?.kind === "es" && data.state === "closed";
+          });
+          if (closedEarths.length > 0 && !interlockOverrides.has("CB-3")) {
+            addCallout("Interlock: CB-3 is blocked while an earth switch is closed.");
+            return;
+          }
+        }
+
         setNodes((ns) =>
           ns.map((n) => {
             if (n.id !== node.id) return n;
             return { ...n, data: { ...(n.data as any), mimic: { ...md, state: to } } };
           })
         );
-        tutorialActionLog.current.toggles.push({ nodeId: node.id, to });
+
+        if (to === "closed" && isChallengeTutorial && md.kind === "cb" && interlockOverrides.has("CB-3")) {
+          addCallout("CB-3 closed with earths applied. An earth fault trips the breaker immediately.");
+          window.setTimeout(() => {
+            setNodes((ns) =>
+              ns.map((n) => {
+                if (n.id !== node.id) return n;
+                return { ...n, data: { ...(n.data as any), mimic: { ...md, state: "open" } } };
+              })
+            );
+          }, 500);
+        }
       }
     },
-    [addCallout, isSwitchCarryingLoad, scenario, scenarioConfig.id, scenarioConfig.lockedNodeIds, setNodes, triggerArc]
+    [
+      addCallout,
+      interlockOverrides,
+      isSwitchCarryingLoad,
+      nodes,
+      scenario,
+      scenarioConfig.id,
+      scenarioConfig.lockedNodeIds,
+      setNodes,
+      triggerArc,
+    ]
   );
 
   const onNodeDoubleClick = useCallback(
@@ -404,6 +505,25 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       onNodeClick(null, node);
     },
     [onNodeClick]
+  );
+
+  const onNodeContextMenu = useCallback(
+    (node: Node, _pos: { x: number; y: number }) => {
+      const md = getMimicData(node);
+      if (!md || md.kind !== "es") return;
+      setInterlockOverrides((prev) => {
+        const next = new Set(prev);
+        if (next.has("CB-3")) {
+          next.delete("CB-3");
+          addCallout("Interlock enabled for CB-3.");
+        } else {
+          next.add("CB-3");
+          addCallout("Interlock override applied: CB-3 can be operated.");
+        }
+        return next;
+      });
+    },
+    [addCallout]
   );
 
   const onEdgeDoubleClick = useCallback(
@@ -584,7 +704,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           onEdgeClick={() => null}
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeContextMenu={() => null}
-          onNodeContextMenu={() => null}
+          onNodeContextMenu={onNodeContextMenu}
           onPaneContextMenu={() => null}
           onPaneClick={() => null}
           modeConfig={scenarioConfig}

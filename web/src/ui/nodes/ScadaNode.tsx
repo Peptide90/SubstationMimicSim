@@ -75,7 +75,7 @@ export function ScadaNode(props: NodeProps) {
     if (isLockout) return SW_LOCKOUT_BG;
     if (isPending) return SW_DBI_BG;
     return isClosed ? SW_CLOSED_BG : SW_OPEN_BG;
-  }, [kind, isSwitch, isPending, isClosed, isFaulted, isDestroyed, isLockout]);
+  }, [kind, isSwitch, isPending, isClosed, isFaulted, isDestroyed, isLockout, isChallengeFailed]);
 
   const border = useMemo(() => {
     if (kind === "tx") return "2px solid #64748b";
@@ -85,7 +85,7 @@ export function ScadaNode(props: NodeProps) {
     if (isLockout) return "2px solid #b45309";
     if (isPending) return "2px solid #64748b";
     return isClosed ? "2px solid #7f2a2a" : "2px solid #1f6b3f";
-  }, [kind, isSwitch, isPending, isClosed, isDestroyed, isLockout]);
+  }, [kind, isSwitch, isPending, isClosed, isDestroyed, isLockout, isChallengeFailed]);
 
   // All text black (as requested)
   const textPrimary = isDestroyed ? "#f8fafc" : "#111111";
