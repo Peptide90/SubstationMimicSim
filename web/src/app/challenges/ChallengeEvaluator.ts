@@ -122,7 +122,13 @@ function evaluateObjective(
     }
     case "tagIsolation": {
       const count = Number(objective.params?.count ?? 1);
-      const tagged = nodes.filter((n) => (n.data as any)?.isolationTag === true).length;
+      const kinds = (objective.params?.kinds ?? []) as NodeKind[];
+      const tagged = nodes.filter((n) => {
+        if ((n.data as any)?.isolationTag !== true) return false;
+        if (kinds.length === 0) return true;
+        const md = getMimicData(n);
+        return md ? kinds.includes(md.kind) : false;
+      }).length;
       return { id: objective.id, label: objective.label, passed: tagged >= count };
     }
     default:

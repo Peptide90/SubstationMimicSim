@@ -357,6 +357,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
           requirePriorEnergize: true,
         },
       },
+      {
+        id: "obj-isolation-tags",
+        label: "Apply points of isolation on both disconnectors.",
+        type: "tagIsolation",
+        params: { kinds: ["ds"], count: 2 },
+      },
     ],
     scoring: {
       starThresholds: { one: 33, two: 66, three: 99 },

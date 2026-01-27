@@ -160,6 +160,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const tutorialActionLog = useRef(createTutorialActionLog());
   const [interlockOverrides, setInterlockOverrides] = useState<Set<string>>(() => new Set());
   const [briefingOpen, setBriefingOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -210,6 +211,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setTutorialCallouts([]);
       setArcEffects([]);
       setInterlockOverrides(new Set());
+      setContextMenu(null);
       tutorialActionLog.current = createTutorialActionLog();
     },
     [setEdges, setInterlockOverrides, setNodes]
@@ -228,6 +230,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setTutorialCallouts([]);
     setArcEffects([]);
     setInterlockOverrides(new Set());
+    setContextMenu(null);
     tutorialActionLog.current = createTutorialActionLog();
   }, [scenario, setEdges, setInterlockOverrides, setNodes]);
 
@@ -404,16 +407,21 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         addCallout((node.data as any)?.lockoutReason ?? "This device is locked out due to damage.");
         return;
       }
+      if ((md.kind === "cb" || md.kind === "ds" || md.kind === "es") && (node.data as any)?.isolationTag) {
+        addCallout("This device is tagged as a point of isolation. Remove the tag before operating.");
+        return;
+      }
 
       if (md.kind === "cb" || md.kind === "ds" || md.kind === "es") {
         const current = md.state ?? "open";
         const to: SwitchState = current === "closed" ? "open" : "closed";
 
-        const isChallengeTutorial = scenarioConfig.id === "challenge" && scenario?.type === "tutorial";
+        const isChallengeMode = scenarioConfig.id === "challenge";
+        const isChallengeTutorial = isChallengeMode && scenario?.type === "tutorial";
         const opening = to === "open";
-        const underLoad = opening && isChallengeTutorial ? isSwitchCarryingLoad(node.id) : false;
+        const underLoad = opening && isChallengeMode ? isSwitchCarryingLoad(node.id) : false;
 
-        if (opening && isChallengeTutorial && md.kind === "ds" && underLoad) {
+        if (opening && md.kind === "ds" && underLoad) {
           triggerArc(node.id, "ds_arc", 1200);
           setTutorialViolations((v) => v + 1);
           const lockoutMessage =
@@ -510,30 +518,15 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   );
 
   const onNodeContextMenu = useCallback(
-    (node: Node, _pos: { x: number; y: number }) => {
+    (node: Node, pos: { x: number; y: number }) => {
       const md = getMimicData(node);
       if (!md) return;
-      if (md.kind === "es" && scenario?.type === "tutorial") {
-        setInterlockOverrides((prev) => {
-          const next = new Set(prev);
-          if (next.has("CB-3")) {
-            next.delete("CB-3");
-            addCallout("Interlock enabled for CB-3.");
-          } else {
-            next.add("CB-3");
-            addCallout("Interlock override applied: CB-3 can be operated.");
-          }
-          return next;
-        });
-        return;
-      }
-      if (md.kind === "cb" || md.kind === "ds") {
-        setNodes((ns) =>
-          ns.map((n) => (n.id === node.id ? { ...n, data: { ...(n.data as any), isolationTag: !(n.data as any)?.isolationTag } } : n))
-        );
-      }
+      const supportsIsolation = md.kind === "cb" || md.kind === "ds";
+      const supportsInterlockOverride = md.kind === "es" && scenario?.type === "tutorial";
+      if (!supportsIsolation && !supportsInterlockOverride) return;
+      setContextMenu({ nodeId: node.id, x: pos.x, y: pos.y });
     },
-    [addCallout, scenario?.type, setNodes]
+    [scenario?.type]
   );
 
   const onEdgeDoubleClick = useCallback(
@@ -799,10 +792,106 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeContextMenu={() => null}
           onNodeContextMenu={onNodeContextMenu}
-          onPaneContextMenu={() => null}
-          onPaneClick={() => null}
+          onPaneContextMenu={() => setContextMenu(null)}
+          onPaneClick={() => setContextMenu(null)}
           modeConfig={scenarioConfig}
         />
+
+        {contextMenu && (
+          <div
+            style={{
+              position: "fixed",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              background: "#0b1220",
+              border: "1px solid #334155",
+              borderRadius: 8,
+              padding: 8,
+              zIndex: 100000,
+              minWidth: 240,
+              color: "#fff",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Device actions</div>
+            {(() => {
+              const node = nodes.find((n) => n.id === contextMenu.nodeId);
+              const md = node ? getMimicData(node) : null;
+              if (!node || !md) return null;
+              const menuButtonStyle = {
+                width: "100%",
+                textAlign: "left" as const,
+                background: "#0f172a",
+                border: "1px solid #334155",
+                color: "#fff",
+                padding: "6px 8px",
+                borderRadius: 6,
+                cursor: "pointer",
+                marginBottom: 6,
+                fontSize: 13,
+              };
+              return (
+                <>
+                  {(md.kind === "cb" || md.kind === "ds") && (
+                    <button
+                      style={menuButtonStyle}
+                      onClick={() => {
+                        setNodes((ns) =>
+                          ns.map((n) =>
+                            n.id === node.id ? { ...n, data: { ...(n.data as any), isolationTag: !(n.data as any)?.isolationTag } } : n
+                          )
+                        );
+                        setContextMenu(null);
+                      }}
+                    >
+                      {(node.data as any)?.isolationTag ? "Remove Point of Isolation" : "Apply Point of Isolation"}
+                    </button>
+                  )}
+                  {md.kind === "es" && scenario?.type === "tutorial" && (
+                    <button
+                      style={menuButtonStyle}
+                      onClick={() => {
+                        setInterlockOverrides((prev) => {
+                          const next = new Set(prev);
+                          if (next.has("CB-3")) {
+                            next.delete("CB-3");
+                            addCallout("Interlock enabled for CB-3.");
+                          } else {
+                            next.add("CB-3");
+                            addCallout("Interlock override applied: CB-3 can be operated.");
+                          }
+                          return next;
+                        });
+                        setContextMenu(null);
+                      }}
+                    >
+                      Toggle interlock override
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+            <div style={{ borderTop: "1px solid #1f2937", marginTop: 8, paddingTop: 8 }}>
+              <button
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  background: "#0f172a",
+                  border: "1px solid #334155",
+                  color: "#fff",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+                onClick={() => setContextMenu(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         <ChallengePanel
           title={scenario.title}

@@ -58,10 +58,19 @@ function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: 
   const outB: { x: number; y: number }[] = [];
 
   let inserted = false;
+  let bestIndex = 0;
+  let bestPoint = split;
+  let bestDist2 = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < poly.length - 1; i++) {
     const a = poly[i];
     const b = poly[i + 1];
+    const closest = closestPointOnSegment(a, b, split);
+    if (closest.dist2 < bestDist2) {
+      bestDist2 = closest.dist2;
+      bestIndex = i;
+      bestPoint = { x: closest.x, y: closest.y };
+    }
 
     outA.push(a);
 
@@ -74,9 +83,11 @@ function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: 
     if (inserted) outB.push(b);
   }
 
-  // Fallback: if we didn't insert, just split at end
+  // Fallback: insert at closest segment if we didn't land on a segment
   if (!inserted) {
-    return { a: poly.slice(), b: [split, poly[poly.length - 1]] };
+    const before = poly.slice(0, bestIndex + 1);
+    const after = poly.slice(bestIndex + 1);
+    return { a: before.concat([bestPoint]), b: [bestPoint].concat(after) };
   }
 
   return { a: outA, b: outB };
