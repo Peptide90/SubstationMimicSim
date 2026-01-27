@@ -671,7 +671,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const combinedCallouts = Array.from(new Set([...(tutorialCallouts ?? [])]));
 
   return (
-    <div style={{ width: "100vw", height: "100vh", background: "#060b12" }}>
+    <div style={{ width: "100vw", height: "100vh", background: "#060b12", overflow: "hidden" }}>
       <TopToolbar
         buildTag={buildTag}
         onOpenMenu={onExit}

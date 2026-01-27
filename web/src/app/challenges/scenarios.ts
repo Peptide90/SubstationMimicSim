@@ -417,17 +417,17 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
             iface: { substationId: "SUB", terminalId: "S5" },
             locked: true,
           }),
-          makeNode("iface", "SRC-L2B", 40, 260, {
+          makeNode("iface", "SRC-L2B", 40, 820, {
             label: "Incomer B",
             iface: { substationId: "SUB", terminalId: "S6" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-L2A", 880, 120, {
+          makeNode("iface", "LOAD-L2A", 1240, 120, {
             label: "Grid Out A",
             iface: { substationId: "SUB", terminalId: "L5" },
             locked: true,
           }),
-          makeNode("iface", "LOAD-L2B", 880, 260, {
+          makeNode("iface", "LOAD-L2B", 1240, 820, {
             label: "Grid Out B",
             iface: { substationId: "SUB", terminalId: "L6" },
             locked: true,
@@ -441,7 +441,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       allowedPalette: ["cb", "ds", "es", "tx"],
       maxCounts: { cb: 6, ds: 8, es: 4, tx: 2 },
       buildZones: [
-        { x: 140, y: 40, width: 660, height: 320 },
+        { x: 140, y: 40, width: 1040, height: 860 },
       ],
       lockedNodes: ["SRC-L2A", "SRC-L2B", "LOAD-L2A", "LOAD-L2B"],
       lockedEdges: [],
