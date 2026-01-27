@@ -131,6 +131,17 @@ function evaluateObjective(
       }).length;
       return { id: objective.id, label: objective.label, passed: tagged >= count };
     }
+    case "noFailedComponents": {
+      const kinds = (objective.params?.kinds ?? []) as NodeKind[];
+      const failed = nodes.filter((n) => {
+        const data = n.data as any;
+        if (!data || data.health === "ok" || data.health === undefined) return false;
+        if (kinds.length === 0) return true;
+        const md = getMimicData(n);
+        return md ? kinds.includes(md.kind) : false;
+      });
+      return { id: objective.id, label: objective.label, passed: failed.length === 0 };
+    }
     default:
       return { id: objective.id, label: objective.label, passed: false };
   }
@@ -277,6 +288,11 @@ export function evaluateChallenge(
   const counts = countByKind(nodes);
   const targetCounts = scenario.scoring.targetCounts ?? {};
   const penaltyWeights = scenario.scoring.penalties ?? {};
+  const failedComponents = nodes.filter((n) => {
+    const data = n.data as any;
+    if (!data) return false;
+    return data.health && data.health !== "ok";
+  });
 
   Object.entries(targetCounts).forEach(([kind, target]) => {
     const actual = counts[kind as NodeKind] ?? 0;
@@ -289,6 +305,12 @@ export function evaluateChallenge(
   if (penaltyWeights.unusedComponents) {
     const unused = countUnusedComponents(nodes, edges, energized.energizedNodeIds);
     if (unused > 0) penalties.push({ label: "Unused components", value: unused * penaltyWeights.unusedComponents });
+  }
+
+  if (failedComponents.length > 0) {
+    const failedPenalty = failedComponents.length * (penaltyWeights.failedComponents ?? 15);
+    penalties.push({ label: "Failed components", value: failedPenalty });
+    issues.push("Failed components present.");
   }
 
   let score = baseScore - penalties.reduce((acc, p) => acc + p.value, 0);

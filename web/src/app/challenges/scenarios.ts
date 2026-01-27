@@ -253,9 +253,16 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         type: "energizeTerminal",
         params: { terminalId: "LOAD-3", shouldBeEnergized: false },
       },
+      {
+        id: "obj-no-failed-ds",
+        label: "Keep disconnectors healthy during the isolation sequence.",
+        type: "noFailedComponents",
+        params: { kinds: ["ds"] },
+      },
     ],
     scoring: {
       starThresholds: { one: 60, two: 80, three: 95 },
+      penalties: { failedComponents: 20 },
     },
     tutorialSteps: [
       {
@@ -275,6 +282,12 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         title: "Apply earths",
         body: "Close both earth switches to ground the isolated section.",
         requires: { type: "toggle", params: { nodeIds: ["ES-3A", "ES-3B"], to: "closed" } },
+      },
+      {
+        id: "t3-step-4",
+        title: "Apply isolation tags",
+        body: "Right-click each disconnector and apply a point of isolation notice. Tagged devices stay locked open until removed.",
+        requires: { type: "isolation", params: { nodeIds: ["DS-3A", "DS-3B"], applied: true } },
       },
     ],
   },
@@ -375,6 +388,94 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
           requiredEnergized: ["LOAD-L1"],
         },
       ],
+    },
+  },
+  {
+    id: "level-2",
+    title: "Level 2: Windfarm grid supply point",
+    type: "level",
+    difficulty: 2,
+    description: "Build a twin-transformer grid supply point with resilient switching.",
+    briefing: {
+      backstory:
+        "You are building a grid supply point for a new windfarm. It has two incoming cable circuits at 275 kV and we must step this up to 400 kV before we can connect it into the National Grid.",
+      learningObjectives: [
+        "Place two transformers with switchgear bays on both sides.",
+        "Create a bus coupler between the low-voltage sides so one transformer can supply both circuits during maintenance.",
+        "Safely isolate one transformer while maintaining supply through the other.",
+      ],
+      constraints: [
+        "Two incoming and two outgoing interfaces are fixed.",
+        "Use transformers, breakers, disconnectors, and earth switches to build each bay.",
+      ],
+    },
+    initialGraph: {
+      locked: {
+        nodes: [
+          makeNode("iface", "SRC-L2A", 40, 120, {
+            label: "Incomer A",
+            iface: { substationId: "SUB", terminalId: "S5" },
+            locked: true,
+          }),
+          makeNode("iface", "SRC-L2B", 40, 260, {
+            label: "Incomer B",
+            iface: { substationId: "SUB", terminalId: "S6" },
+            locked: true,
+          }),
+          makeNode("iface", "LOAD-L2A", 880, 120, {
+            label: "Grid Out A",
+            iface: { substationId: "SUB", terminalId: "L5" },
+            locked: true,
+          }),
+          makeNode("iface", "LOAD-L2B", 880, 260, {
+            label: "Grid Out B",
+            iface: { substationId: "SUB", terminalId: "L6" },
+            locked: true,
+          }),
+        ],
+        edges: [],
+      },
+      player: { nodes: [], edges: [] },
+    },
+    buildRules: {
+      allowedPalette: ["cb", "ds", "es", "tx"],
+      maxCounts: { cb: 6, ds: 8, es: 4, tx: 2 },
+      buildZones: [
+        { x: 140, y: 40, width: 660, height: 320 },
+      ],
+      lockedNodes: ["SRC-L2A", "SRC-L2B", "LOAD-L2A", "LOAD-L2B"],
+      lockedEdges: [],
+    },
+    objectives: [
+      {
+        id: "obj-build-l2",
+        label: "Install two transformers with switchgear bays on both sides.",
+        type: "includeComponent",
+        params: { kinds: ["tx", "cb", "ds", "es"], count: 2 },
+      },
+      {
+        id: "obj-connect-a",
+        label: "Connect Incomer A to Grid Out A through a transformer bay.",
+        type: "connectBetween",
+        params: { from: "SRC-L2A", to: "LOAD-L2A" },
+      },
+      {
+        id: "obj-connect-b",
+        label: "Connect Incomer B to Grid Out B through a transformer bay.",
+        type: "connectBetween",
+        params: { from: "SRC-L2B", to: "LOAD-L2B" },
+      },
+      {
+        id: "obj-bus-coupler",
+        label: "Provide a low-voltage bus coupler between the transformer bays.",
+        type: "connectBetween",
+        params: { from: "LOAD-L2A", to: "LOAD-L2B" },
+      },
+    ],
+    scoring: {
+      starThresholds: { one: 60, two: 80, three: 95 },
+      penalties: { excessComponents: 3, unusedComponents: 2, failedComponents: 15 },
+      targetCounts: { tx: 2, cb: 4, ds: 6, es: 4 },
     },
   },
 ];

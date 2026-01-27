@@ -837,11 +837,13 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                     <button
                       style={menuButtonStyle}
                       onClick={() => {
+                        const nextTagState = !(node.data as any)?.isolationTag;
                         setNodes((ns) =>
                           ns.map((n) =>
-                            n.id === node.id ? { ...n, data: { ...(n.data as any), isolationTag: !(n.data as any)?.isolationTag } } : n
+                            n.id === node.id ? { ...n, data: { ...(n.data as any), isolationTag: nextTagState } } : n
                           )
                         );
+                        tutorialActionLog.current.isolationTags.push({ nodeId: node.id, applied: nextTagState });
                         setContextMenu(null);
                       }}
                     >

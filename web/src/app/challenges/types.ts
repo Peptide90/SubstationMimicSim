@@ -11,7 +11,8 @@ export type ScenarioObjectiveType =
   | "noIllegalOperations"
   | "sequence"
   | "tagIsolation"
-  | "buildBay";
+  | "buildBay"
+  | "noFailedComponents";
 
 export type ScenarioObjective = {
   id: string;
@@ -43,6 +44,7 @@ export type ScenarioScoring = {
   penalties?: {
     excessComponents?: number;
     unusedComponents?: number;
+    failedComponents?: number;
   };
   targetCounts?: Partial<Record<NodeKind, number>>;
   resilienceTests?: ScenarioResilienceTest[];
@@ -67,7 +69,7 @@ export type ScenarioTutorialStep = {
   body: string;
   highlight?: { kind?: NodeKind; nodeId?: string; uiElement?: string };
   requires?: {
-    type: "place" | "connect" | "toggle" | "fault" | "check";
+    type: "place" | "connect" | "toggle" | "fault" | "check" | "isolation";
     params?: Record<string, any>;
   };
 };

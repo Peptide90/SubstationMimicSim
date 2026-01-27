@@ -70,6 +70,19 @@ export function evaluateTutorialStep(
     return { canAdvance: satisfied && recentToggle, currentStep };
   }
 
+  if (type === "isolation") {
+    const nodeId = params?.nodeId as string | undefined;
+    const nodeIds = (params?.nodeIds as string[]) ?? (nodeId ? [nodeId] : []);
+    const applied = params?.applied as boolean | undefined;
+    const satisfied = nodeIds.every((id) => {
+      const node = nodes.find((n) => n.id === id);
+      const tagged = (node?.data as any)?.isolationTag === true;
+      return applied === undefined ? tagged : applied ? tagged : !tagged;
+    });
+    const recentTag = nodeIds.some((id) => recentActions.isolationTags.some((t) => t.nodeId === id));
+    return { canAdvance: satisfied && recentTag, currentStep };
+  }
+
   if (type === "check") {
     return { canAdvance: recentActions.checks > 0, currentStep };
   }
@@ -80,9 +93,10 @@ export function evaluateTutorialStep(
 export type TutorialActionLog = {
   placements: Array<{ nodeId: string; kind: string }>;
   toggles: Array<{ nodeId: string; to: SwitchState } >;
+  isolationTags: Array<{ nodeId: string; applied: boolean }>;
   checks: number;
 };
 
 export function createTutorialActionLog(): TutorialActionLog {
-  return { placements: [], toggles: [], checks: 0 };
+  return { placements: [], toggles: [], isolationTags: [], checks: 0 };
 }
