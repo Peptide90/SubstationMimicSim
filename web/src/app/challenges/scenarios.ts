@@ -290,6 +290,101 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         requires: { type: "isolation", params: { nodeIds: ["DS-3A", "DS-3B"], applied: true } },
       },
     ],
+    switchingSegments: [
+      {
+        id: "t3-switch-1",
+        title: "Control switching instructions",
+        lineEndColours: {
+          "LOAD-3": ["RED", "BLUE", "YELLOW", "BLUE", "RED"],
+        },
+        instructions: [
+          { id: "t3-1", verb: "OPEN", targetLabel: "CB-3" },
+          { id: "t3-2", verb: "OPEN", targetLabel: "DS-3A" },
+          { id: "t3-3", verb: "OPEN", targetLabel: "DS-3B" },
+          { id: "t3-4", verb: "CLOSE_EARTH", targetLabel: "ES-3A" },
+          { id: "t3-5", verb: "CLOSE_EARTH", targetLabel: "ES-3B" },
+          {
+            id: "t3-6",
+            verb: "CHECK_OPEN_LOCK_CAUTION",
+            targetLabel: "DS-3A",
+            notes: "Confirm isolations applied before reporting line end colours.",
+            requiresReport: { type: "LINE_END_COLOURS", interfaceId: "LOAD-3" },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "tutorial-ct",
+    title: "Tutorial 4: CT/VT basics",
+    type: "tutorial",
+    difficulty: 3,
+    description: "Introduce instrument transformers and their configuration.",
+    initialGraph: {
+      locked: {
+        nodes: [
+          makeNode("iface", "SRC-CT", 40, 140, {
+            label: "Source",
+            iface: { substationId: "SUB", terminalId: "S7" },
+            locked: true,
+          }),
+          makeNode("iface", "LOAD-CT", 760, 140, {
+            label: "Load",
+            iface: { substationId: "SUB", terminalId: "L7" },
+            locked: true,
+          }),
+        ],
+        edges: [],
+      },
+      player: { nodes: [], edges: [] },
+    },
+    buildRules: {
+      allowedPalette: ["cb", "ds", "ct", "vt"],
+      buildZones: [{ x: 200, y: 80, width: 420, height: 160 }],
+      lockedNodes: ["SRC-CT", "LOAD-CT"],
+      lockedEdges: [],
+    },
+    objectives: [
+      {
+        id: "obj-ct-vt",
+        label: "Place one CT and one VT in the bay.",
+        type: "includeComponent",
+        params: { kinds: ["ct", "vt"], count: 1 },
+      },
+      {
+        id: "obj-connect-ct",
+        label: "Connect the CT/VT bay between Source and Load.",
+        type: "connectBetween",
+        params: { from: "SRC-CT", to: "LOAD-CT" },
+      },
+    ],
+    scoring: {
+      starThresholds: { one: 60, two: 80, three: 95 },
+      penalties: { excessComponents: 3, unusedComponents: 2 },
+      targetCounts: { ct: 1, vt: 1, cb: 1, ds: 2 },
+    },
+    tutorialSteps: [
+      {
+        id: "ct-step-1",
+        title: "Place a current transformer",
+        body: "Add a CT inline in the bay.",
+        highlight: { kind: "ct" },
+        requires: { type: "place", params: { kind: "ct", count: 1 } },
+      },
+      {
+        id: "ct-step-2",
+        title: "Place a voltage transformer",
+        body: "Add a VT inline in the bay.",
+        highlight: { kind: "vt" },
+        requires: { type: "place", params: { kind: "vt", count: 1 } },
+      },
+      {
+        id: "ct-step-3",
+        title: "Connect the bay",
+        body: "Wire Source → CT → CB → VT → Load.",
+        requires: { type: "connect", params: { from: "SRC-CT", to: "LOAD-CT" } },
+      },
+    ],
   },
   {
     id: "level-1",

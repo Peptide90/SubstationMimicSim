@@ -24,6 +24,8 @@ export function ContextMenu(props: {
 
   onToggleDar: (cbNodeId: string) => void;
   onToggleAutoIsolate: (dsNodeId: string) => void;
+  onCycleCtPurpose: (ctNodeId: string) => void;
+  onCycleVtReference: (vtNodeId: string) => void;
   onResetCondition: (nodeId: string) => void;
 }) {
   const {
@@ -37,6 +39,8 @@ export function ContextMenu(props: {
     onClearPersistentFaultOnBusbar,
     onToggleDar,
     onToggleAutoIsolate,
+    onCycleCtPurpose,
+    onCycleVtReference,
     onResetCondition,
   } = props;
 
@@ -72,6 +76,8 @@ export function ContextMenu(props: {
 
   const darEnabled = nodeKind === "cb" ? ((node?.data as any)?.protection?.dar === true) : false;
   const autoIsolateEnabled = nodeKind === "ds" ? ((node?.data as any)?.protection?.autoIsolate === true) : false;
+  const ctPurpose = nodeKind === "ct" ? ((node?.data as any)?.ctPurpose ?? "LINE") : null;
+  const vtReference = nodeKind === "vt" ? ((node?.data as any)?.vtReference ?? "BUS") : null;
 
   return (
     <div
@@ -184,7 +190,31 @@ export function ContextMenu(props: {
             </button>
           )}
 
-          {(nodeKind === "cb" || nodeKind === "ds" || nodeKind === "tx") && (
+          {nodeKind === "ct" && (
+            <button
+              style={menuBtnStyle}
+              onClick={() => {
+                onCycleCtPurpose(ctxMenu.nodeId);
+                onClose();
+              }}
+            >
+              CT purpose: {ctPurpose}
+            </button>
+          )}
+
+          {nodeKind === "vt" && (
+            <button
+              style={menuBtnStyle}
+              onClick={() => {
+                onCycleVtReference(ctxMenu.nodeId);
+                onClose();
+              }}
+            >
+              VT reference: {vtReference}
+            </button>
+          )}
+
+          {(nodeKind === "cb" || nodeKind === "ds" || nodeKind === "tx" || nodeKind === "ct" || nodeKind === "vt") && (
             <button
               style={menuBtnStyle}
               onClick={() => {

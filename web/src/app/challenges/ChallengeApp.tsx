@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addEdge, useEdgesState, useNodesState, useReactFlow, useStore } from "reactflow";
 import type { Connection, Edge, Node } from "reactflow";
 
@@ -13,6 +13,7 @@ import type { NodeKind, SwitchState } from "../../core/model";
 import { EditorCanvas } from "../../components/EditorCanvas";
 import { TopToolbar } from "../../components/TopToolbar";
 import { ChallengePanel } from "../../components/ChallengePanel";
+import { SwitchingInstructionsModal } from "../../components/SwitchingInstructionsModal";
 import { getChallengeEnergized, getChallengeLoadIds } from "./energizeUtils";
 
 import { JunctionNode } from "../../ui/nodes/JunctionNode";
@@ -28,6 +29,8 @@ type ChallengeView = "levels" | "runner";
 type TutorialState = {
   stepIndex: number;
 };
+
+type SwitchingPenalty = { label: string; value: number };
 
 type ArcEffect = {
   id: string;
@@ -161,6 +164,12 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [interlockOverrides, setInterlockOverrides] = useState<Set<string>>(() => new Set());
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [switchingModalOpen, setSwitchingModalOpen] = useState(false);
+  const [switchingSegmentIndex, setSwitchingSegmentIndex] = useState(0);
+  const [instructionTicks, setInstructionTicks] = useState<Record<string, boolean>>({});
+  const [instructionStamps, setInstructionStamps] = useState<Record<string, number | null>>({});
+  const [switchingReports, setSwitchingReports] = useState<Array<{ id: string; lineId?: string; type: "LINE_END_COLOURS"; value: any; timestamp: number; correct: boolean }>>([]);
+  const [switchingPenalties, setSwitchingPenalties] = useState<SwitchingPenalty[]>([]);
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -212,6 +221,11 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setArcEffects([]);
       setInterlockOverrides(new Set());
       setContextMenu(null);
+      setSwitchingSegmentIndex(0);
+      setInstructionTicks({});
+      setInstructionStamps({});
+      setSwitchingReports([]);
+      setSwitchingPenalties([]);
       tutorialActionLog.current = createTutorialActionLog();
     },
     [setEdges, setInterlockOverrides, setNodes]
@@ -231,6 +245,11 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setArcEffects([]);
     setInterlockOverrides(new Set());
     setContextMenu(null);
+    setSwitchingSegmentIndex(0);
+    setInstructionTicks({});
+    setInstructionStamps({});
+    setSwitchingReports([]);
+    setSwitchingPenalties([]);
     tutorialActionLog.current = createTutorialActionLog();
   }, [scenario, setEdges, setInterlockOverrides, setNodes]);
 
@@ -247,13 +266,21 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const scenarioConfig = useMemo<import("../mimic/EditorModeConfig").EditorModeConfig>(() => {
     if (!scenario) return makeSandboxConfig();
     const { nodes: lockedNodes, edges: lockedEdges } = computeLockedSets(scenario);
+    const ctTutorialId = "tutorial-ct";
+    const ctUnlocked = progress[ctTutorialId]?.completed;
+    const allowedKinds = scenario.buildRules.allowedPalette.filter((kind) => {
+      if ((kind === "ct" || kind === "vt") && scenario.id !== ctTutorialId) {
+        return !!ctUnlocked;
+      }
+      return true;
+    });
     return {
       ...makeSandboxConfig(),
       id: "challenge" as const,
       label: "Solo: Substation Builder Challenges",
       palette: {
-        enabled: scenario.buildRules.allowedPalette.length > 0,
-        allowedKinds: scenario.buildRules.allowedPalette,
+        enabled: allowedKinds.length > 0,
+        allowedKinds,
       },
       lockedNodeIds: lockedNodes,
       lockedEdgeIds: lockedEdges,
@@ -264,7 +291,77 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       buildZones: scenario.buildRules.buildZones,
       allowConnections: true,
     };
-  }, [scenario]);
+  }, [progress, scenario]);
+
+  const activeSwitchingSegment = scenario?.switchingSegments?.[switchingSegmentIndex] ?? null;
+  const labelToNode = useMemo(() => {
+    const map = new Map<string, Node>();
+    nodes.forEach((node) => {
+      const label = (node.data as any)?.label ?? getMimicData(node)?.label ?? node.id;
+      map.set(label, node);
+    });
+    return map;
+  }, [nodes]);
+
+  const reportOptions = useMemo(() => {
+    if (!activeSwitchingSegment?.lineEndColours) return {};
+    const options: Record<string, Array<{ id: string; label: string; value: string[] }>> = {};
+    activeSwitchingSegment.instructions.forEach((line) => {
+      if (!line.requiresReport) return;
+      const colours = activeSwitchingSegment.lineEndColours?.[line.requiresReport.interfaceId];
+      if (!colours) return;
+      const correct = colours;
+      const distractors = [
+        [...colours].reverse(),
+        [...colours.slice(1), colours[0]],
+      ];
+      const all = [correct, ...distractors].map((value, idx) => ({
+        id: `${line.id}-${idx}`,
+        label: value.join(" / "),
+        value,
+      }));
+      options[line.id] = all.sort(() => Math.random() - 0.5);
+    });
+    return options;
+  }, [activeSwitchingSegment]);
+
+  const evaluateInstructionSatisfied = useCallback(
+    (line: { verb: string; targetLabel: string; requiresReport?: { type: "LINE_END_COLOURS"; interfaceId: string } }) => {
+      const node = labelToNode.get(line.targetLabel);
+      const md = node ? getMimicData(node) : null;
+      const state = md?.state ?? "open";
+      const hasIsolation = (node?.data as any)?.isolationTag === true;
+      const needsReport = !!line.requiresReport;
+      const reportOk = !needsReport
+        ? true
+        : switchingReports.some((report) => report.lineId === line.requiresReport?.interfaceId && report.correct);
+
+      switch (line.verb) {
+        case "OPEN":
+        case "CHECK_OPEN":
+        case "OPEN_EARTH":
+          return state === "open" && reportOk;
+        case "CLOSE":
+        case "CHECK_CLOSED":
+        case "CLOSE_EARTH":
+          return state === "closed" && reportOk;
+        case "OPEN_LOCK_CAUTION":
+        case "CHECK_OPEN_LOCK_CAUTION":
+          return state === "open" && hasIsolation && reportOk;
+        default:
+          return false;
+      }
+    },
+    [labelToNode, switchingReports]
+  );
+
+  const segmentComplete = useMemo(() => {
+    if (!activeSwitchingSegment) return false;
+    return activeSwitchingSegment.instructions.every((line) => evaluateInstructionSatisfied(line));
+  }, [activeSwitchingSegment, evaluateInstructionSatisfied]);
+  const canAdvanceSegment = !!scenario?.switchingSegments && switchingSegmentIndex < (scenario.switchingSegments.length - 1);
+  const CT_PURPOSES = ["LINE", "BUSBAR", "TX_DIFF", "DISTANCE"] as const;
+  const VT_REFERENCES = ["BUS", "LINE", "TX"] as const;
 
   const onNodesChangeSnapped = useCallback(
     (changes: any) => {
@@ -523,7 +620,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       if (!md) return;
       const supportsIsolation = md.kind === "cb" || md.kind === "ds";
       const supportsInterlockOverride = md.kind === "es" && scenario?.type === "tutorial";
-      if (!supportsIsolation && !supportsInterlockOverride) return;
+      const supportsCtVt = md.kind === "ct" || md.kind === "vt";
+      if (!supportsIsolation && !supportsInterlockOverride && !supportsCtVt) return;
       setContextMenu({ nodeId: node.id, x: pos.x, y: pos.y });
     },
     [scenario?.type]
@@ -554,6 +652,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     const evaluationResult = evaluateChallenge(scenario, nodes, edges, {
       noIllegalOperationsViolations: tutorialViolations,
       actionLog: tutorialActionLog.current,
+      extraPenalties: switchingPenalties,
     });
     setEvaluation(evaluationResult);
     setIssues(evaluationResult.issues);
@@ -592,6 +691,22 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   }, [scenario?.tutorialSteps, tutorialProgress.canAdvance]);
 
   const unlockedScenarios = useMemo(() => new Set(CHALLENGE_SCENARIOS.map((scenarioItem) => scenarioItem.id)), []);
+
+  useEffect(() => {
+    if (!activeSwitchingSegment) return;
+    setInstructionStamps((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      activeSwitchingSegment.instructions.forEach((line) => {
+        if (next[line.id]) return;
+        if (evaluateInstructionSatisfied(line)) {
+          next[line.id] = Date.now();
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [activeSwitchingSegment, evaluateInstructionSatisfied, nodes, edges]);
 
   if (view === "levels") {
     return (
@@ -850,6 +965,44 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                       {(node.data as any)?.isolationTag ? "Remove Point of Isolation" : "Apply Point of Isolation"}
                     </button>
                   )}
+                  {md.kind === "ct" && (
+                    <button
+                      style={menuButtonStyle}
+                      onClick={() => {
+                        setNodes((ns) =>
+                          ns.map((n) => {
+                            if (n.id !== node.id) return n;
+                            const current = (n.data as any)?.ctPurpose ?? CT_PURPOSES[0];
+                            const idx = CT_PURPOSES.indexOf(current);
+                            const next = CT_PURPOSES[(idx + 1) % CT_PURPOSES.length];
+                            return { ...n, data: { ...(n.data as any), ctPurpose: next } };
+                          })
+                        );
+                        setContextMenu(null);
+                      }}
+                    >
+                      CT purpose: {(node.data as any)?.ctPurpose ?? CT_PURPOSES[0]}
+                    </button>
+                  )}
+                  {md.kind === "vt" && (
+                    <button
+                      style={menuButtonStyle}
+                      onClick={() => {
+                        setNodes((ns) =>
+                          ns.map((n) => {
+                            if (n.id !== node.id) return n;
+                            const current = (n.data as any)?.vtReference ?? VT_REFERENCES[0];
+                            const idx = VT_REFERENCES.indexOf(current);
+                            const next = VT_REFERENCES[(idx + 1) % VT_REFERENCES.length];
+                            return { ...n, data: { ...(n.data as any), vtReference: next } };
+                          })
+                        );
+                        setContextMenu(null);
+                      }}
+                    >
+                      VT reference: {(node.data as any)?.vtReference ?? VT_REFERENCES[0]}
+                    </button>
+                  )}
                   {md.kind === "es" && scenario?.type === "tutorial" && (
                     <button
                       style={menuButtonStyle}
@@ -893,6 +1046,68 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
               </button>
             </div>
           </div>
+        )}
+
+        {activeSwitchingSegment && (
+          <>
+            <button
+              onClick={() => setSwitchingModalOpen(true)}
+              style={{
+                position: "absolute",
+                left: 24,
+                bottom: 24,
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #334155",
+                background: "#38bdf8",
+                color: "#0f172a",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Switching Instructions
+            </button>
+            <SwitchingInstructionsModal
+              open={switchingModalOpen}
+              segment={activeSwitchingSegment}
+              segmentComplete={segmentComplete}
+              canAdvance={canAdvanceSegment && segmentComplete}
+              onAdvanceSegment={() => {
+                if (!canAdvanceSegment) return;
+                setSwitchingSegmentIndex((prev) => prev + 1);
+                setInstructionTicks({});
+                setInstructionStamps({});
+                setSwitchingReports([]);
+                setSwitchingPenalties([]);
+              }}
+              completionStamps={instructionStamps}
+              reportOptions={reportOptions}
+              reports={switchingReports}
+              ticked={instructionTicks}
+              onToggleTick={(id) =>
+                setInstructionTicks((prev) => ({ ...prev, [id]: !prev[id] }))
+              }
+              onSubmitReport={(type, interfaceId, value) => {
+                const correctPattern = activeSwitchingSegment.lineEndColours?.[interfaceId] ?? [];
+                const correct = JSON.stringify(correctPattern) === JSON.stringify(value);
+                const entry = {
+                  id: `report-${crypto.randomUUID().slice(0, 6)}`,
+                  lineId: interfaceId,
+                  type,
+                  value,
+                  timestamp: Date.now(),
+                  correct,
+                };
+                setSwitchingReports((prev) => prev.concat(entry));
+                if (!correct) {
+                  setSwitchingPenalties((prev) =>
+                    prev.concat({ label: "Incorrect line end colours report", value: 10 })
+                  );
+                }
+              }}
+              onClose={() => setSwitchingModalOpen(false)}
+            />
+          </>
         )}
 
         <ChallengePanel

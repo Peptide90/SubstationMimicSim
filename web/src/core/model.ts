@@ -5,6 +5,8 @@ export type NodeKind =
   | 'ds'
   | 'es'
   | 'tx'
+  | 'ct'
+  | 'vt'
   | 'junction'; // new hidden/utility node type
 
 export type SwitchState = 'open' | 'closed';

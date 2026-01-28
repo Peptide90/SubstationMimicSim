@@ -46,6 +46,7 @@ export function ScadaNode(props: NodeProps) {
     if (kind === "cb") return { w: 60, h: 60 };
     if (kind === "ds" || kind === "es") return { w: 100, h: 40 };
     if (kind === "tx") return { w: 100, h: 80 };
+    if (kind === "ct" || kind === "vt") return { w: 80, h: 40 };
     return { w: 120, h: 48 };
   }, [kind]);
 
@@ -228,7 +229,7 @@ export function ScadaNode(props: NodeProps) {
   const statusFont = kind === "ds" || kind === "es" ? 11 : 12;
 
   // Transformer abbreviation
-  const kindShort = kind === "tx" ? "TX" : kind.toUpperCase();
+  const kindShort = kind === "tx" ? "TX" : kind === "ct" ? "CT" : kind === "vt" ? "VT" : kind.toUpperCase();
 
   return (
     <div

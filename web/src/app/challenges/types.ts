@@ -74,6 +74,33 @@ export type ScenarioTutorialStep = {
   };
 };
 
+export type SwitchingVerb =
+  | "OPEN"
+  | "CLOSE"
+  | "CHECK_OPEN"
+  | "CHECK_CLOSED"
+  | "OPEN_LOCK_CAUTION"
+  | "CHECK_OPEN_LOCK_CAUTION"
+  | "CLOSE_EARTH"
+  | "OPEN_EARTH";
+
+export type LineEndColour = "RED" | "BLUE" | "YELLOW" | "GREEN" | "BLACK";
+
+export type SwitchingInstruction = {
+  id: string;
+  verb: SwitchingVerb;
+  targetLabel: string;
+  notes?: string;
+  requiresReport?: { type: "LINE_END_COLOURS"; interfaceId: string };
+};
+
+export type SwitchingSegment = {
+  id: string;
+  title: string;
+  instructions: SwitchingInstruction[];
+  lineEndColours?: Record<string, LineEndColour[]>;
+};
+
 export type ChallengeScenario = {
   id: string;
   title: string;
@@ -90,4 +117,5 @@ export type ChallengeScenario = {
   objectives: ScenarioObjective[];
   scoring: ScenarioScoring;
   tutorialSteps?: ScenarioTutorialStep[];
+  switchingSegments?: SwitchingSegment[];
 };

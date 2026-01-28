@@ -11,7 +11,9 @@ const ITEMS: PaletteItem[] = [
   { kind: 'ds', title: 'Disconnector (DS)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
   { kind: 'es', title: 'Earth Switch (ES)' },
-  { kind: 'tx', title: 'Transformer (TX)' }
+  { kind: 'tx', title: 'Transformer (TX)' },
+  { kind: 'ct', title: 'Current Transformer (CT)' },
+  { kind: 'vt', title: 'Voltage Transformer (VT)' }
 ];
 
 export type PaletteProps = {

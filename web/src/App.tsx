@@ -43,6 +43,7 @@ import { useContextMenu } from "./app/hooks/useContextMenu";
 import { BUILD_TAG } from "./app/constants/branding";
 import { makeSandboxConfig } from "./app/mimic/EditorModeConfig";
 import { flowToMimicLocal, getMimicData, makeBusbarEdge, makeNode } from "./app/mimic/graphUtils";
+import { loadChallengeProgress } from "./app/challenges/storage";
 
 
 function isConducting(kind: NodeKind, state?: SwitchState, sourceOn?: boolean): boolean {
@@ -101,7 +102,13 @@ function computeGroundedVisual(nodes: any[], edges: any[]) {
 function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu: () => void }) {
   const { screenToFlowPosition } = useReactFlow();
   const initialProject = useMemo(() => loadInitialProject(), []);
-  const modeConfig = useMemo(() => makeSandboxConfig(), []);
+  const modeConfig = useMemo(() => {
+    const progress = loadChallengeProgress();
+    const ctUnlocked = progress["tutorial-ct"]?.completed;
+    const baseKinds = ["iface", "ds", "cb", "es", "tx", "junction"] as const;
+    const allowedKinds = ctUnlocked ? [...baseKinds, "ct", "vt"] : [...baseKinds];
+    return { ...makeSandboxConfig(), palette: { enabled: true, allowedKinds } };
+  }, []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialProject.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialProject.edges);
@@ -637,6 +644,39 @@ const isValidConnection = useCallback(
     setNodes,
   });
 
+  const CT_PURPOSES = ["LINE", "BUSBAR", "TX_DIFF", "DISTANCE"] as const;
+  const VT_REFERENCES = ["BUS", "LINE", "TX"] as const;
+
+  const cycleCtPurpose = useCallback(
+    (id: string) => {
+      setNodes((prev) =>
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          const current = (n.data as any)?.ctPurpose ?? CT_PURPOSES[0];
+          const idx = CT_PURPOSES.indexOf(current);
+          const next = CT_PURPOSES[(idx + 1) % CT_PURPOSES.length];
+          return { ...n, data: { ...(n.data as any), ctPurpose: next } };
+        })
+      );
+    },
+    [setNodes]
+  );
+
+  const cycleVtReference = useCallback(
+    (id: string) => {
+      setNodes((prev) =>
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          const current = (n.data as any)?.vtReference ?? VT_REFERENCES[0];
+          const idx = VT_REFERENCES.indexOf(current);
+          const next = VT_REFERENCES[(idx + 1) % VT_REFERENCES.length];
+          return { ...n, data: { ...(n.data as any), vtReference: next } };
+        })
+      );
+    },
+    [setNodes]
+  );
+
 
   const getNodeKind = useCallback((n: Node) => {
     const md = getMimicData(n);
@@ -800,6 +840,8 @@ const isValidConnection = useCallback(
 	  	}}
 	  	onToggleDar={toggleDarOnCb}
 	  	onToggleAutoIsolate={toggleAutoIsolateOnDs}
+	  	onCycleCtPurpose={cycleCtPurpose}
+	  	onCycleVtReference={cycleVtReference}
 	  	onResetCondition={resetCondition}
 	  />
       <ConfirmModal

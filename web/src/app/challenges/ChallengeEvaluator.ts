@@ -263,7 +263,11 @@ export function evaluateChallenge(
   scenario: ChallengeScenario,
   nodes: Node[],
   edges: Edge[],
-  options?: { noIllegalOperationsViolations?: number; actionLog?: TutorialActionLog }
+  options?: {
+    noIllegalOperationsViolations?: number;
+    actionLog?: TutorialActionLog;
+    extraPenalties?: Array<{ label: string; value: number }>;
+  }
 ): ChallengeEvaluation {
   const energized = getChallengeEnergized(nodes, edges);
   const objectiveResults = scenario.objectives.map((objective) => {
@@ -311,6 +315,9 @@ export function evaluateChallenge(
     const failedPenalty = failedComponents.length * (penaltyWeights.failedComponents ?? 15);
     penalties.push({ label: "Failed components", value: failedPenalty });
     issues.push("Failed components present.");
+  }
+  if (options?.extraPenalties?.length) {
+    penalties.push(...options.extraPenalties);
   }
 
   let score = baseScore - penalties.reduce((acc, p) => acc + p.value, 0);
