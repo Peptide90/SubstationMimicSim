@@ -46,6 +46,7 @@ export function ScadaNode(props: NodeProps) {
     if (kind === "cb") return { w: 60, h: 60 };
     if (kind === "ds" || kind === "es") return { w: 100, h: 40 };
     if (kind === "tx") return { w: 100, h: 80 };
+    if (kind === "ct" || kind === "vt") return { w: 80, h: 40 };
     return { w: 120, h: 48 };
   }, [kind]);
 
@@ -62,26 +63,31 @@ export function ScadaNode(props: NodeProps) {
 
   // If in future you flag a transformer as faulted, set data.faulted = true
   const isFaulted = data?.faulted === true;
+  const health = data?.health ?? "ok";
+  const isChallengeFailed = data?.challengeFailed === true || health !== "ok";
   const isLockout = data?.protection?.lockout === true;
   const isDestroyed = data?.destroyed === true;
+  const isIsolationTagged = data?.isolationTag === true;
 
   const bg = useMemo(() => {
     if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
     if (!isSwitch) return "#ffffff";
+    if (isChallengeFailed) return SW_FAIL_BG;
     if (isDestroyed) return SW_FAIL_BG;
     if (isLockout) return SW_LOCKOUT_BG;
     if (isPending) return SW_DBI_BG;
     return isClosed ? SW_CLOSED_BG : SW_OPEN_BG;
-  }, [kind, isSwitch, isPending, isClosed, isFaulted, isDestroyed, isLockout]);
+  }, [kind, isSwitch, isPending, isClosed, isFaulted, isDestroyed, isLockout, isChallengeFailed]);
 
   const border = useMemo(() => {
     if (kind === "tx") return "2px solid #64748b";
     if (!isSwitch) return "2px solid #444";
+    if (isChallengeFailed) return "2px solid #7f1d1d";
     if (isDestroyed) return "2px solid #0f172a";
     if (isLockout) return "2px solid #b45309";
     if (isPending) return "2px solid #64748b";
     return isClosed ? "2px solid #7f2a2a" : "2px solid #1f6b3f";
-  }, [kind, isSwitch, isPending, isClosed, isDestroyed, isLockout]);
+  }, [kind, isSwitch, isPending, isClosed, isDestroyed, isLockout, isChallengeFailed]);
 
   // All text black (as requested)
   const textPrimary = isDestroyed ? "#f8fafc" : "#111111";
@@ -223,7 +229,7 @@ export function ScadaNode(props: NodeProps) {
   const statusFont = kind === "ds" || kind === "es" ? 11 : 12;
 
   // Transformer abbreviation
-  const kindShort = kind === "tx" ? "TX" : kind.toUpperCase();
+  const kindShort = kind === "tx" ? "TX" : kind === "ct" ? "CT" : kind === "vt" ? "VT" : kind.toUpperCase();
 
   return (
     <div
@@ -236,6 +242,7 @@ export function ScadaNode(props: NodeProps) {
         background: bg,
         boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
         lineHeight: 1.05,
+        position: "relative",
         userSelect: "none",
         boxSizing: "border-box",
         display: "flex",
@@ -245,6 +252,44 @@ export function ScadaNode(props: NodeProps) {
       }}
     >
       {renderHandles()}
+      {isChallengeFailed && (
+        <div
+          title={data?.lockoutReason ?? "Device damaged"}
+          style={{
+            position: "absolute",
+            top: -12,
+            right: -8,
+            background: "#dc2626",
+            color: "#fff",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          {health === "damaged" ? "DAMAGED" : "FAILED"}
+        </div>
+      )}
+      {isIsolationTagged && (
+        <div
+          title="Quoted as point of isolation"
+          style={{
+            position: "absolute",
+            top: -12,
+            left: -8,
+            background: "#0ea5e9",
+            color: "#0f172a",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          ISO
+        </div>
+      )}
 
       {/* TEXT LAYOUT:
           - CB: stacked (CB / label / status)

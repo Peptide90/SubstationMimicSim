@@ -5,6 +5,7 @@ import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectSt
 import type { DragEvent } from "react";
 
 import { Palette } from "../ui/Palette";
+import type { EditorModeConfig } from "../app/mimic/EditorModeConfig";
 import { BusbarEdge } from "../ui/BusbarEdge";
 import { busbarPolyline } from "../ui/busbarRouter";
 
@@ -57,10 +58,19 @@ function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: 
   const outB: { x: number; y: number }[] = [];
 
   let inserted = false;
+  let bestIndex = 0;
+  let bestPoint = split;
+  let bestDist2 = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < poly.length - 1; i++) {
     const a = poly[i];
     const b = poly[i + 1];
+    const closest = closestPointOnSegment(a, b, split);
+    if (closest.dist2 < bestDist2) {
+      bestDist2 = closest.dist2;
+      bestIndex = i;
+      bestPoint = { x: closest.x, y: closest.y };
+    }
 
     outA.push(a);
 
@@ -73,9 +83,11 @@ function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: 
     if (inserted) outB.push(b);
   }
 
-  // Fallback: if we didn't insert, just split at end
+  // Fallback: insert at closest segment if we didn't land on a segment
   if (!inserted) {
-    return { a: poly.slice(), b: [split, poly[poly.length - 1]] };
+    const before = poly.slice(0, bestIndex + 1);
+    const after = poly.slice(bestIndex + 1);
+    return { a: before.concat([bestPoint]), b: [bestPoint].concat(after) };
   }
 
   return { a: outA, b: outB };
@@ -119,6 +131,7 @@ export function EditorCanvas(props: {
   onNodeContextMenu: (node: Node, pos: { x: number; y: number }) => void;
   onPaneContextMenu: (pos: { x: number; y: number }) => void;
   onPaneClick: () => void;
+  modeConfig?: EditorModeConfig;
 
 }) {
   const {
@@ -149,9 +162,11 @@ export function EditorCanvas(props: {
 	onNodeContextMenu,
 	onPaneContextMenu,
 	onPaneClick,
+  modeConfig,
   } = props;
 
   const { screenToFlowPosition } = useReactFlow();
+  const connectionsEnabled = modeConfig?.allowConnections ?? true;
 
   // Wire custom edge types (busbar renderer)
   const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
@@ -395,8 +410,8 @@ export function EditorCanvas(props: {
           deleteKeyCode={locked ? [] : ["Backspace", "Delete"]}
           panOnDrag={[1, 2]}
           nodesDraggable={!locked}
-          nodesConnectable={!locked}
-          edgesUpdatable={!locked}
+          nodesConnectable={!locked && connectionsEnabled}
+          edgesUpdatable={!locked && connectionsEnabled}
           elementsSelectable
           selectionOnDrag={!locked}
           snapToGrid={snapEnabled}
@@ -451,9 +466,15 @@ export function EditorCanvas(props: {
           </Controls>
         </ReactFlow>
 
-        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
-          <Palette onAddAtCenter={onAddAtCenter} />
-        </div>
+        {modeConfig?.palette?.enabled !== false && (
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
+            <Palette
+              onAddAtCenter={onAddAtCenter}
+              allowedKinds={modeConfig?.palette?.allowedKinds}
+              disabled={locked}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

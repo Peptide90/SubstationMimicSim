@@ -8,7 +8,7 @@ export function busbarPolyline(source: Pt, target: Pt): Pt[] {
   const dy = target.y - source.y;
 
   // If nearly aligned, draw straight from handle to handle (keep endpoints exact).
-  if (Math.abs(dy) < 1 || Math.abs(dx) < 1) return [source, target];
+  if (Math.abs(dy) <= GRID / 2 || Math.abs(dx) <= GRID / 2) return [source, target];
 
   const minBend = 10;
   let midX = source.x + dx / 2;
