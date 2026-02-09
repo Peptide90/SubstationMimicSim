@@ -3,7 +3,7 @@ import { addEdge, useEdgesState, useNodesState, useReactFlow, useStore } from "r
 import type { Connection, Edge, Node } from "reactflow";
 
 import { CHALLENGE_SCENARIOS, getScenarioById } from "./scenarios";
-import type { ChallengeScenario } from "./types";
+import type { ChallengeScenario, LineEndColour } from "./types";
 import { evaluateChallenge } from "./ChallengeEvaluator";
 import { createTutorialActionLog, evaluateTutorialStep } from "./tutorialRunner";
 import { loadChallengeProgress, updateChallengeProgress } from "./storage";
@@ -305,7 +305,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
 
   const reportOptions = useMemo(() => {
     if (!activeSwitchingSegment?.lineEndColours) return {};
-    const options: Record<string, Array<{ id: string; label: string; value: string[] }>> = {};
+    const options: Record<string, Array<{ id: string; label: string; value: LineEndColour[] }>> = {};
     activeSwitchingSegment.instructions.forEach((line) => {
       if (!line.requiresReport) return;
       const colours = activeSwitchingSegment.lineEndColours?.[line.requiresReport.interfaceId];

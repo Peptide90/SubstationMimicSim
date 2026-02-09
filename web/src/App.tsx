@@ -105,8 +105,8 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
   const modeConfig = useMemo(() => {
     const progress = loadChallengeProgress();
     const ctUnlocked = progress["tutorial-ct"]?.completed;
-    const baseKinds = ["iface", "ds", "cb", "es", "tx", "junction"] as const;
-    const allowedKinds = ctUnlocked ? [...baseKinds, "ct", "vt"] : [...baseKinds];
+    const baseKinds: NodeKind[] = ["iface", "ds", "cb", "es", "tx", "junction"];
+    const allowedKinds: NodeKind[] = ctUnlocked ? [...baseKinds, "ct", "vt"] : [...baseKinds];
     return { ...makeSandboxConfig(), palette: { enabled: true, allowedKinds } };
   }, []);
 

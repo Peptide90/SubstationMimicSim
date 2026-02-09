@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 import type { SwitchingInstruction, SwitchingSegment, LineEndColour } from "../app/challenges/types";
@@ -12,6 +13,8 @@ type ReportLogEntry = {
   timestamp: number;
   correct: boolean;
 };
+
+type ReportType = "LINE_END_COLOURS" | "SWITCHGEAR_STATUS" | "OIL_LEVEL" | "GAS_PRESSURE" | "TAP_POSITION";
 
 type Props = {
   open: boolean;
@@ -40,7 +43,7 @@ const modalStyle: CSSProperties = {
 };
 
 const panelStyle: CSSProperties = {
-  width: "min(920px, 100%)",
+  width: "min(960px, 100%)",
   maxHeight: "90vh",
   overflow: "auto",
   background: "#0b1220",
@@ -55,7 +58,7 @@ const panelStyle: CSSProperties = {
 
 const lineStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 160px 40px",
+  gridTemplateColumns: "1fr 170px 40px",
   alignItems: "center",
   gap: 12,
   padding: "8px 10px",
@@ -74,14 +77,26 @@ const buttonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const selectStyle: CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "1px solid #334155",
+  background: "#0f172a",
+  color: "#e2e8f0",
+};
+
 function formatLine(line: SwitchingInstruction) {
   return `${line.verb.replace(/_/g, " ")} ${line.targetLabel}`;
 }
 
 function formatStamp(timestamp: number | null | undefined) {
   if (!timestamp) return "Pending";
-  const seconds = Math.round((Date.now() - timestamp) / 1000);
-  return `${seconds}s ago`;
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  return `${elapsedSeconds}s ago`;
+}
+
+function makeRefId() {
+  return `NCC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
 }
 
 export function SwitchingInstructionsModal({
@@ -98,19 +113,34 @@ export function SwitchingInstructionsModal({
   ticked,
   onSubmitReport,
 }: Props) {
+  const [selectedReportType, setSelectedReportType] = useState<ReportType>("LINE_END_COLOURS");
+  const [selectedInstructionId, setSelectedInstructionId] = useState<string>("");
+  const [selectedValueId, setSelectedValueId] = useState<string>("");
+  const [refId] = useState(() => makeRefId());
+
   if (!open || !segment) return null;
 
   const reportTargets = segment.instructions.filter((line) => line.requiresReport?.type === "LINE_END_COLOURS");
+
+  const currentOptions = useMemo(() => {
+    if (selectedReportType !== "LINE_END_COLOURS") return [] as ReportOption[];
+    if (!selectedInstructionId) return [] as ReportOption[];
+    return reportOptions[selectedInstructionId] ?? [];
+  }, [selectedInstructionId, selectedReportType, reportOptions]);
+
+  const submitDisabled =
+    selectedReportType !== "LINE_END_COLOURS" || !selectedInstructionId || !selectedValueId;
 
   return (
     <div style={modalStyle}>
       <div style={panelStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{segment.title}</div>
-            <div style={{ color: "#94a3b8", fontSize: 13 }}>
-              Switching instructions (tick for your own tracking).
+            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: 0.4 }}>NETWORK CONTROL INSTRUCTIONS</div>
+            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+              Ref: {refId} · Issued: {new Date().toLocaleString()}
             </div>
+            <div style={{ color: "#cbd5f5", fontSize: 13, marginTop: 4 }}>{segment.title}</div>
           </div>
           <button style={{ ...buttonStyle, background: "#0f172a", color: "#e2e8f0" }} onClick={onClose}>
             Close
@@ -134,44 +164,86 @@ export function SwitchingInstructionsModal({
           ))}
         </div>
 
-        <div style={{ borderTop: "1px solid #1f2937", paddingTop: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Report back to Control</div>
-          {reportTargets.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>No reports required.</div>}
-          {reportTargets.map((line) => {
-            const options = reportOptions[line.id] ?? [];
-            return (
-              <div key={line.id} style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: "#cbd5f5" }}>{formatLine(line)}</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <select
-                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0" }}
-                    defaultValue=""
-                    onChange={(e) => {
-                      const selected = options.find((opt) => opt.id === e.target.value);
-                      if (selected && line.requiresReport) {
-                        onSubmitReport("LINE_END_COLOURS", line.requiresReport.interfaceId, selected.value);
-                      }
-                      e.currentTarget.value = "";
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select line end colours
-                    </option>
-                    {options.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            );
-          })}
+        <div style={{ borderTop: "1px solid #1f2937", paddingTop: 12, display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 700 }}>Report back to Control</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select
+                style={selectStyle}
+                value={selectedReportType}
+                onChange={(e) => {
+                  const next = e.target.value as ReportType;
+                  setSelectedReportType(next);
+                  setSelectedInstructionId("");
+                  setSelectedValueId("");
+                }}
+              >
+                <option value="LINE_END_COLOURS">LINE_END_COLOURS</option>
+                <option value="SWITCHGEAR_STATUS" disabled>
+                  SWITCHGEAR_STATUS (coming soon)
+                </option>
+                <option value="OIL_LEVEL" disabled>
+                  OIL_LEVEL (coming soon)
+                </option>
+                <option value="GAS_PRESSURE" disabled>
+                  GAS_PRESSURE (coming soon)
+                </option>
+                <option value="TAP_POSITION" disabled>
+                  TAP_POSITION (coming soon)
+                </option>
+              </select>
+
+              <select
+                style={selectStyle}
+                value={selectedInstructionId}
+                onChange={(e) => {
+                  setSelectedInstructionId(e.target.value);
+                  setSelectedValueId("");
+                }}
+                disabled={selectedReportType !== "LINE_END_COLOURS" || reportTargets.length === 0}
+              >
+                <option value="">Select instruction</option>
+                {reportTargets.map((line) => (
+                  <option key={line.id} value={line.id}>
+                    {formatLine(line)}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                style={selectStyle}
+                value={selectedValueId}
+                onChange={(e) => setSelectedValueId(e.target.value)}
+                disabled={selectedReportType !== "LINE_END_COLOURS" || !selectedInstructionId}
+              >
+                <option value="">Select value</option>
+                {currentOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                style={{ ...buttonStyle, opacity: submitDisabled ? 0.6 : 1, cursor: submitDisabled ? "not-allowed" : "pointer" }}
+                disabled={submitDisabled}
+                onClick={() => {
+                  if (submitDisabled) return;
+                  const line = segment.instructions.find((item) => item.id === selectedInstructionId);
+                  const selected = currentOptions.find((opt) => opt.id === selectedValueId);
+                  if (!line?.requiresReport || !selected) return;
+                  onSubmitReport("LINE_END_COLOURS", line.requiresReport.interfaceId, selected.value);
+                  setSelectedValueId("");
+                }}
+              >
+                Submit Report
+              </button>
+            </div>
+          </div>
+
           {reports.length > 0 && (
             <div style={{ fontSize: 12, color: "#94a3b8" }}>
-              Latest report: {reports[reports.length - 1].type} ·{" "}
-              {reports[reports.length - 1].value.join(" / ")} ·{" "}
-              {reports[reports.length - 1].correct ? "Accepted" : "Incorrect"}
+              Latest report: {reports[reports.length - 1].type} · {reports[reports.length - 1].value.join(" / ")} · {reports[reports.length - 1].correct ? "Accepted" : "Incorrect"}
             </div>
           )}
           {segmentComplete && (
