@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 
 import type { SwitchingInstruction, SwitchingSegment, LineEndColour } from "../app/challenges/types";
@@ -96,7 +96,10 @@ function formatStamp(timestamp: number | null | undefined) {
 }
 
 function makeRefId() {
-  return `NCC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
+  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID().slice(0, 5).toUpperCase()
+    : Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `NCC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${suffix}`;
 }
 
 export function SwitchingInstructionsModal({
@@ -118,18 +121,13 @@ export function SwitchingInstructionsModal({
   const [selectedValueId, setSelectedValueId] = useState<string>("");
   const [refId] = useState(() => makeRefId());
 
+  const reportTargets = segment?.instructions.filter((line) => line.requiresReport?.type === "LINE_END_COLOURS") ?? [];
+  const currentOptions = selectedReportType !== "LINE_END_COLOURS" || !selectedInstructionId
+    ? [] as ReportOption[]
+    : reportOptions[selectedInstructionId] ?? [];
+  const submitDisabled = selectedReportType !== "LINE_END_COLOURS" || !selectedInstructionId || !selectedValueId;
+
   if (!open || !segment) return null;
-
-  const reportTargets = segment.instructions.filter((line) => line.requiresReport?.type === "LINE_END_COLOURS");
-
-  const currentOptions = useMemo(() => {
-    if (selectedReportType !== "LINE_END_COLOURS") return [] as ReportOption[];
-    if (!selectedInstructionId) return [] as ReportOption[];
-    return reportOptions[selectedInstructionId] ?? [];
-  }, [selectedInstructionId, selectedReportType, reportOptions]);
-
-  const submitDisabled =
-    selectedReportType !== "LINE_END_COLOURS" || !selectedInstructionId || !selectedValueId;
 
   return (
     <div style={modalStyle}>

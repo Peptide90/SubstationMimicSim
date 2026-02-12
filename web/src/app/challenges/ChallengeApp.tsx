@@ -165,6 +165,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [switchingModalOpen, setSwitchingModalOpen] = useState(false);
+  const [lastSwitchingPromptId, setLastSwitchingPromptId] = useState<string | null>(null);
   const [switchingSegmentIndex, setSwitchingSegmentIndex] = useState(0);
   const [instructionTicks, setInstructionTicks] = useState<Record<string, boolean>>({});
   const [instructionStamps, setInstructionStamps] = useState<Record<string, number | null>>({});
@@ -222,6 +223,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setInterlockOverrides(new Set());
       setContextMenu(null);
       setSwitchingSegmentIndex(0);
+      setLastSwitchingPromptId(null);
       setInstructionTicks({});
       setInstructionStamps({});
       setSwitchingReports([]);
@@ -246,6 +248,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setInterlockOverrides(new Set());
     setContextMenu(null);
     setSwitchingSegmentIndex(0);
+    setLastSwitchingPromptId(null);
     setInstructionTicks({});
     setInstructionStamps({});
     setSwitchingReports([]);
@@ -360,6 +363,17 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     return activeSwitchingSegment.instructions.every((line) => evaluateInstructionSatisfied(line));
   }, [activeSwitchingSegment, evaluateInstructionSatisfied]);
   const canAdvanceSegment = !!scenario?.switchingSegments && switchingSegmentIndex < (scenario.switchingSegments.length - 1);
+
+  useEffect(() => {
+    if (!activeSwitchingSegment) {
+      setSwitchingModalOpen(false);
+      return;
+    }
+    if (lastSwitchingPromptId === activeSwitchingSegment.id) return;
+    setLastSwitchingPromptId(activeSwitchingSegment.id);
+    setSwitchingModalOpen(true);
+    addCallout(`Switching segment active: ${activeSwitchingSegment.title}. Open Switching Instructions from the right panel.`);
+  }, [activeSwitchingSegment, lastSwitchingPromptId, addCallout]);
   const CT_PURPOSES = ["LINE", "BUSBAR", "TX_DIFF", "DISTANCE"] as const;
   const VT_REFERENCES = ["BUS", "LINE", "TX"] as const;
 
@@ -1050,23 +1064,6 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
 
         {activeSwitchingSegment && (
           <>
-            <button
-              onClick={() => setSwitchingModalOpen(true)}
-              style={{
-                position: "absolute",
-                left: 24,
-                bottom: 24,
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #334155",
-                background: "#38bdf8",
-                color: "#0f172a",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Switching Instructions
-            </button>
             <SwitchingInstructionsModal
               open={switchingModalOpen}
               segment={activeSwitchingSegment}
@@ -1091,7 +1088,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                 const correctPattern = activeSwitchingSegment.lineEndColours?.[interfaceId] ?? [];
                 const correct = JSON.stringify(correctPattern) === JSON.stringify(value);
                 const entry = {
-                  id: `report-${crypto.randomUUID().slice(0, 6)}`,
+                  id: `report-${Math.random().toString(36).slice(2, 8)}`,
                   lineId: interfaceId,
                   type,
                   value,
@@ -1127,6 +1124,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           callouts={combinedCallouts}
           showResetTutorial={scenarioConfig.id === "challenge" && scenario.type === "tutorial"}
           onResetTutorialStep={resetTutorialStep}
+          showSwitchingControls={!!activeSwitchingSegment}
+          switchingSegmentTitle={activeSwitchingSegment?.title}
+          onOpenSwitchingInstructions={() => setSwitchingModalOpen(true)}
         />
         <ArcOverlay effects={arcEffects} nodes={nodes} />
       </div>

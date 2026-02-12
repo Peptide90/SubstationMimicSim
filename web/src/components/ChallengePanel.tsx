@@ -20,6 +20,9 @@ type Props = {
   callouts?: string[];
   showResetTutorial?: boolean;
   onResetTutorialStep?: () => void;
+  showSwitchingControls?: boolean;
+  switchingSegmentTitle?: string;
+  onOpenSwitchingInstructions?: () => void;
 };
 
 export function ChallengePanel({
@@ -39,6 +42,9 @@ export function ChallengePanel({
   callouts,
   showResetTutorial,
   onResetTutorialStep,
+  showSwitchingControls,
+  switchingSegmentTitle,
+  onOpenSwitchingInstructions,
 }: Props) {
   const card: CSSProperties = {
     background: "#0b1220",
@@ -123,6 +129,38 @@ export function ChallengePanel({
           ) : (
             <div style={{ fontSize: 13, color: "#cbd5f5" }}>
               Build the solution and check your work.
+            </div>
+          )}
+
+          {showSwitchingControls && onOpenSwitchingInstructions && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: "#0f172a",
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#cbd5f5" }}>
+                Switching segment active{switchingSegmentTitle ? `: ${switchingSegmentTitle}` : ""}.
+              </div>
+              <button
+                onClick={onOpenSwitchingInstructions}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #334155",
+                  background: "#38bdf8",
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  width: "100%",
+                }}
+              >
+                Open Switching Instructions
+              </button>
             </div>
           )}
         </section>

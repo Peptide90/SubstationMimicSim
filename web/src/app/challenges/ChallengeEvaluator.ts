@@ -110,8 +110,11 @@ function evaluateObjective(
     case "includeComponent": {
       const kinds = (objective.params?.kinds ?? []) as NodeKind[];
       const requiredCount = Number(objective.params?.count ?? 1);
+      const requiredCounts = (objective.params?.requiredCounts ?? {}) as Partial<Record<NodeKind, number>>;
       const counts = countByKind(nodes);
-      const passed = kinds.every((kind) => (counts[kind] ?? 0) >= requiredCount);
+      const byKindPassed = kinds.every((kind) => (counts[kind] ?? 0) >= requiredCount);
+      const explicitPassed = Object.entries(requiredCounts).every(([kind, required]) => (counts[kind as NodeKind] ?? 0) >= required);
+      const passed = byKindPassed && explicitPassed;
       return { id: objective.id, label: objective.label, passed };
     }
     case "noIllegalOperations": {

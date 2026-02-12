@@ -543,9 +543,13 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     objectives: [
       {
         id: "obj-build-l2",
-        label: "Install two transformers with switchgear bays on both sides.",
+        label: "Install two transformers with full switchgear bays on both sides (including earth switches).",
         type: "includeComponent",
-        params: { kinds: ["tx", "cb", "ds", "es"], count: 2 },
+        params: {
+          kinds: ["tx", "cb", "ds", "es"],
+          count: 2,
+          requiredCounts: { tx: 2, cb: 6, ds: 14, es: 12 },
+        },
       },
       {
         id: "obj-connect-a",
