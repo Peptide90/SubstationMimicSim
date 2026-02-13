@@ -7,7 +7,20 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     title: "Tutorial 1: Connect the line",
     type: "tutorial",
     difficulty: 1,
-    description: "Learn how to place components and draw busbars.",
+    description: "Learn interface locations, component placement, and how to get help.",
+    briefing: {
+      backstory:
+        "You are preparing a simple training bay. First locate the two interface points and build a basic DS-CB-DS path between them.",
+      learningObjectives: [
+        "Identify the source and load interface nodes.",
+        "Build a simple DS → CB → DS arrangement and connect it with busbars.",
+        "Know where the Help button is for reference during later lessons.",
+      ],
+      constraints: [
+        "Use only the components shown in the tutorial palette.",
+        "Keep all construction inside the highlighted build zone.",
+      ],
+    },
     initialGraph: {
       locked: {
         nodes: [
@@ -193,7 +206,20 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     title: "Tutorial 3: Isolate then earth",
     type: "tutorial",
     difficulty: 2,
-    description: "Practice isolating, proving dead, and applying earths.",
+    description: "Practice switching instructions: isolate, lock/caution, prove dead, and apply earths.",
+    briefing: {
+      backstory:
+        "Control has issued a formal switching instruction sheet. Follow each line in order, then report line-end colours back to control.",
+      learningObjectives: [
+        "Use the Switching Instructions modal during a live switching segment.",
+        "Open, lock and caution the breaker/disconnectors correctly.",
+        "Apply points of isolation and complete the line-end-colour report.",
+      ],
+      constraints: [
+        "Use right-click actions to apply/remove points of isolation.",
+        "Right-click the interface to read line-end colours before reporting.",
+      ],
+    },
     initialGraph: {
       locked: {
         nodes: [
@@ -298,16 +324,31 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
           "LOAD-3": ["RED", "BLUE", "YELLOW", "BLUE", "RED"],
         },
         instructions: [
-          { id: "t3-1", verb: "OPEN", targetLabel: "CB-3" },
-          { id: "t3-2", verb: "OPEN", targetLabel: "DS-3A" },
-          { id: "t3-3", verb: "OPEN", targetLabel: "DS-3B" },
+          {
+            id: "t3-1",
+            verb: "OPEN_LOCK_CAUTION",
+            targetLabel: "CB-3",
+            notes: "Open the breaker and apply point of isolation (lock + caution).",
+          },
+          {
+            id: "t3-2",
+            verb: "OPEN_LOCK_CAUTION",
+            targetLabel: "DS-3A",
+            notes: "Open DS-3A and apply point of isolation.",
+          },
+          {
+            id: "t3-3",
+            verb: "OPEN_LOCK_CAUTION",
+            targetLabel: "DS-3B",
+            notes: "Open DS-3B and apply point of isolation.",
+          },
           { id: "t3-4", verb: "CLOSE_EARTH", targetLabel: "ES-3A" },
           { id: "t3-5", verb: "CLOSE_EARTH", targetLabel: "ES-3B" },
           {
             id: "t3-6",
             verb: "CHECK_OPEN_LOCK_CAUTION",
-            targetLabel: "DS-3A",
-            notes: "Confirm isolations applied before reporting line end colours.",
+            targetLabel: "DS-3B",
+            notes: "Right-click Load interface to read colours, then report them to control.",
             requiresReport: { type: "LINE_END_COLOURS", interfaceId: "LOAD-3" },
           },
         ],
@@ -487,13 +528,13 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
   },
   {
     id: "level-2",
-    title: "Level 2: Windfarm grid supply point",
+    title: "Level 2: Twin radial feeder build",
     type: "level",
     difficulty: 2,
-    description: "Build a twin-transformer grid supply point with resilient switching.",
+    description: "Build a twin-radial feeder arrangement with resilient transformer switching.",
     briefing: {
       backstory:
-        "You are building a grid supply point for a new windfarm. It has two incoming cable circuits at 275 kV and we must step this up to 400 kV before we can connect it into the National Grid.",
+        "You are building a twin-radial feeder arrangement for a new windfarm. Two incoming circuits feed two transformer bays, with coupler flexibility so one path can remain in service during maintenance.",
       learningObjectives: [
         "Place two transformers with switchgear bays on both sides.",
         "Create a bus coupler between the low-voltage sides so one transformer can supply both circuits during maintenance.",

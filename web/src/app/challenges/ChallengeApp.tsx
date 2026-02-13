@@ -142,6 +142,32 @@ function canPlaceInZones(position: { x: number; y: number }, zones?: Array<{ x: 
   return zones.some((z) => position.x >= z.x && position.x <= z.x + z.width && position.y >= z.y && position.y <= z.y + z.height);
 }
 
+const LINE_END_COLOUR_VALUES: LineEndColour[] = ["RED", "BLUE", "YELLOW", "GREEN", "BLACK"];
+
+function makeRandomLineEndPattern(seedKey: string): LineEndColour[] {
+  const chars = Array.from(seedKey);
+  const offset = chars.reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % LINE_END_COLOUR_VALUES.length;
+  const pattern: LineEndColour[] = [];
+  for (let i = 0; i < 5; i += 1) {
+    const jitter = Math.floor(Math.random() * LINE_END_COLOUR_VALUES.length);
+    pattern.push(LINE_END_COLOUR_VALUES[(offset + i + jitter) % LINE_END_COLOUR_VALUES.length]);
+  }
+  return pattern;
+}
+
+function resolveScenarioLineEndColours(scenario: ChallengeScenario): Record<string, Record<string, LineEndColour[]>> {
+  const resolved: Record<string, Record<string, LineEndColour[]>> = {};
+  (scenario.switchingSegments ?? []).forEach((segment) => {
+    if (!segment.lineEndColours) return;
+    const perInterface: Record<string, LineEndColour[]> = {};
+    Object.keys(segment.lineEndColours).forEach((interfaceId) => {
+      perInterface[interfaceId] = makeRandomLineEndPattern(`${scenario.id}:${segment.id}:${interfaceId}`);
+    });
+    resolved[segment.id] = perInterface;
+  });
+  return resolved;
+}
+
 export function ChallengeApp({ buildTag, onExit }: Props) {
   const [view, setView] = useState<ChallengeView>("levels");
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
@@ -171,6 +197,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [instructionStamps, setInstructionStamps] = useState<Record<string, number | null>>({});
   const [switchingReports, setSwitchingReports] = useState<Array<{ id: string; lineId?: string; type: "LINE_END_COLOURS"; value: any; timestamp: number; correct: boolean }>>([]);
   const [switchingPenalties, setSwitchingPenalties] = useState<SwitchingPenalty[]>([]);
+  const [lineEndColoursBySegmentId, setLineEndColoursBySegmentId] = useState<Record<string, Record<string, LineEndColour[]>>>({});
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -228,6 +255,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setInstructionStamps({});
       setSwitchingReports([]);
       setSwitchingPenalties([]);
+      setLineEndColoursBySegmentId(resolveScenarioLineEndColours(nextScenario));
       tutorialActionLog.current = createTutorialActionLog();
     },
     [setEdges, setInterlockOverrides, setNodes]
@@ -253,6 +281,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setInstructionStamps({});
     setSwitchingReports([]);
     setSwitchingPenalties([]);
+    setLineEndColoursBySegmentId(resolveScenarioLineEndColours(scenario));
     tutorialActionLog.current = createTutorialActionLog();
   }, [scenario, setEdges, setInterlockOverrides, setNodes]);
 
@@ -260,7 +289,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     (scenarioToStart: ChallengeScenario) => {
       setActiveScenarioId(scenarioToStart.id);
       resetScenario(scenarioToStart);
-      setBriefingOpen(scenarioToStart.type === "level" && !!scenarioToStart.briefing);
+      setBriefingOpen(!!scenarioToStart.briefing);
       setView("runner");
     },
     [resetScenario]
@@ -297,6 +326,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   }, [progress, scenario]);
 
   const activeSwitchingSegment = scenario?.switchingSegments?.[switchingSegmentIndex] ?? null;
+  const activeLineEndColours = activeSwitchingSegment
+    ? lineEndColoursBySegmentId[activeSwitchingSegment.id] ?? activeSwitchingSegment.lineEndColours ?? {}
+    : {};
   const labelToNode = useMemo(() => {
     const map = new Map<string, Node>();
     nodes.forEach((node) => {
@@ -307,11 +339,11 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   }, [nodes]);
 
   const reportOptions = useMemo(() => {
-    if (!activeSwitchingSegment?.lineEndColours) return {};
+    if (!activeSwitchingSegment) return {};
     const options: Record<string, Array<{ id: string; label: string; value: LineEndColour[] }>> = {};
     activeSwitchingSegment.instructions.forEach((line) => {
       if (!line.requiresReport) return;
-      const colours = activeSwitchingSegment.lineEndColours?.[line.requiresReport.interfaceId];
+      const colours = activeLineEndColours[line.requiresReport.interfaceId];
       if (!colours) return;
       const correct = colours;
       const distractors = [
@@ -326,7 +358,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       options[line.id] = all.sort(() => Math.random() - 0.5);
     });
     return options;
-  }, [activeSwitchingSegment]);
+  }, [activeLineEndColours, activeSwitchingSegment]);
 
   const evaluateInstructionSatisfied = useCallback(
     (line: { verb: string; targetLabel: string; requiresReport?: { type: "LINE_END_COLOURS"; interfaceId: string } }) => {
@@ -636,7 +668,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       const supportsIsolation = md.kind === "cb" || md.kind === "ds";
       const supportsInterlockOverride = md.kind === "es" && scenario?.type === "tutorial";
       const supportsCtVt = md.kind === "ct" || md.kind === "vt";
-      if (!supportsIsolation && !supportsInterlockOverride && !supportsCtVt) return;
+      const supportsLineEndReadback = md.kind === "iface" && !!activeLineEndColours[node.id];
+      if (!supportsIsolation && !supportsInterlockOverride && !supportsCtVt && !supportsLineEndReadback) return;
       setContextMenu({ nodeId: node.id, x: pos.x, y: pos.y });
     },
     [scenario?.type]
@@ -675,7 +708,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     const nextProgress = updateChallengeProgress(scenario.id, evaluationResult.stars, completed);
     setProgress(nextProgress);
     tutorialActionLog.current.checks += 1;
-  }, [edges, nodes, scenario, tutorialViolations]);
+  }, [edges, nodes, scenario, switchingPenalties, tutorialViolations]);
 
   const onRetry = useCallback(() => {
     if (!scenario) return;
@@ -944,7 +977,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
             }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Device actions</div>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Node actions</div>
             {(() => {
               const node = nodes.find((n) => n.id === contextMenu.nodeId);
               const md = node ? getMimicData(node) : null;
@@ -1018,6 +1051,18 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                       VT reference: {(node.data as any)?.vtReference ?? VT_REFERENCES[0]}
                     </button>
                   )}
+                  {md.kind === "iface" && activeLineEndColours[node.id] && (
+                    <button
+                      style={menuButtonStyle}
+                      onClick={() => {
+                        const pattern = activeLineEndColours[node.id];
+                        addCallout(`Line end colours for ${(node.data as any)?.label ?? node.id}: ${pattern.join(" / ")}.`);
+                        setContextMenu(null);
+                      }}
+                    >
+                      Read line end colours
+                    </button>
+                  )}
                   {md.kind === "es" && scenario?.type === "tutorial" && (
                     <button
                       style={menuButtonStyle}
@@ -1086,7 +1131,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                 setInstructionTicks((prev) => ({ ...prev, [id]: !prev[id] }))
               }
               onSubmitReport={(type, interfaceId, value) => {
-                const correctPattern = activeSwitchingSegment.lineEndColours?.[interfaceId] ?? [];
+                const correctPattern = activeLineEndColours[interfaceId] ?? [];
                 const correct = JSON.stringify(correctPattern) === JSON.stringify(value);
                 const entry = {
                   id: `report-${Math.random().toString(36).slice(2, 8)}`,
