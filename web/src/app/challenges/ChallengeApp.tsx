@@ -372,8 +372,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     if (lastSwitchingPromptId === activeSwitchingSegment.id) return;
     setLastSwitchingPromptId(activeSwitchingSegment.id);
     setSwitchingModalOpen(true);
-    addCallout(`Switching segment active: ${activeSwitchingSegment.title}. Open Switching Instructions from the right panel.`);
-  }, [activeSwitchingSegment, lastSwitchingPromptId, addCallout]);
+    const message = `Switching segment active: ${activeSwitchingSegment.title}. Open Switching Instructions from the right panel.`;
+    setTutorialCallouts((prev) => (prev.includes(message) ? prev : [...prev, message]));
+  }, [activeSwitchingSegment, lastSwitchingPromptId]);
   const CT_PURPOSES = ["LINE", "BUSBAR", "TX_DIFF", "DISTANCE"] as const;
   const VT_REFERENCES = ["BUS", "LINE", "TX"] as const;
 
