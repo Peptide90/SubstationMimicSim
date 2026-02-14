@@ -200,6 +200,7 @@ export function EditorCanvas(props: {
   const connectWasValidRef = useRef(false);
 
   const nodeInternals = useStore((s: any) => s.nodeInternals);
+  const transform = useStore((s: any) => s.transform) as [number, number, number];
 
   const getHandleCenter = useCallback(
     (nodeId: string, handleId: string | null | undefined) => {
@@ -494,6 +495,11 @@ export function EditorCanvas(props: {
     });
   }, [busbarMode, finishBusbarDraft, locked, onPaneClick, screenToFlowPosition]);
 
+  const draftScreenPoints = useMemo(() => {
+    const [translateX, translateY, zoom] = transform;
+    return busbarDraft.map((p) => ({ x: p.x * zoom + translateX, y: p.y * zoom + translateY }));
+  }, [busbarDraft, transform]);
+
   return (
     <div style={{ flex: 2, position: "relative" }}>
       <div ref={wrapperRef} tabIndex={0} style={{ width: "100%", height: "100%", outline: "none" }} onDragEnter={handleWrapperDragEnter} onDragOver={handleWrapperDragOver} onDrop={handleWrapperDrop}>
@@ -584,15 +590,29 @@ export function EditorCanvas(props: {
         </ReactFlow>
 
         {busbarMode && (
-          <div style={{ position: "absolute", top: 12, left: 210, zIndex: 1000, fontSize: 12, color: "#cbd5f5", background: "rgba(2,6,23,0.75)", border: "1px solid #334155", borderRadius: 6, padding: "4px 8px" }}>
-            Busbar mode: click to add points, double-click to finish (B to toggle)
+          <div
+            style={{
+              position: "absolute",
+              top: 56,
+              left: 12,
+              zIndex: 1000,
+              fontSize: 12,
+              color: "#cbd5f5",
+              background: "rgba(2,6,23,0.85)",
+              border: "1px solid #334155",
+              borderRadius: 6,
+              padding: "4px 8px",
+              pointerEvents: "none",
+            }}
+          >
+            Busbar mode: click points on canvas, double-click to finish (B to toggle)
           </div>
         )}
 
         {busbarMode && busbarDraft.length > 1 && (
           <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 900 }}>
             <polyline
-              points={busbarDraft.map((p) => `${p.x},${p.y}`).join(" ")}
+              points={draftScreenPoints.map((p) => `${p.x},${p.y}`).join(" ")}
               fill="none"
               stroke="#38bdf8"
               strokeWidth={4}
