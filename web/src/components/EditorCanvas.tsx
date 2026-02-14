@@ -594,7 +594,7 @@ export function EditorCanvas(props: {
             style={{
               position: "absolute",
               top: 56,
-              left: 12,
+              left: 420,
               zIndex: 1000,
               fontSize: 12,
               color: "#cbd5f5",
@@ -609,15 +609,20 @@ export function EditorCanvas(props: {
           </div>
         )}
 
-        {busbarMode && busbarDraft.length > 1 && (
-          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 900 }}>
-            <polyline
-              points={draftScreenPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-              fill="none"
-              stroke="#38bdf8"
-              strokeWidth={4}
-              strokeDasharray="8 4"
-            />
+        {busbarMode && draftScreenPoints.length > 0 && (
+          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1200 }}>
+            {draftScreenPoints.length > 1 && (
+              <polyline
+                points={draftScreenPoints.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="none"
+                stroke="#38bdf8"
+                strokeWidth={4}
+                strokeDasharray="8 4"
+              />
+            )}
+            {draftScreenPoints.map((p, idx) => (
+              <circle key={`draft-${idx}`} cx={p.x} cy={p.y} r={4} fill="#38bdf8" stroke="#082f49" strokeWidth={1} />
+            ))}
           </svg>
         )}
 
