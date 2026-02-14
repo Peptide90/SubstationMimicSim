@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "reactflow";
 import ReactFlow, { Background, BackgroundVariant, ControlButton, Controls, MiniMap, useReactFlow } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectStartParams } from "reactflow";
@@ -181,6 +181,16 @@ export function EditorCanvas(props: {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [busbarMode, setBusbarMode] = useState(false);
   const [busbarDraft, setBusbarDraft] = useState<Pt[]>([]);
+
+  useEffect(() => {
+    const onKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key.toLowerCase() !== "b") return;
+      setBusbarMode((v) => !v);
+      setBusbarDraft([]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Wire custom edge types (busbar renderer)
   const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
@@ -573,6 +583,12 @@ export function EditorCanvas(props: {
           </Controls>
         </ReactFlow>
 
+        {busbarMode && (
+          <div style={{ position: "absolute", top: 12, left: 210, zIndex: 1000, fontSize: 12, color: "#cbd5f5", background: "rgba(2,6,23,0.75)", border: "1px solid #334155", borderRadius: 6, padding: "4px 8px" }}>
+            Busbar mode: click to add points, double-click to finish (B to toggle)
+          </div>
+        )}
+
         {busbarMode && busbarDraft.length > 1 && (
           <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 900 }}>
             <polyline
@@ -585,15 +601,35 @@ export function EditorCanvas(props: {
           </svg>
         )}
 
-        {modeConfig?.palette?.enabled !== false && (
-          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, pointerEvents: "auto" }}>
-            <Palette
-              onAddAtCenter={onAddAtCenter}
-              allowedKinds={modeConfig?.palette?.allowedKinds}
-              disabled={locked}
-            />
-          </div>
-        )}
+        <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, display: "grid", gap: 8 }}>
+          <button
+            onClick={() => {
+              setBusbarMode((v) => !v);
+              setBusbarDraft([]);
+            }}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #334155",
+              background: busbarMode ? "#38bdf8" : "#0f172a",
+              color: busbarMode ? "#0f172a" : "#e2e8f0",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            title="Busbar tool (shortcut: B)"
+          >
+            {busbarMode ? "Busbar Tool: ON" : "Busbar Tool: OFF"}
+          </button>
+          {modeConfig?.palette?.enabled !== false && (
+            <div style={{ pointerEvents: "auto" }}>
+              <Palette
+                onAddAtCenter={onAddAtCenter}
+                allowedKinds={modeConfig?.palette?.allowedKinds}
+                disabled={locked}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

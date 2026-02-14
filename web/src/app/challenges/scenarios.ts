@@ -634,6 +634,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       constraints: [
         "The three existing bays and main bus section (DS-CB-DS) are fixed.",
         "Use disconnectors, breakers, and earth switches to extend the yard.",
+        "Use the Busbar Tool button (top-left) to draw clean reserve busbars.",
       ],
     },
     initialGraph: {
