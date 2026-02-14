@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useStore } from "reactflow";
 import ReactFlow, { Background, BackgroundVariant, ControlButton, Controls, MiniMap, useReactFlow } from "reactflow";
 import type { Connection, Edge, Node, NodeDragHandler, OnConnectEnd, OnConnectStartParams } from "reactflow";
@@ -93,6 +93,17 @@ function splitPolyline(poly: { x: number; y: number }[], split: { x: number; y: 
   return { a: outA, b: outB };
 }
 
+const GRID = 20;
+const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+type Pt = { x: number; y: number };
+
+function orthogonalPoint(prev: Pt, next: Pt): Pt {
+  const dx = Math.abs(next.x - prev.x);
+  const dy = Math.abs(next.y - prev.y);
+  if (dx >= dy) return { x: next.x, y: prev.y };
+  return { x: prev.x, y: next.y };
+}
 
 export function EditorCanvas(props: {
   nodes: Node[];
@@ -167,6 +178,9 @@ export function EditorCanvas(props: {
 
   const { screenToFlowPosition } = useReactFlow();
   const connectionsEnabled = modeConfig?.allowConnections ?? true;
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [busbarMode, setBusbarMode] = useState(false);
+  const [busbarDraft, setBusbarDraft] = useState<Pt[]>([]);
 
   // Wire custom edge types (busbar renderer)
   const edgeTypes = useMemo(() => ({ busbar: BusbarEdge }), []);
@@ -262,8 +276,8 @@ export function EditorCanvas(props: {
           id: jId,
           type: "junction",
           position: jPos,
-          data: { label: jId, mimic: { kind: "junction" } },
-          draggable: true,
+          data: { label: jId, mimic: { kind: "junction" }, busbarOwnerId: bbid },
+          draggable: false,
           selectable: true,
         })
       );
@@ -386,9 +400,93 @@ export function EditorCanvas(props: {
     [insertTee, locked, screenToFlowPosition]
   );
 
+  const handleWrapperDragEnter = useCallback((evt: DragEvent) => {
+    evt.preventDefault();
+    if (evt.dataTransfer) evt.dataTransfer.dropEffect = "copy";
+    wrapperRef.current?.focus();
+    console.debug("[DND] dragenter");
+  }, []);
+
+  const handleWrapperDragOver = useCallback((evt: DragEvent) => {
+    evt.preventDefault();
+    if (evt.dataTransfer) evt.dataTransfer.dropEffect = "copy";
+    wrapperRef.current?.focus();
+    console.debug("[DND] dragover");
+    onDragOver(evt);
+  }, [onDragOver]);
+
+  const handleWrapperDrop = useCallback((evt: DragEvent) => {
+    evt.preventDefault();
+    if (evt.dataTransfer) evt.dataTransfer.dropEffect = "copy";
+    wrapperRef.current?.focus();
+    console.debug("[DND] drop");
+    onDrop(evt);
+  }, [onDrop]);
+
+  const finishBusbarDraft = useCallback((endPoint: Pt) => {
+    setBusbarDraft((prev) => {
+      const withEnd = prev.length === 0 ? [endPoint] : prev.concat(orthogonalPoint(prev[prev.length - 1], endPoint));
+      if (withEnd.length < 2) return [];
+      const busbarId = `bb-${Math.random().toString(36).slice(2, 8)}`;
+      const junctionIds: string[] = [];
+      setNodes((nodesPrev) => {
+        const nextNodes = [...nodesPrev];
+        withEnd.forEach((pt, idx) => {
+          const id = `J-${busbarId}-${idx}`;
+          junctionIds.push(id);
+          nextNodes.push({
+            id,
+            type: "junction",
+            position: { x: pt.x - 9, y: pt.y - 9 },
+            data: { label: id, mimic: { kind: "junction" }, busbarOwnerId: busbarId },
+            draggable: false,
+            selectable: true,
+          } as any);
+        });
+        return nextNodes;
+      });
+      setEdges((edgesPrev) => {
+        const segs: Edge[] = [];
+        for (let i = 0; i < junctionIds.length - 1; i += 1) {
+          segs.push({
+            id: `${busbarId}-${i}`,
+            source: junctionIds[i],
+            target: junctionIds[i + 1],
+            sourceHandle: "R",
+            targetHandle: "L",
+            type: "busbar",
+            data: { kind: "busbar", busbarId, points: [withEnd[i], withEnd[i + 1]] },
+          } as any);
+        }
+        return edgesPrev.concat(segs);
+      });
+      return [];
+    });
+  }, [setEdges, setNodes]);
+
+  const onPaneClickWrapped = useCallback((evt?: any) => {
+    onPaneClick();
+    if (!busbarMode || locked) return;
+    const x = evt?.clientX ?? 0;
+    const y = evt?.clientY ?? 0;
+    const p = screenToFlowPosition({ x, y });
+    const snapped: Pt = { x: snap(p.x), y: snap(p.y) };
+
+    if ((evt?.detail ?? 1) >= 2) {
+      finishBusbarDraft(snapped);
+      return;
+    }
+
+    setBusbarDraft((prev) => {
+      if (prev.length === 0) return [snapped];
+      const ortho = orthogonalPoint(prev[prev.length - 1], snapped);
+      return prev.concat(ortho);
+    });
+  }, [busbarMode, finishBusbarDraft, locked, onPaneClick, screenToFlowPosition]);
+
   return (
     <div style={{ flex: 2, position: "relative" }}>
-      <div style={{ width: "100%", height: "100%" }} onDragOver={onDragOver} onDrop={onDrop}>
+      <div ref={wrapperRef} tabIndex={0} style={{ width: "100%", height: "100%", outline: "none" }} onDragEnter={handleWrapperDragEnter} onDragOver={handleWrapperDragOver} onDrop={handleWrapperDrop}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -428,7 +526,7 @@ export function EditorCanvas(props: {
 		    evt.preventDefault();
 		    onPaneContextMenu({ x: evt.clientX, y: evt.clientY });
 		  }}
-		  onPaneClick={() => onPaneClick()}
+              onPaneClick={onPaneClickWrapped}
         >
           <Background variant={BackgroundVariant.Lines} gap={24} />
           <MiniMap />
@@ -463,11 +561,32 @@ export function EditorCanvas(props: {
                 )}
               </svg>
             </ControlButton>
+            <ControlButton
+              onClick={() => {
+                setBusbarMode((v) => !v);
+                setBusbarDraft([]);
+              }}
+              title={busbarMode ? "Exit busbar tool" : "Busbar tool"}
+            >
+              ═
+            </ControlButton>
           </Controls>
         </ReactFlow>
 
+        {busbarMode && busbarDraft.length > 1 && (
+          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 900 }}>
+            <polyline
+              points={busbarDraft.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth={4}
+              strokeDasharray="8 4"
+            />
+          </svg>
+        )}
+
         {modeConfig?.palette?.enabled !== false && (
-          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000 }}>
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, pointerEvents: "auto" }}>
             <Palette
               onAddAtCenter={onAddAtCenter}
               allowedKinds={modeConfig?.palette?.allowedKinds}

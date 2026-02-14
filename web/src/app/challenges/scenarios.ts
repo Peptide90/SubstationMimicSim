@@ -622,7 +622,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     title: "Level 3: Add a reserve bus",
     type: "level",
     difficulty: 3,
-    description: "Expand a single-bus substation with a reserve bus and coupler.",
+    description: "Expand a main-bus substation with reserve bus, coupler, and sectioning operations.",
     briefing: {
       backstory:
         "Upgrade this single-bus substation to include a reserve busbar and a bus coupler. A bus section breaker is not required because the coupler can provide the necessary switching path for maintenance.",
@@ -632,7 +632,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         "Demonstrate switching to bypass the middle feeder while keeping import/export connected.",
       ],
       constraints: [
-        "The three existing bays and main bus are fixed.",
+        "The three existing bays and main bus section (DS-CB-DS) are fixed.",
         "Use disconnectors, breakers, and earth switches to extend the yard.",
       ],
     },
@@ -657,6 +657,9 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
           makeNode("junction", "L3-BUS-L", 240, 120, {}),
           makeNode("junction", "L3-BUS-M", 520, 120, {}),
           makeNode("junction", "L3-BUS-R", 800, 120, {}),
+          makeNode("ds", "L3-BUS-SEC-DS-A", 620, 120, { state: "open" }),
+          makeNode("cb", "L3-BUS-SEC-CB", 680, 120, { state: "open" }),
+          makeNode("ds", "L3-BUS-SEC-DS-B", 740, 120, { state: "open" }),
           makeNode("ds", "L3-DS-L1", 220, 200, { state: "open" }),
           makeNode("cb", "L3-CB-L", 220, 260, { state: "open" }),
           makeNode("ds", "L3-DS-L2", 220, 320, { state: "open" }),
@@ -669,7 +672,10 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         ],
         edges: [
           makeBusbarEdge("L3-BUS-L", "L3-BUS-M", "R", "L", "bb-l3-main-1", "bb-l3-main-1"),
-          makeBusbarEdge("L3-BUS-M", "L3-BUS-R", "R", "L", "bb-l3-main-2", "bb-l3-main-2"),
+          makeBusbarEdge("L3-BUS-M", "L3-BUS-SEC-DS-A", "R", "L", "bb-l3-main-2a", "bb-l3-main-2a"),
+          makeBusbarEdge("L3-BUS-SEC-DS-A", "L3-BUS-SEC-CB", "R", "L", "bb-l3-main-2b", "bb-l3-main-2b"),
+          makeBusbarEdge("L3-BUS-SEC-CB", "L3-BUS-SEC-DS-B", "R", "L", "bb-l3-main-2c", "bb-l3-main-2c"),
+          makeBusbarEdge("L3-BUS-SEC-DS-B", "L3-BUS-R", "R", "L", "bb-l3-main-2d", "bb-l3-main-2d"),
           makeBusbarEdge("L3-BUS-L", "L3-DS-L1", "B", "T", "bb-l3-l-1", "bb-l3-l-1"),
           makeBusbarEdge("L3-DS-L1", "L3-CB-L", "B", "T", "bb-l3-l-2", "bb-l3-l-2"),
           makeBusbarEdge("L3-CB-L", "L3-DS-L2", "B", "T", "bb-l3-l-3", "bb-l3-l-3"),
@@ -696,6 +702,9 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         "L3-BUS-L",
         "L3-BUS-M",
         "L3-BUS-R",
+        "L3-BUS-SEC-DS-A",
+        "L3-BUS-SEC-CB",
+        "L3-BUS-SEC-DS-B",
         "L3-DS-L1",
         "L3-CB-L",
         "L3-DS-L2",
@@ -708,7 +717,10 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
       ],
       lockedEdges: [
         "bb-l3-main-1",
-        "bb-l3-main-2",
+        "bb-l3-main-2a",
+        "bb-l3-main-2b",
+        "bb-l3-main-2c",
+        "bb-l3-main-2d",
         "bb-l3-l-1",
         "bb-l3-l-2",
         "bb-l3-l-3",
@@ -726,9 +738,9 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
     objectives: [
       {
         id: "obj-l3-reserve-bus",
-        label: "Create a reserve busbar and connect each bay to it through a disconnector.",
+        label: "Create a reserve busbar, connect each bay to it, and add reserve bus section disconnectors.",
         type: "includeComponent",
-        params: { kinds: ["ds"], count: 3 },
+        params: { kinds: ["ds"], count: 5 },
       },
       {
         id: "obj-l3-coupler",

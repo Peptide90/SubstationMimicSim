@@ -672,7 +672,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       if (!supportsIsolation && !supportsInterlockOverride && !supportsCtVt && !supportsLineEndReadback) return;
       setContextMenu({ nodeId: node.id, x: pos.x, y: pos.y });
     },
-    [scenario?.type]
+    [activeLineEndColours, scenario?.type]
   );
 
   const onEdgeDoubleClick = useCallback(
