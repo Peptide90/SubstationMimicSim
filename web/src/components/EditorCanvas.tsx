@@ -181,12 +181,14 @@ export function EditorCanvas(props: {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [busbarMode, setBusbarMode] = useState(false);
   const [busbarDraft, setBusbarDraft] = useState<Pt[]>([]);
+  const [busbarDraftScreen, setBusbarDraftScreen] = useState<Pt[]>([]);
 
   useEffect(() => {
     const onKeyDown = (evt: KeyboardEvent) => {
       if (evt.key.toLowerCase() !== "b") return;
       setBusbarMode((v) => !v);
       setBusbarDraft([]);
+      setBusbarDraftScreen([]);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -473,6 +475,7 @@ export function EditorCanvas(props: {
       });
       return [];
     });
+    setBusbarDraftScreen([]);
   }, [setEdges, setNodes]);
 
   const onPaneClickWrapped = useCallback((evt?: any) => {
@@ -482,6 +485,8 @@ export function EditorCanvas(props: {
     const y = evt?.clientY ?? 0;
     const p = screenToFlowPosition({ x, y });
     const snapped: Pt = { x: snap(p.x), y: snap(p.y) };
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const local: Pt = rect ? { x: x - rect.left, y: y - rect.top } : { x, y };
 
     if ((evt?.detail ?? 1) >= 2) {
       finishBusbarDraft(snapped);
@@ -493,15 +498,21 @@ export function EditorCanvas(props: {
       const ortho = orthogonalPoint(prev[prev.length - 1], snapped);
       return prev.concat(ortho);
     });
+    setBusbarDraftScreen((prev) => {
+      if (prev.length === 0) return [local];
+      const ortho = orthogonalPoint(prev[prev.length - 1], local);
+      return prev.concat(ortho);
+    });
   }, [busbarMode, finishBusbarDraft, locked, onPaneClick, screenToFlowPosition]);
 
   const draftScreenPoints = useMemo(() => {
+    if (busbarDraftScreen.length > 0) return busbarDraftScreen;
     const [translateX, translateY, zoom] = transform;
     const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
     const safeX = Number.isFinite(translateX) ? translateX : 0;
     const safeY = Number.isFinite(translateY) ? translateY : 0;
     return busbarDraft.map((p) => ({ x: p.x * safeZoom + safeX, y: p.y * safeZoom + safeY }));
-  }, [busbarDraft, transform]);
+  }, [busbarDraft, busbarDraftScreen, transform]);
 
   return (
     <div style={{ flex: 2, position: "relative" }}>
@@ -592,26 +603,6 @@ export function EditorCanvas(props: {
           </Controls>
         </ReactFlow>
 
-        {busbarMode && (
-          <div
-            style={{
-              position: "absolute",
-              top: 14,
-              left: 250,
-              zIndex: 1000,
-              fontSize: 12,
-              color: "#cbd5f5",
-              background: "rgba(2,6,23,0.85)",
-              border: "1px solid #334155",
-              borderRadius: 6,
-              padding: "4px 8px",
-              pointerEvents: "none",
-            }}
-          >
-            Busbar mode: click points, double-click to finish (B)
-          </div>
-        )}
-
         {busbarMode && draftScreenPoints.length > 0 && (
           <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2000 }}>
             {draftScreenPoints.length > 1 && (
@@ -639,24 +630,42 @@ export function EditorCanvas(props: {
         )}
 
         <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, display: "grid", gap: 8 }}>
-          <button
-            onClick={() => {
-              setBusbarMode((v) => !v);
-              setBusbarDraft([]);
-            }}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #334155",
-              background: busbarMode ? "#38bdf8" : "#0f172a",
-              color: busbarMode ? "#0f172a" : "#e2e8f0",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-            title="Busbar tool (shortcut: B)"
-          >
-            {busbarMode ? "Busbar Tool: ON" : "Busbar Tool: OFF"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => {
+                setBusbarMode((v) => !v);
+                setBusbarDraft([]);
+                setBusbarDraftScreen([]);
+              }}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: busbarMode ? "#38bdf8" : "#0f172a",
+                color: busbarMode ? "#0f172a" : "#e2e8f0",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              title="Busbar tool (shortcut: B)"
+            >
+              {busbarMode ? "Busbar Tool: ON" : "Busbar Tool: OFF"}
+            </button>
+            {busbarMode && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#cbd5f5",
+                  background: "rgba(2,6,23,0.85)",
+                  border: "1px solid #334155",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  pointerEvents: "none",
+                }}
+              >
+                Busbar mode: click points, double-click to finish (B)
+              </div>
+            )}
+          </div>
           {modeConfig?.palette?.enabled !== false && (
             <div style={{ pointerEvents: "auto" }}>
               <Palette
