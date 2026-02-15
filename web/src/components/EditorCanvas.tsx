@@ -200,7 +200,7 @@ export function EditorCanvas(props: {
   const connectWasValidRef = useRef(false);
 
   const nodeInternals = useStore((s: any) => s.nodeInternals);
-  const transform = useStore((s: any) => s.transform) as [number, number, number];
+  const transform = useStore((s: any) => (s.transform as [number, number, number]) ?? [0, 0, 1]);
 
   const getHandleCenter = useCallback(
     (nodeId: string, handleId: string | null | undefined) => {
@@ -497,7 +497,10 @@ export function EditorCanvas(props: {
 
   const draftScreenPoints = useMemo(() => {
     const [translateX, translateY, zoom] = transform;
-    return busbarDraft.map((p) => ({ x: p.x * zoom + translateX, y: p.y * zoom + translateY }));
+    const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+    const safeX = Number.isFinite(translateX) ? translateX : 0;
+    const safeY = Number.isFinite(translateY) ? translateY : 0;
+    return busbarDraft.map((p) => ({ x: p.x * safeZoom + safeX, y: p.y * safeZoom + safeY }));
   }, [busbarDraft, transform]);
 
   return (
@@ -593,8 +596,8 @@ export function EditorCanvas(props: {
           <div
             style={{
               position: "absolute",
-              top: 56,
-              left: 420,
+              top: 14,
+              left: 250,
               zIndex: 1000,
               fontSize: 12,
               color: "#cbd5f5",
@@ -605,23 +608,32 @@ export function EditorCanvas(props: {
               pointerEvents: "none",
             }}
           >
-            Busbar mode: click points on canvas, double-click to finish (B to toggle)
+            Busbar mode: click points, double-click to finish (B)
           </div>
         )}
 
         {busbarMode && draftScreenPoints.length > 0 && (
-          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1200 }}>
+          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2000 }}>
             {draftScreenPoints.length > 1 && (
               <polyline
                 points={draftScreenPoints.map((p) => `${p.x},${p.y}`).join(" ")}
                 fill="none"
-                stroke="#38bdf8"
-                strokeWidth={4}
-                strokeDasharray="8 4"
+                stroke="#22c55e"
+                strokeWidth={5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
             )}
             {draftScreenPoints.map((p, idx) => (
-              <circle key={`draft-${idx}`} cx={p.x} cy={p.y} r={4} fill="#38bdf8" stroke="#082f49" strokeWidth={1} />
+              <circle
+                key={`draft-${idx}`}
+                cx={p.x}
+                cy={p.y}
+                r={idx === 0 ? 6 : 5}
+                fill="#22c55e"
+                stroke="#14532d"
+                strokeWidth={2}
+              />
             ))}
           </svg>
         )}
