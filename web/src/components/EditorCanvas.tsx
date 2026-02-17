@@ -8,6 +8,7 @@ import { Palette } from "../ui/Palette";
 import type { EditorModeConfig } from "../app/mimic/EditorModeConfig";
 import { BusbarEdge } from "../ui/BusbarEdge";
 import { busbarPolyline } from "../ui/busbarRouter";
+import { addDraftPoint, samePoint } from "../app/util/busbarDraft";
 
 function isBusbarEdge(e: Edge): boolean {
   return (e.data as any)?.kind === "busbar";
@@ -98,13 +99,6 @@ const snap = (v: number) => Math.round(v / GRID) * GRID;
 
 type Pt = { x: number; y: number };
 
-function orthogonalPoint(prev: Pt, next: Pt): Pt {
-  const dx = Math.abs(next.x - prev.x);
-  const dy = Math.abs(next.y - prev.y);
-  if (dx >= dy) return { x: next.x, y: prev.y };
-  return { x: prev.x, y: next.y };
-}
-
 export function EditorCanvas(props: {
   nodes: Node[];
   edges: Edge[];      // DISPLAY edges (styled)
@@ -181,14 +175,35 @@ export function EditorCanvas(props: {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [busbarMode, setBusbarMode] = useState(false);
   const [busbarDraft, setBusbarDraft] = useState<Pt[]>([]);
-  const [busbarDraftScreen, setBusbarDraftScreen] = useState<Pt[]>([]);
+  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
+  /** Ref copy of draft so we can add exactly one point per click without updater double-run or duplicate events. */
+  const busbarDraftRef = useRef<Pt[]>([]);
+  const lastBusbarClickTimeRef = useRef(0);
+  const BUSBAR_CLICK_DEBOUNCE_MS = 200;
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const sync = () => {
+      const r = el.getBoundingClientRect();
+      setOverlaySize({ width: r.width, height: r.height });
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    busbarDraftRef.current = busbarDraft;
+  }, [busbarDraft]);
 
   useEffect(() => {
     const onKeyDown = (evt: KeyboardEvent) => {
       if (evt.key.toLowerCase() !== "b") return;
       setBusbarMode((v) => !v);
       setBusbarDraft([]);
-      setBusbarDraftScreen([]);
+      busbarDraftRef.current = [];
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -436,15 +451,35 @@ export function EditorCanvas(props: {
     onDrop(evt);
   }, [onDrop]);
 
-  const finishBusbarDraft = useCallback((endPoint: Pt) => {
-    setBusbarDraft((prev) => {
-      const withEnd = prev.length === 0 ? [endPoint] : prev.concat(orthogonalPoint(prev[prev.length - 1], endPoint));
-      if (withEnd.length < 2) return [];
+  const finishBusbarDraft = useCallback(
+    () => {
+      const prev = busbarDraftRef.current;
+      if (prev.length < 2) {
+        busbarDraftRef.current = [];
+        setBusbarDraft([]);
+        return;
+      }
+      busbarDraftRef.current = [];
+      setBusbarDraft([]);
+
+      // Deduplicate: remove any duplicate consecutive points (safety check)
+      const unique: Pt[] = [];
+      for (let i = 0; i < prev.length; i++) {
+        if (i === 0 || !samePoint(prev[i], prev[i - 1])) {
+          unique.push(prev[i]);
+        }
+      }
+      // Remove last point if it equals the first (prevents visual loop)
+      if (unique.length >= 2 && samePoint(unique[0], unique[unique.length - 1])) {
+        unique.pop();
+      }
+      if (unique.length < 2) return;
+
       const busbarId = `bb-${Math.random().toString(36).slice(2, 8)}`;
       const junctionIds: string[] = [];
       setNodes((nodesPrev) => {
         const nextNodes = [...nodesPrev];
-        withEnd.forEach((pt, idx) => {
+        unique.forEach((pt, idx) => {
           const id = `J-${busbarId}-${idx}`;
           junctionIds.push(id);
           nextNodes.push({
@@ -452,7 +487,7 @@ export function EditorCanvas(props: {
             type: "junction",
             position: { x: pt.x - 9, y: pt.y - 9 },
             data: { label: id, mimic: { kind: "junction" }, busbarOwnerId: busbarId },
-            draggable: false,
+            draggable: !locked,
             selectable: true,
           } as any);
         });
@@ -460,63 +495,83 @@ export function EditorCanvas(props: {
       });
       setEdges((edgesPrev) => {
         const segs: Edge[] = [];
+        // First junction is only allowed to connect to its immediate neighbour (index 1).
+        const firstId = junctionIds[0];
+        const secondId = junctionIds.length > 1 ? junctionIds[1] : null;
+
+        // Create edges ONLY from i to i+1 (sequential).
+        // Additionally, never create an edge that connects back into the first junction
+        // from any node other than its immediate neighbour. This guarantees that we
+        // never form a loop that closes the busbar back onto its starting junction.
         for (let i = 0; i < junctionIds.length - 1; i += 1) {
+          const sourceId = junctionIds[i];
+          const targetId = junctionIds[i + 1];
+
+          // Skip any edge that would connect back into the first junction from
+          // something other than its direct neighbour.
+          if (
+            (targetId === firstId && sourceId !== secondId) ||
+            (sourceId === firstId && targetId !== secondId)
+          ) {
+            continue;
+          }
+
           segs.push({
             id: `${busbarId}-${i}`,
-            source: junctionIds[i],
-            target: junctionIds[i + 1],
+            source: sourceId,
+            target: targetId,
             sourceHandle: "R",
             targetHandle: "L",
             type: "busbar",
-            data: { kind: "busbar", busbarId, points: [withEnd[i], withEnd[i + 1]] },
+            style: { strokeWidth: 6, stroke: "#64748b" },
+            data: { kind: "busbar", busbarId },
           } as any);
         }
         return edgesPrev.concat(segs);
       });
-      return [];
-    });
-    setBusbarDraftScreen([]);
-  }, [setEdges, setNodes]);
+    },
+    [locked, setEdges, setNodes]
+  );
 
-  const onPaneClickWrapped = useCallback((evt?: any) => {
-    onPaneClick();
-    if (!busbarMode || locked) return;
-    const x = evt?.clientX ?? 0;
-    const y = evt?.clientY ?? 0;
-    const p = screenToFlowPosition({ x, y });
-    const snapped: Pt = { x: snap(p.x), y: snap(p.y) };
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    const local: Pt = rect ? { x: x - rect.left, y: y - rect.top } : { x, y };
+  const onPaneClickWrapped = useCallback(
+    (evt?: any) => {
+      onPaneClick();
+      if (!busbarMode || locked) return;
+      const x = evt?.clientX ?? 0;
+      const y = evt?.clientY ?? 0;
+      const p = screenToFlowPosition({ x, y });
+      const snapped: Pt = { x: snap(p.x), y: snap(p.y) };
 
-    if ((evt?.detail ?? 1) >= 2) {
-      finishBusbarDraft(snapped);
-      return;
-    }
+      if ((evt?.detail ?? 1) >= 2) {
+        finishBusbarDraft();
+        return;
+      }
 
-    setBusbarDraft((prev) => {
-      if (prev.length === 0) return [snapped];
-      const ortho = orthogonalPoint(prev[prev.length - 1], snapped);
-      return prev.concat(ortho);
-    });
-    setBusbarDraftScreen((prev) => {
-      if (prev.length === 0) return [local];
-      const ortho = orthogonalPoint(prev[prev.length - 1], local);
-      return prev.concat(ortho);
-    });
-  }, [busbarMode, finishBusbarDraft, locked, onPaneClick, screenToFlowPosition]);
+      const now = Date.now();
+      if (now - lastBusbarClickTimeRef.current < BUSBAR_CLICK_DEBOUNCE_MS) return;
+      lastBusbarClickTimeRef.current = now;
 
+      const prev = busbarDraftRef.current;
+      const next = addDraftPoint(prev, snapped);
+      if (next === prev) return;
+      busbarDraftRef.current = next;
+      setBusbarDraft(next);
+    },
+    [busbarMode, finishBusbarDraft, locked, onPaneClick, screenToFlowPosition]
+  );
+
+  // Ghost in flow space: convert draft points to screen using current viewport transform
   const draftScreenPoints = useMemo(() => {
-    if (busbarDraftScreen.length > 0) return busbarDraftScreen;
     const [translateX, translateY, zoom] = transform;
     const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
     const safeX = Number.isFinite(translateX) ? translateX : 0;
     const safeY = Number.isFinite(translateY) ? translateY : 0;
     return busbarDraft.map((p) => ({ x: p.x * safeZoom + safeX, y: p.y * safeZoom + safeY }));
-  }, [busbarDraft, busbarDraftScreen, transform]);
+  }, [busbarDraft, transform]);
 
   return (
     <div style={{ flex: 2, position: "relative" }}>
-      <div ref={wrapperRef} tabIndex={0} style={{ width: "100%", height: "100%", outline: "none" }} onDragEnter={handleWrapperDragEnter} onDragOver={handleWrapperDragOver} onDrop={handleWrapperDrop}>
+      <div ref={wrapperRef} tabIndex={0} style={{ position: "relative", width: "100%", height: "100%", outline: "none" }} onDragEnter={handleWrapperDragEnter} onDragOver={handleWrapperDragOver} onDrop={handleWrapperDrop}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -603,8 +658,14 @@ export function EditorCanvas(props: {
           </Controls>
         </ReactFlow>
 
-        {busbarMode && draftScreenPoints.length > 0 && (
-          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2000 }}>
+        {busbarMode && draftScreenPoints.length > 0 && overlaySize.width > 0 && overlaySize.height > 0 && (
+          <svg
+            style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2000 }}
+            width="100%"
+            height="100%"
+            viewBox={`0 0 ${overlaySize.width} ${overlaySize.height}`}
+            preserveAspectRatio="none"
+          >
             {draftScreenPoints.length > 1 && (
               <polyline
                 points={draftScreenPoints.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -635,7 +696,6 @@ export function EditorCanvas(props: {
               onClick={() => {
                 setBusbarMode((v) => !v);
                 setBusbarDraft([]);
-                setBusbarDraftScreen([]);
               }}
               style={{
                 padding: "8px 10px",
