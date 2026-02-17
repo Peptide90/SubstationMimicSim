@@ -1,0 +1,12 @@
+{
+  "scenarioId": "level-3",
+  "checks": {
+    "mainBusSection": ["L3-BUS-SEC-DS-A", "L3-BUS-SEC-CB", "L3-BUS-SEC-DS-B"],
+    "lockedInterfaces": ["L3-IMPORT", "L3-MID", "L3-EXPORT"],
+    "requiredBuildTargets": {
+      "reserveBusDisconnectors": 5,
+      "couplerBreakers": 1
+    }
+  },
+  "notes": "Regression fixture for Level 3 topology updates (main bus section + reserve bus objectives)."
+}

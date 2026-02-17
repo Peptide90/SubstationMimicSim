@@ -5,10 +5,11 @@ import { BrandingCluster } from "./BrandingCluster";
 type Props = {
   buildTag: string;
   onStartSolo: () => void;
+  onStartChallenges: () => void;
   onStartMultiplayer: () => void;
 };
 
-export function MainMenu({ buildTag, onStartSolo, onStartMultiplayer }: Props) {
+export function MainMenu({ buildTag, onStartSolo, onStartChallenges, onStartMultiplayer }: Props) {
   const buttonStyle: CSSProperties = {
     width: "min(420px, 90vw)",
     padding: "14px 18px",
@@ -48,6 +49,9 @@ export function MainMenu({ buildTag, onStartSolo, onStartMultiplayer }: Props) {
       <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
         <button style={buttonStyle} onClick={onStartSolo}>
           Solo: Substation Mimic Builder
+        </button>
+        <button style={buttonStyle} onClick={onStartChallenges}>
+          Solo: Substation Builder Challenges
         </button>
         <button style={buttonStyle} onClick={onStartMultiplayer}>
           Multiplayer Grid Game

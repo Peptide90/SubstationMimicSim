@@ -11,18 +11,27 @@ const ITEMS: PaletteItem[] = [
   { kind: 'ds', title: 'Disconnector (DS)' },
   { kind: 'cb', title: 'Circuit Breaker (CB)' },
   { kind: 'es', title: 'Earth Switch (ES)' },
-  { kind: 'tx', title: 'Transformer (TX)' }
+  { kind: 'tx', title: 'Transformer (TX)' },
+  { kind: 'ct', title: 'Current Transformer (CT)' },
+  { kind: 'vt', title: 'Voltage Transformer (VT)' }
 ];
 
 export type PaletteProps = {
   onAddAtCenter: (kind: NodeKind) => void;
+  allowedKinds?: NodeKind[];
+  disabled?: boolean;
 };
 
-export function Palette({ onAddAtCenter }: PaletteProps) {
+export function Palette({ onAddAtCenter, allowedKinds, disabled }: PaletteProps) {
   const onDragStart = (evt: DragEvent<HTMLDivElement>, kind: NodeKind) => {
+    if (disabled) return;
     evt.dataTransfer.setData('application/mimic-node-kind', kind);
     evt.dataTransfer.effectAllowed = 'copy';
   };
+
+  const filteredItems = allowedKinds?.length
+    ? ITEMS.filter((item) => allowedKinds.includes(item.kind))
+    : ITEMS;
 
   return (
     <div
@@ -41,22 +50,23 @@ export function Palette({ onAddAtCenter }: PaletteProps) {
       </div>
 
       <div style={{ display: 'grid', gap: 8 }}>
-        {ITEMS.map((it) => (
+        {filteredItems.map((it) => (
           <div
             key={it.kind}
             draggable
             onDragStart={(e) => onDragStart(e, it.kind)}
-            onClick={() => onAddAtCenter(it.kind)}
+            onClick={() => !disabled && onAddAtCenter(it.kind)}
             role="button"
             tabIndex={0}
             style={{
               padding: '8px 10px',
               border: '1px solid #334155',
               borderRadius: 8,
-              cursor: 'grab',
+              cursor: disabled ? 'not-allowed' : 'grab',
               userSelect: 'none',
               background: '#0f172a',
-              color: '#fff'
+              color: disabled ? '#64748b' : '#fff',
+              opacity: disabled ? 0.6 : 1
             }}
             title="Drag to place, or click to add at centre"
           >
