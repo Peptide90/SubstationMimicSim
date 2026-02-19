@@ -332,9 +332,10 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           };
         })
       );
-      addCallout(`Protection trip: ${tripCbIds.size} breaker(s) opened due to sustained overload.`);
+      const message = `Protection trip: ${tripCbIds.size} breaker(s) opened due to sustained overload.`;
+      setTutorialCallouts((prev) => (prev.includes(message) ? prev : [...prev, message]));
     }
-  }, [addCallout, edges, nodes, powerSim.edgeLoadingPct, setNodes]);
+  }, [edges, nodes, powerSim.edgeLoadingPct, setNodes]);
 
   const resetScenario = useCallback(
     (nextScenario: ChallengeScenario) => {
