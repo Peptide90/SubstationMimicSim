@@ -118,4 +118,8 @@ export type ChallengeScenario = {
   scoring: ScenarioScoring;
   tutorialSteps?: ScenarioTutorialStep[];
   switchingSegments?: SwitchingSegment[];
+  challengePhases?: {
+    overloadTripEdges?: string[];
+    stageFaults?: Array<{ stepId: string; edgeId: string; message: string }>;
+  };
 };

@@ -15,6 +15,8 @@ import { TopToolbar } from "../../components/TopToolbar";
 import { ChallengePanel } from "../../components/ChallengePanel";
 import { SwitchingInstructionsModal } from "../../components/SwitchingInstructionsModal";
 import { getChallengeEnergized, getChallengeLoadIds } from "./energizeUtils";
+import { computePowerSim } from "./powerSim";
+import { PowerOverlay } from "./PowerOverlay";
 
 import { JunctionNode } from "../../ui/nodes/JunctionNode";
 import { ScadaNode } from "../../ui/nodes/ScadaNode";
@@ -212,27 +214,127 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
 
   const energized = useMemo(() => getChallengeEnergized(nodes, edges), [edges, nodes]);
   const grounded = useMemo(() => computeGroundedVisual(nodes, edges), [edges, nodes]);
+  const powerSim = useMemo(() => computePowerSim(nodes, edges), [edges, nodes]);
+  const overloadSinceRef = useRef<Record<string, number>>({});
+  const trippedOverloadEdgesRef = useRef<Set<string>>(new Set());
   const styledEdges = useMemo(
     () =>
       edges.map((edge) => {
         const energizedEdge = energized.energizedEdgeIds.has(edge.id);
         const groundedEdge = grounded.groundedEdgeIds.has(edge.id);
+        const loadingPct = powerSim.edgeLoadingPct[edge.id] ?? 0;
+        const overloaded = loadingPct > 100;
+        const severeOverload = loadingPct > 120;
         const conflict = energizedEdge && groundedEdge;
-        const baseStroke = conflict ? "#ff4d4d" : groundedEdge ? "#ffb020" : energizedEdge ? "#00e5ff" : "#64748b";
-        const baseStyle = conflict || groundedEdge ? { strokeDasharray: "10 6" } : {};
+        const busbarId = (edge.data as any)?.busbarId;
+        const voltageState = busbarId ? powerSim.busVoltage[busbarId] : undefined;
+        const baseStroke = conflict
+          ? "#ff4d4d"
+          : severeOverload
+            ? "#ef4444"
+            : overloaded
+              ? "#f59e0b"
+              : energizedEdge
+                ? "#00e5ff"
+                : groundedEdge
+                  ? "#ffb020"
+                  : "#64748b";
+        const baseStyle = conflict
+          ? { strokeDasharray: "10 6" }
+          : overloaded
+            ? { strokeDasharray: severeOverload ? "6 4" : undefined }
+            : groundedEdge
+              ? { strokeDasharray: "10 6" }
+              : voltageState === "LOW"
+                ? { strokeDasharray: "4 4", opacity: 0.95 }
+                : voltageState === "HIGH"
+                  ? { strokeDasharray: "2 6", opacity: 0.95 }
+                  : {};
+        const voltageTint = !conflict && !overloaded && voltageState === "LOW" ? "#c084fc" : !conflict && !overloaded && voltageState === "HIGH" ? "#60a5fa" : undefined;
         return {
           ...edge,
           style: {
             ...(edge.style as any),
-            stroke: baseStroke,
+            stroke: voltageTint ?? baseStroke,
             strokeWidth: energizedEdge || groundedEdge ? 4 : 3,
             ...baseStyle,
           },
           animated: energizedEdge,
         };
       }),
-    [edges, energized.energizedEdgeIds, grounded.groundedEdgeIds]
+    [edges, energized.energizedEdgeIds, grounded.groundedEdgeIds, powerSim.busVoltage, powerSim.edgeLoadingPct]
   );
+
+  useEffect(() => {
+    const now = Date.now();
+    const nextSince = { ...overloadSinceRef.current };
+    for (const edge of edges) {
+      const loading = powerSim.edgeLoadingPct[edge.id] ?? 0;
+      if (loading > 120) {
+        nextSince[edge.id] = nextSince[edge.id] ?? now;
+      } else {
+        delete nextSince[edge.id];
+      }
+    }
+    overloadSinceRef.current = nextSince;
+
+    const shouldTrip = Object.entries(nextSince)
+      .filter(([edgeId, since]) => now - since > 1000 && !trippedOverloadEdgesRef.current.has(edgeId))
+      .map(([edgeId]) => edgeId);
+    if (shouldTrip.length === 0) return;
+
+    const edgeMap = new Map(edges.map((edge) => [edge.id, edge]));
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const adj = new Map<string, string[]>();
+    for (const edge of edges) {
+      if (!adj.has(edge.source)) adj.set(edge.source, []);
+      if (!adj.has(edge.target)) adj.set(edge.target, []);
+      adj.get(edge.source)!.push(edge.target);
+      adj.get(edge.target)!.push(edge.source);
+    }
+
+    const tripCbIds = new Set<string>();
+    for (const edgeId of shouldTrip) {
+      const overloadEdge = edgeMap.get(edgeId);
+      if (!overloadEdge) continue;
+      const starts = [overloadEdge.source, overloadEdge.target];
+      const queue = starts.map((id) => ({ id, depth: 0 }));
+      const seen = new Set<string>();
+      let minDepth = Number.POSITIVE_INFINITY;
+      while (queue.length) {
+        const current = queue.shift()!;
+        if (seen.has(current.id) || current.depth > minDepth) continue;
+        seen.add(current.id);
+        const md = getMimicData(nodeMap.get(current.id)!);
+        if (md?.kind === "cb" && md.state === "closed") {
+          tripCbIds.add(current.id);
+          minDepth = current.depth;
+          continue;
+        }
+        for (const next of adj.get(current.id) ?? []) queue.push({ id: next, depth: current.depth + 1 });
+      }
+      trippedOverloadEdgesRef.current.add(edgeId);
+    }
+
+    if (tripCbIds.size > 0) {
+      setNodes((prev) =>
+        prev.map((node) => {
+          if (!tripCbIds.has(node.id)) return node;
+          const md = getMimicData(node);
+          if (!md) return node;
+          return {
+            ...node,
+            data: {
+              ...(node.data as any),
+              tripped: true,
+              mimic: { ...md, state: "open" },
+            },
+          };
+        })
+      );
+      addCallout(`Protection trip: ${tripCbIds.size} breaker(s) opened due to sustained overload.`);
+    }
+  }, [addCallout, edges, nodes, powerSim.edgeLoadingPct, setNodes]);
 
   const resetScenario = useCallback(
     (nextScenario: ChallengeScenario) => {
@@ -732,6 +834,27 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     );
   }, [edges, nodes, scenario?.tutorialSteps, tutorialState.stepIndex]);
 
+  useEffect(() => {
+    const activeStepId = scenario?.tutorialSteps?.[tutorialState.stepIndex]?.id;
+    if (!scenario?.challengePhases?.stageFaults || !activeStepId) return;
+    const stageFault = scenario.challengePhases.stageFaults.find((fault) => fault.stepId === activeStepId);
+    if (!stageFault) return;
+    setEdges((prev) =>
+      prev.map((edge) => {
+        if (edge.id !== stageFault.edgeId || (edge.data as any)?.faulted) return edge;
+        return {
+          ...edge,
+          data: {
+            ...(edge.data as any),
+            faulted: true,
+            ratingMva: Number((edge.data as any)?.ratingMva ?? 100) * 0.45,
+          },
+        };
+      })
+    );
+    addCallout(stageFault.message);
+  }, [addCallout, scenario, setEdges, tutorialState.stepIndex]);
+
   const onAdvanceTutorial = useCallback(() => {
     if (!scenario?.tutorialSteps) return;
     if (!tutorialProgress.canAdvance) return;
@@ -959,6 +1082,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           onPaneClick={() => setContextMenu(null)}
           modeConfig={scenarioConfig}
         />
+
+        <PowerOverlay sim={powerSim} />
+
 
         {contextMenu && (
           <div
