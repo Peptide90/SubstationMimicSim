@@ -764,10 +764,11 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
   },
   {
     id: "phase1_overload_transfer",
-    title: "Phase 1: Overload Transfer, Fault, Isolation",
-    type: "tutorial",
+    title: "Level 4: Overload Transfer, Fault, Isolation",
+    type: "level",
     difficulty: 4,
     description: "Rebalance load under overload, then isolate a faulted circuit safely.",
+    enablePowerSim: true,
     initialGraph: {
       locked: {
         nodes: [
@@ -785,14 +786,14 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
         ],
         edges: [
           { ...makeBusbarEdge("P1-SRC", "P1-JL", "R", "L", "p1-src", "p1-e1"), data: { kind: "busbar", busbarId: "p1-src", ratingMva: 200 } },
-          { ...makeBusbarEdge("P1-JL", "P1-DS-A1", "R", "L", "p1-a", "p1-e2"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 65 } },
-          { ...makeBusbarEdge("P1-DS-A1", "P1-CB-A", "R", "L", "p1-a", "p1-e3"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 65 } },
-          { ...makeBusbarEdge("P1-CB-A", "P1-DS-A2", "R", "L", "p1-a", "p1-e4"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 65 } },
-          { ...makeBusbarEdge("P1-DS-A2", "P1-JR", "R", "L", "p1-a", "p1-e5"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 65 } },
-          { ...makeBusbarEdge("P1-JL", "P1-DS-B1", "R", "L", "p1-b", "p1-e6"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 80 } },
-          { ...makeBusbarEdge("P1-DS-B1", "P1-CB-B", "R", "L", "p1-b", "p1-e7"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 80 } },
-          { ...makeBusbarEdge("P1-CB-B", "P1-DS-B2", "R", "L", "p1-b", "p1-e8"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 80 } },
-          { ...makeBusbarEdge("P1-DS-B2", "P1-JR", "R", "L", "p1-b", "p1-e9"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 80 } },
+          { ...makeBusbarEdge("P1-JL", "P1-DS-A1", "R", "L", "p1-a", "p1-e2"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-DS-A1", "P1-CB-A", "R", "L", "p1-a", "p1-e3"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-CB-A", "P1-DS-A2", "R", "L", "p1-a", "p1-e4"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-DS-A2", "P1-JR", "R", "L", "p1-a", "p1-e5"), data: { kind: "busbar", busbarId: "p1-a", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-JL", "P1-DS-B1", "R", "L", "p1-b", "p1-e6"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-DS-B1", "P1-CB-B", "R", "L", "p1-b", "p1-e7"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-CB-B", "P1-DS-B2", "R", "L", "p1-b", "p1-e8"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 120 } },
+          { ...makeBusbarEdge("P1-DS-B2", "P1-JR", "R", "L", "p1-b", "p1-e9"), data: { kind: "busbar", busbarId: "p1-b", ratingMva: 120 } },
           { ...makeBusbarEdge("P1-JR", "P1-LOAD", "R", "L", "p1-load", "p1-e10"), data: { kind: "busbar", busbarId: "p1-load", ratingMva: 200 } },
           { ...makeBusbarEdge("P1-CB-A", "P1-ES-A", "B", "T", "p1-gnd", "p1-e11"), data: { kind: "busbar", busbarId: "p1-gnd", ratingMva: 200 } },
         ],
@@ -825,10 +826,11 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
   },
   {
     id: "phase2_reactive_control",
-    title: "Phase 2: Reactive Power Control",
-    type: "tutorial",
-    difficulty: 4,
+    title: "Level 5: Reactive Power Control",
+    type: "level",
+    difficulty: 5,
     description: "Use capacitor and reactor switching to normalize bus voltages.",
+    enablePowerSim: true,
     initialGraph: {
       locked: {
         nodes: [
@@ -838,7 +840,7 @@ export const CHALLENGE_SCENARIOS: ChallengeScenario[] = [
           { ...makeNode("iface", "P2-LOAD-L", 280, 340, { label: "Load-L" }), data: { ...(makeNode("iface", "P2-LOAD-L", 280, 340, { label: "Load-L" }).data as any), power: { role: "load", pMw: 70, qMvar: 80 } } },
           { ...makeNode("iface", "P2-LOAD-R", 620, 340, { label: "Load-R" }), data: { ...(makeNode("iface", "P2-LOAD-R", 620, 340, { label: "Load-R" }).data as any), power: { role: "load", pMw: 70, qMvar: 5 } } },
           { ...makeNode("iface", "P2-CAP", 180, 80, { label: "Cap Bank" }), data: { ...(makeNode("iface", "P2-CAP", 180, 80, { label: "Cap Bank" }).data as any), power: { role: "neutral", pMw: 0, qMvar: 55, deviceType: "cap_bank" } } },
-          { ...makeNode("iface", "P2-REACT", 720, 80, { label: "Shunt Reactor" }), data: { ...(makeNode("iface", "P2-REACT", 720, 80, { label: "Shunt Reactor" }).data as any), power: { role: "neutral", pMw: 0, qMvar: 55, deviceType: "shunt_reactor" } } },
+          { ...makeNode("iface", "P2-REACT", 720, 80, { label: "Shunt Reactor" }), data: { ...(makeNode("iface", "P2-REACT", 720, 80, { label: "Shunt Reactor" }).data as any), power: { role: "neutral", pMw: 0, qMvar: 15, deviceType: "shunt_reactor" } } },
           makeNode("cb", "P2-CB-CAP", 220, 120, { state: "open" }),
           makeNode("cb", "P2-CB-REACT", 680, 120, { state: "open" }),
         ],

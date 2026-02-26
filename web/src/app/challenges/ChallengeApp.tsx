@@ -4,6 +4,7 @@ import type { Connection, Edge, Node } from "reactflow";
 
 import { CHALLENGE_SCENARIOS, getScenarioById } from "./scenarios";
 import type { ChallengeScenario, LineEndColour } from "./types";
+import type { PowerSimResult } from "./powerSim";
 import { evaluateChallenge } from "./ChallengeEvaluator";
 import { createTutorialActionLog, evaluateTutorialStep } from "./tutorialRunner";
 import { loadChallengeProgress, updateChallengeProgress } from "./storage";
@@ -214,7 +215,23 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
 
   const energized = useMemo(() => getChallengeEnergized(nodes, edges), [edges, nodes]);
   const grounded = useMemo(() => computeGroundedVisual(nodes, edges), [edges, nodes]);
-  const powerSim = useMemo(() => computePowerSim(nodes, edges), [edges, nodes]);
+
+  const EMPTY_POWER_SIM: PowerSimResult = useMemo(
+    () => ({
+      edgeLoadingPct: {},
+      edgeOverloaded: new Set<string>(),
+      busVoltage: {},
+      busCurrent: {},
+      totals: { pMw: 0, qMvar: 0, sMva: 0 },
+    }),
+    []
+  );
+
+  const powerSimEnabled = !!scenario?.enablePowerSim;
+  const powerSim = useMemo(
+    () => (powerSimEnabled ? computePowerSim(nodes, edges) : EMPTY_POWER_SIM),
+    [edges, nodes, powerSimEnabled, EMPTY_POWER_SIM]
+  );
   const overloadSinceRef = useRef<Record<string, number>>({});
   const trippedOverloadEdgesRef = useRef<Set<string>>(new Set());
   const styledEdges = useMemo(
@@ -250,7 +267,12 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
                 : voltageState === "HIGH"
                   ? { strokeDasharray: "2 6", opacity: 0.95 }
                   : {};
-        const voltageTint = !conflict && !overloaded && voltageState === "LOW" ? "#c084fc" : !conflict && !overloaded && voltageState === "HIGH" ? "#60a5fa" : undefined;
+        const voltageTint =
+          !conflict && !overloaded && voltageState === "LOW"
+            ? "#c084fc"
+            : !conflict && !overloaded && voltageState === "HIGH"
+              ? "#4ade80"
+              : undefined;
         return {
           ...edge,
           style: {
@@ -266,6 +288,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   );
 
   useEffect(() => {
+    if (!powerSimEnabled) return;
+    if (scenario?.id === "phase1_overload_transfer") return;
+
     const now = Date.now();
     const nextSince = { ...overloadSinceRef.current };
     for (const edge of edges) {
@@ -335,7 +360,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       const message = `Protection trip: ${tripCbIds.size} breaker(s) opened due to sustained overload.`;
       setTutorialCallouts((prev) => (prev.includes(message) ? prev : [...prev, message]));
     }
-  }, [edges, nodes, powerSim.edgeLoadingPct, setNodes]);
+  }, [edges, nodes, powerSim.edgeLoadingPct, powerSimEnabled, setNodes]);
 
   const resetScenario = useCallback(
     (nextScenario: ChallengeScenario) => {
@@ -1084,7 +1109,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           modeConfig={scenarioConfig}
         />
 
-        <PowerOverlay sim={powerSim} />
+        {powerSimEnabled && <PowerOverlay sim={powerSim} />}
 
 
         {contextMenu && (

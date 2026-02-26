@@ -3,11 +3,13 @@ import type { Edge, Node } from "reactflow";
 import { getMimicData } from "../mimic/graphUtils";
 
 export type BusVoltageState = "LOW" | "NORMAL" | "HIGH";
+export type BusCurrentState = "UNDER" | "NOMINAL" | "OVER";
 
 export type PowerSimResult = {
   edgeLoadingPct: Record<string, number>;
   edgeOverloaded: Set<string>;
   busVoltage: Record<string, BusVoltageState>;
+  busCurrent: Record<string, BusCurrentState>;
   totals: {
     pMw: number;
     qMvar: number;
@@ -72,6 +74,17 @@ export function computePowerSim(nodes: Node[], edges: Edge[]): PowerSimResult {
     energizedSources.add(source.id);
   }
 
+  const energizedNodes = new Set<string>();
+  const seedQueue = Array.from(energizedSources);
+  while (seedQueue.length) {
+    const id = seedQueue.shift()!;
+    if (energizedNodes.has(id)) continue;
+    energizedNodes.add(id);
+    for (const next of adjacency.get(id) ?? []) {
+      if (!energizedNodes.has(next.nodeId)) seedQueue.push(next.nodeId);
+    }
+  }
+
   const energizedLoads = loads.filter((load) => {
     if (!adjacency.has(load.id)) return false;
     const seen = new Set<string>();
@@ -128,6 +141,7 @@ export function computePowerSim(nodes: Node[], edges: Edge[]): PowerSimResult {
 
   const edgeLoadingPct: Record<string, number> = {};
   const edgeOverloaded = new Set<string>();
+  const busCurrentPct: Record<string, number> = {};
 
   for (const edge of edges) {
     const p = edgeFlowP[edge.id] ?? 0;
@@ -137,10 +151,55 @@ export function computePowerSim(nodes: Node[], edges: Edge[]): PowerSimResult {
     const loadingPct = rating > 0 ? (s / rating) * 100 : 0;
     edgeLoadingPct[edge.id] = loadingPct;
     if (loadingPct > 100) edgeOverloaded.add(edge.id);
+
+    const busbarIdForCurrent = (edge.data as any)?.busbarId;
+    if (busbarIdForCurrent) {
+      const prev = busCurrentPct[busbarIdForCurrent] ?? 0;
+      busCurrentPct[busbarIdForCurrent] = Math.max(prev, loadingPct);
+    }
+  }
+
+  // Build busbar connectivity (propagation) across energized conducting topology.
+  const allBusbarIds = new Set<string>();
+  const busbarIdsByNode = new Map<string, Set<string>>();
+  for (const edge of conductingEdges) {
+    const busbarId = (edge.data as any)?.busbarId as string | undefined;
+    if (!busbarId) continue;
+    allBusbarIds.add(busbarId);
+    const a = busbarIdsByNode.get(edge.source) ?? new Set<string>();
+    a.add(busbarId);
+    busbarIdsByNode.set(edge.source, a);
+    const b = busbarIdsByNode.get(edge.target) ?? new Set<string>();
+    b.add(busbarId);
+    busbarIdsByNode.set(edge.target, b);
+  }
+
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    const p = parent.get(x) ?? x;
+    if (p === x) return x;
+    const r = find(p);
+    parent.set(x, r);
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const id of allBusbarIds) parent.set(id, id);
+
+  for (const [nodeId, busIds] of busbarIdsByNode.entries()) {
+    // Propagate only through energized nodes; open switchgear already removed via conductingEdges.
+    if (!energizedNodes.has(nodeId)) continue;
+    const list = Array.from(busIds);
+    if (list.length < 2) continue;
+    for (let i = 1; i < list.length; i += 1) union(list[0], list[i]);
   }
 
   const busContribution: Record<string, number> = {};
   for (const node of nodes) {
+    if (!energizedNodes.has(node.id)) continue;
     const power = getNodePower(node);
     const connectedBusIds = new Set(
       edges
@@ -163,17 +222,42 @@ export function computePowerSim(nodes: Node[], edges: Edge[]): PowerSimResult {
   }
 
   const busVoltage: Record<string, BusVoltageState> = {};
-  for (const edge of edges) {
-    const busbarId = (edge.data as any)?.busbarId;
-    if (!busbarId) continue;
-    const netQ = busContribution[busbarId] ?? 0;
-    if (netQ > 30) busVoltage[busbarId] = "LOW";
-    else if (netQ < -30) busVoltage[busbarId] = "HIGH";
-    else busVoltage[busbarId] = "NORMAL";
+  const componentNetQ = new Map<string, number>();
+  const componentMaxCurrentPct = new Map<string, number>();
+  for (const busId of allBusbarIds) {
+    const root = find(busId);
+    componentNetQ.set(root, (componentNetQ.get(root) ?? 0) + (busContribution[busId] ?? 0));
+    componentMaxCurrentPct.set(root, Math.max(componentMaxCurrentPct.get(root) ?? 0, busCurrentPct[busId] ?? 0));
+  }
+
+  for (const busId of allBusbarIds) {
+    const root = find(busId);
+    const netQ = componentNetQ.get(root) ?? 0;
+
+    let state: BusVoltageState;
+    if (netQ > 30) state = "LOW";
+    else if (netQ < -30) state = "HIGH";
+    else state = "NORMAL";
+
+    // Special-case phase 1 overload scenario: keep voltage nominal since the player
+    // cannot influence reactive power in that lesson.
+    if (busId.startsWith("p1-")) state = "NORMAL";
+
+    busVoltage[busId] = state;
+  }
+
+  const busCurrent: Record<string, BusCurrentState> = {};
+  for (const busId of allBusbarIds) {
+    const root = find(busId);
+    const pct = componentMaxCurrentPct.get(root) ?? 0;
+    if (pct > 100) busCurrent[busId] = "OVER";
+    else if (pct < 10) busCurrent[busId] = "UNDER";
+    else busCurrent[busId] = "NOMINAL";
   }
 
   const totalP = energizedLoads.reduce((acc, load) => acc + getNodePower(load).pMw, 0);
   const totalQ = nodes.reduce((acc, node) => {
+    if (!energizedNodes.has(node.id)) return acc;
     const power = getNodePower(node);
     if (power.role === "load") return acc + power.qMvar;
     if (power.deviceType === "shunt_reactor") return acc + Math.abs(power.qMvar);
@@ -185,6 +269,7 @@ export function computePowerSim(nodes: Node[], edges: Edge[]): PowerSimResult {
     edgeLoadingPct,
     edgeOverloaded,
     busVoltage,
+    busCurrent,
     totals: {
       pMw: totalP,
       qMvar: totalQ,

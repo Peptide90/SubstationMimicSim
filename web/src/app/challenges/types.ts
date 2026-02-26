@@ -107,6 +107,7 @@ export type ChallengeScenario = {
   type: ScenarioType;
   difficulty: number;
   description: string;
+  enablePowerSim?: boolean;
   briefing?: {
     backstory: string;
     learningObjectives: string[];
