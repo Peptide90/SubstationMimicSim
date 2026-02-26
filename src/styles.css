@@ -1,0 +1,50 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  background: #0b0f14;
+  color: #e2e8f0;
+}
+.top-nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1f2937;
+}
+.top-nav nav { display: flex; gap: 12px; }
+.top-nav a { color: #93c5fd; text-decoration: none; }
+.page { padding: 18px; }
+
+.operator-layout {
+  height: calc(100vh - 50px);
+  display: grid;
+  grid-template-rows: 70% 30%;
+}
+.map-pane { width: 100%; height: 100%; }
+.bottom-pane {
+  border-top: 1px solid #1f2937;
+  padding: 8px 12px;
+  display: grid;
+  gap: 8px;
+  background: #0f172a;
+}
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; font-size: 0.9rem; }
+.event-log {
+  height: 92px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  background: #020617;
+  border: 1px solid #1e293b;
+  padding: 6px;
+}
+.decision-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.decision-panel button, .bottom-pane > button {
+  background: #1d4ed8;
+  color: white;
+  border: 0;
+  padding: 6px 10px;
+}
+.attribution { font-size: 0.7rem; color: #94a3b8; }
