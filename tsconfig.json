@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./packages/map-core" },
+    { "path": "./packages/sim-core" },
+    { "path": "./packages/scenarios" }
+  ]
+}
