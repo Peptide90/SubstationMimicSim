@@ -618,10 +618,18 @@ function GameMasterPanel({
   room: RoomState;
   socket: MpSocket;
 }) {
+  type GmControlTab = "player_management" | "game_settings" | "scoring";
+  type PlayerSortKey = "name" | "team" | "role";
+
   const [teamCount, setTeamCount] = useState(room.teams.length);
   const [orgName, setOrgName] = useState(room.orgName ?? "");
   const [teamNames, setTeamNames] = useState(room.teams.map((team) => team.name));
   const [roles, setRoles] = useState<Role[]>(room.availableRoles);
+  const [activeTab, setActiveTab] = useState<GmControlTab>("player_management");
+  const [playerSort, setPlayerSort] = useState<{ key: PlayerSortKey; direction: "asc" | "desc" }>({
+    key: "name",
+    direction: "asc",
+  });
   const [scenarioId, setScenarioId] = useState(sampleScenario.id);
   const [eventType, setEventType] = useState("fault");
   const [eventMessage, setEventMessage] = useState("");
@@ -646,250 +654,351 @@ function GameMasterPanel({
     { value: "note", label: "Operational Note" },
   ];
 
+  const teamNameById = useMemo(() => new Map(room.teams.map((team) => [team.id, team.name])), [room.teams]);
+
+  const sortedPlayers = useMemo(() => {
+    const normalize = (value: string) => value.trim().toLowerCase();
+    const players = [...room.players];
+
+    players.sort((a, b) => {
+      const aName = normalize(a.name ?? "Unnamed");
+      const bName = normalize(b.name ?? "Unnamed");
+      const aTeam = normalize(teamNameById.get(a.teamId ?? "") ?? "Unassigned");
+      const bTeam = normalize(teamNameById.get(b.teamId ?? "") ?? "Unassigned");
+      const aRole = normalize(a.role ? ROLE_LABELS[a.role] : "Unassigned");
+      const bRole = normalize(b.role ? ROLE_LABELS[b.role] : "Unassigned");
+
+      let compare = 0;
+      if (playerSort.key === "name") compare = aName.localeCompare(bName);
+      if (playerSort.key === "team") compare = aTeam.localeCompare(bTeam) || aName.localeCompare(bName);
+      if (playerSort.key === "role") compare = aRole.localeCompare(bRole) || aName.localeCompare(bName);
+
+      return playerSort.direction === "asc" ? compare : -compare;
+    });
+
+    return players;
+  }, [playerSort.direction, playerSort.key, room.players, teamNameById]);
+
+  const setSortKey = useCallback((key: PlayerSortKey) => {
+    setPlayerSort((prev) => {
+      if (prev.key === key) {
+        return { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" };
+      }
+      return { key, direction: "asc" };
+    });
+  }, []);
+
+  const sortLabel = useCallback(
+    (key: PlayerSortKey) => {
+      if (playerSort.key !== key) return "↕";
+      return playerSort.direction === "asc" ? "↑" : "↓";
+    },
+    [playerSort.direction, playerSort.key]
+  );
+
   return (
     <div style={{ display: "grid", gap: 16, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
       <h3 style={{ marginTop: 0 }}>Game Master Controls</h3>
 
-      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={labelStyle}>Teams (2-4)</span>
-          <input
-            type="number"
-            min={2}
-            max={4}
-            value={teamCount}
-            onChange={(event) => setTeamCount(Number(event.target.value))}
-            style={inputStyle}
-          />
-        </label>
-        <button style={primaryButton} onClick={() => socket.emit("mp/setTeams", { teamCount })}>
-          Apply Team Count
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Organisation</strong>
-        <input
-          value={orgName}
-          onChange={(event) => setOrgName(event.target.value)}
-          placeholder="School, company, or organisation"
-          style={inputStyle}
-        />
-        <strong>Team Names</strong>
-        {teamNames.map((name, idx) => (
-          <input
-            key={`team-name-${idx}`}
-            value={name}
-            onChange={(event) =>
-              setTeamNames((prev) => prev.map((value, index) => (index === idx ? event.target.value : value)))
-            }
-            style={inputStyle}
-          />
-        ))}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
-          style={primaryButton}
-          onClick={() => socket.emit("mp/setTeamNames", { names: teamNames, orgName })}
+          style={activeTab === "player_management" ? selectedButton : secondaryButton}
+          onClick={() => setActiveTab("player_management")}
         >
-          Save Team Names
+          Player Management
+        </button>
+        <button
+          style={activeTab === "game_settings" ? selectedButton : secondaryButton}
+          onClick={() => setActiveTab("game_settings")}
+        >
+          Game Settings
+        </button>
+        <button
+          style={activeTab === "scoring" ? selectedButton : secondaryButton}
+          onClick={() => setActiveTab("scoring")}
+        >
+          Scoring
         </button>
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Available Roles</strong>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {ROLE_ACTIONS.map((role) => (
-            <label key={role.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {activeTab === "player_management" ? (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={labelStyle}>Teams (2-4)</span>
               <input
-                type="checkbox"
-                checked={roles.includes(role.id)}
-                onChange={(event) => {
-                  setRoles((prev) =>
-                    event.target.checked ? [...prev, role.id] : prev.filter((item) => item !== role.id)
-                  );
-                }}
+                type="number"
+                min={2}
+                max={4}
+                value={teamCount}
+                onChange={(event) => setTeamCount(Number(event.target.value))}
+                style={inputStyle}
               />
-              <span>{role.label}</span>
             </label>
-          ))}
-        </div>
-        <button style={primaryButton} onClick={() => socket.emit("mp/setAvailableRoles", { roles })}>
-          Update Roles
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Player Assignments</strong>
-        {room.players.map((player) => (
-          <div key={player.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <span>{player.name ?? "Unnamed"}</span>
-            <select
-              value={player.teamId ?? ""}
-              onChange={(event) =>
-                socket.emit("mp/movePlayerTeam", { playerId: player.id, teamId: event.target.value })
-              }
-              style={inputStyle}
-              disabled={player.isGM}
-            >
-              {room.teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={player.role ?? ""}
-              onChange={(event) =>
-                socket.emit("mp/setRole", { playerId: player.id, role: event.target.value as Role })
-              }
-              style={inputStyle}
-            >
-              <option value="">Unassigned</option>
-              <option value="gm">Game Master</option>
-              {room.availableRoles.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
+            <button style={primaryButton} onClick={() => socket.emit("mp/setTeams", { teamCount })}>
+              Apply Team Count
+            </button>
           </div>
-        ))}
-      </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Scenario Control</strong>
-        <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} style={inputStyle}>
-          {scenarios.map((scenario) => (
-            <option key={scenario.id} value={scenario.id}>
-              {scenario.name}
-            </option>
-          ))}
-        </select>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            style={primaryButton}
-            onClick={() =>
-              socket.emit("mp/loadScenario", {
-                scenario: scenarios.find((scenario) => scenario.id === scenarioId) ?? sampleScenario,
-              })
-            }
-          >
-            Load Scenario
-          </button>
-          <button style={primaryButton} onClick={() => socket.emit("mp/startGame", {})}>
-            Start Game
-          </button>
+          <div style={{ display: "grid", gap: 8 }}>
+            <strong>Organisation</strong>
+            <input
+              value={orgName}
+              onChange={(event) => setOrgName(event.target.value)}
+              placeholder="School, company, or organisation"
+              style={inputStyle}
+            />
+            <strong>Team Names</strong>
+            {teamNames.map((name, idx) => (
+              <input
+                key={`team-name-${idx}`}
+                value={name}
+                onChange={(event) =>
+                  setTeamNames((prev) => prev.map((value, index) => (index === idx ? event.target.value : value)))
+                }
+                style={inputStyle}
+              />
+            ))}
+            <button
+              style={primaryButton}
+              onClick={() => socket.emit("mp/setTeamNames", { names: teamNames, orgName })}
+            >
+              Save Team Names
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <strong>Available Roles</strong>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {ROLE_ACTIONS.map((role) => (
+                <label key={role.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={roles.includes(role.id)}
+                    onChange={(event) => {
+                      setRoles((prev) =>
+                        event.target.checked ? [...prev, role.id] : prev.filter((item) => item !== role.id)
+                      );
+                    }}
+                  />
+                  <span>{role.label}</span>
+                </label>
+              ))}
+            </div>
+            <button style={primaryButton} onClick={() => socket.emit("mp/setAvailableRoles", { roles })}>
+              Update Roles
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <strong>Player Assignments</strong>
+            <div style={{ overflowX: "auto", border: "1px solid #1e293b", borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #1e293b", background: "#0f172a" }}>
+                    <th style={gmTableHeaderStyle}>
+                      Name{" "}
+                      <button style={gmSortMarkerStyle} onClick={() => setSortKey("name")}>
+                        {sortLabel("name")}
+                      </button>
+                    </th>
+                    <th style={gmTableHeaderStyle}>
+                      Team{" "}
+                      <button style={gmSortMarkerStyle} onClick={() => setSortKey("team")}>
+                        {sortLabel("team")}
+                      </button>
+                    </th>
+                    <th style={gmTableHeaderStyle}>
+                      Role{" "}
+                      <button style={gmSortMarkerStyle} onClick={() => setSortKey("role")}>
+                        {sortLabel("role")}
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedPlayers.map((player) => (
+                    <tr key={player.id} style={{ borderBottom: "1px solid #1e293b" }}>
+                      <td style={gmTableCellStyle}>
+                        {player.name ?? "Unnamed"} {player.isGM ? <span style={{ color: "#94a3b8" }}>(GM)</span> : null}
+                      </td>
+                      <td style={gmTableCellStyle}>
+                        <select
+                          value={player.teamId ?? ""}
+                          onChange={(event) =>
+                            socket.emit("mp/movePlayerTeam", { playerId: player.id, teamId: event.target.value })
+                          }
+                          style={inputStyle}
+                          disabled={player.isGM}
+                        >
+                          {room.teams.map((team) => (
+                            <option key={team.id} value={team.id}>
+                              {team.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={gmTableCellStyle}>
+                        <select
+                          value={player.role ?? ""}
+                          onChange={(event) =>
+                            socket.emit("mp/setRole", { playerId: player.id, role: event.target.value as Role })
+                          }
+                          style={inputStyle}
+                        >
+                          <option value="">Unassigned</option>
+                          <option value="gm">Game Master</option>
+                          {room.availableRoles.map((role) => (
+                            <option key={role} value={role}>
+                              {ROLE_LABELS[role]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Inject Event</strong>
-        <select value={eventType} onChange={(event) => setEventType(event.target.value)} style={inputStyle}>
-          {injectEventOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <input
-          value={eventMessage}
-          onChange={(event) => setEventMessage(event.target.value)}
-          placeholder="Event description"
-          style={inputStyle}
-        />
-        <button
-          style={primaryButton}
-          onClick={() => {
-            socket.emit("mp/injectEvent", { type: eventType, message: eventMessage });
-            setEventMessage("");
-          }}
-        >
-          Inject Event
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>GM Special Actions</strong>
-        <select value={bonusTeamId} onChange={(event) => setBonusTeamId(event.target.value)} style={inputStyle}>
-          {room.teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="number"
-          value={bonusPoints}
-          onChange={(event) => setBonusPoints(Number(event.target.value))}
-          style={inputStyle}
-        />
-        <input
-          value={bonusReason}
-          onChange={(event) => setBonusReason(event.target.value)}
-          style={inputStyle}
-        />
-        <button
-          style={primaryButton}
-          onClick={() => socket.emit("mp/grantPoints", { teamId: bonusTeamId, points: bonusPoints, reason: bonusReason })}
-        >
-          Grant Bonus Points
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <strong>Results & Awards</strong>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={room.autoAnnounceResults}
-            onChange={(event) => socket.emit("mp/setAutoAnnounceResults", { enabled: event.target.checked })}
-          />
-          <span title="Disable if you want to announce the winner in person / on command">Auto announce results</span>
-        </label>
-        <button
-          style={secondaryButton}
-          onClick={() => socket.emit("mp/setResultsVisibility", { visible: !room.resultsVisible })}
-        >
-          {room.resultsVisible ? "Hide Results" : "Reveal Results"}
-        </button>
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={labelStyle}>GM Awards</span>
-          <select
-            value={gmBestSwitching ?? ""}
-            onChange={(event) => setGmBestSwitching(event.target.value || undefined)}
-            style={inputStyle}
-          >
-            <option value="">Best Switching Instruction (player)</option>
-            {room.players.map((player) => (
-              <option key={player.id} value={player.id}>
-                {player.name ?? "Unnamed"}
+      {activeTab === "game_settings" ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong>Scenario Control</strong>
+          <select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} style={inputStyle}>
+            {scenarios.map((scenario) => (
+              <option key={scenario.id} value={scenario.id}>
+                {scenario.name}
               </option>
             ))}
           </select>
-          <select
-            value={gmBestComms ?? ""}
-            onChange={(event) => setGmBestComms(event.target.value || undefined)}
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              style={primaryButton}
+              onClick={() =>
+                socket.emit("mp/loadScenario", {
+                  scenario: scenarios.find((scenario) => scenario.id === scenarioId) ?? sampleScenario,
+                })
+              }
+            >
+              Load Scenario
+            </button>
+            <button style={primaryButton} onClick={() => socket.emit("mp/startGame", {})}>
+              Start Game
+            </button>
+          </div>
+
+          <strong style={{ marginTop: 4 }}>Inject Event</strong>
+          <select value={eventType} onChange={(event) => setEventType(event.target.value)} style={inputStyle}>
+            {injectEventOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={eventMessage}
+            onChange={(event) => setEventMessage(event.target.value)}
+            placeholder="Event description"
             style={inputStyle}
+          />
+          <button
+            style={primaryButton}
+            onClick={() => {
+              socket.emit("mp/injectEvent", { type: eventType, message: eventMessage });
+              setEventMessage("");
+            }}
           >
-            <option value="">Best Communication (team)</option>
+            Inject Event
+          </button>
+        </div>
+      ) : null}
+
+      {activeTab === "scoring" ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <strong>GM Point Adjustment</strong>
+          <select value={bonusTeamId} onChange={(event) => setBonusTeamId(event.target.value)} style={inputStyle}>
             {room.teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.name}
               </option>
             ))}
           </select>
+          <input
+            type="number"
+            value={bonusPoints}
+            onChange={(event) => setBonusPoints(Number(event.target.value))}
+            style={inputStyle}
+          />
+          <input
+            value={bonusReason}
+            onChange={(event) => setBonusReason(event.target.value)}
+            style={inputStyle}
+          />
           <button
             style={primaryButton}
-            onClick={() =>
-              socket.emit("mp/setGmAwards", {
-                bestSwitchingInstructionPlayerId: gmBestSwitching,
-                bestCommunicationTeamId: gmBestComms,
-              })
-            }
+            onClick={() => socket.emit("mp/grantPoints", { teamId: bonusTeamId, points: bonusPoints, reason: bonusReason })}
           >
-            Save GM Awards
+            Grant Bonus Points
           </button>
+
+          <strong style={{ marginTop: 4 }}>Results & Awards</strong>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={room.autoAnnounceResults}
+              onChange={(event) => socket.emit("mp/setAutoAnnounceResults", { enabled: event.target.checked })}
+            />
+            <span title="Disable if you want to announce the winner in person / on command">Auto announce results</span>
+          </label>
+          <button
+            style={secondaryButton}
+            onClick={() => socket.emit("mp/setResultsVisibility", { visible: !room.resultsVisible })}
+          >
+            {room.resultsVisible ? "Hide Results" : "Reveal Results"}
+          </button>
+          <div style={{ display: "grid", gap: 6 }}>
+            <span style={labelStyle}>GM Awards</span>
+            <select
+              value={gmBestSwitching ?? ""}
+              onChange={(event) => setGmBestSwitching(event.target.value || undefined)}
+              style={inputStyle}
+            >
+              <option value="">Best Switching Instruction (player)</option>
+              {room.players.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.name ?? "Unnamed"}
+                </option>
+              ))}
+            </select>
+            <select
+              value={gmBestComms ?? ""}
+              onChange={(event) => setGmBestComms(event.target.value || undefined)}
+              style={inputStyle}
+            >
+              <option value="">Best Communication (team)</option>
+              {room.teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+            <button
+              style={primaryButton}
+              onClick={() =>
+                socket.emit("mp/setGmAwards", {
+                  bestSwitchingInstructionPlayerId: gmBestSwitching,
+                  bestCommunicationTeamId: gmBestComms,
+                })
+              }
+            >
+              Save GM Awards
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -1729,3 +1838,26 @@ const selectedButton: CSSProperties = {
 };
 
 const labelStyle: CSSProperties = { fontSize: 12, color: "#94a3b8" };
+
+const gmTableHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "10px 12px",
+  fontSize: 12,
+  color: "#cbd5f5",
+  whiteSpace: "nowrap",
+};
+
+const gmTableCellStyle: CSSProperties = {
+  padding: "10px 12px",
+  fontSize: 13,
+  verticalAlign: "middle",
+};
+
+const gmSortMarkerStyle: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "#93c5fd",
+  cursor: "pointer",
+  padding: "0 0 0 4px",
+  fontWeight: 700,
+};
