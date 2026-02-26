@@ -5,11 +5,24 @@
   "mimicTemplateId": "mp-training-bay",
   "assetThresholds": {
     "tx": {
-      "oilLevelPct": { "low": 65, "high": 95, "highHigh": 98, "lockoutLow": 40 },
-      "windingTempC": { "high": 90, "highHigh": 110 }
+      "oilLevelPct": {
+        "low": 65,
+        "high": 95,
+        "highHigh": 98,
+        "lockoutLow": 40
+      },
+      "windingTempC": {
+        "high": 90,
+        "highHigh": 110
+      }
     },
     "cb": {
-      "gasLevelPct": { "low": 60, "high": 90, "highHigh": 95, "lockoutLow": 35 }
+      "gasLevelPct": {
+        "low": 60,
+        "high": 90,
+        "highHigh": 95,
+        "lockoutLow": 35
+      }
     }
   },
   "events": [
@@ -27,7 +40,10 @@
       "type": "telemetry",
       "description": "Transformer TX1 temperature rising.",
       "assetId": "TX1",
-      "telemetry": { "windingTempC": 112, "oilLevelPct": 58 },
+      "telemetry": {
+        "windingTempC": 112,
+        "oilLevelPct": 58
+      },
       "points": 4
     },
     {
@@ -52,7 +68,25 @@
       "type": "telemetry",
       "description": "CB1 gas pressure dropping.",
       "assetId": "CB1",
-      "telemetry": { "gasLevelPct": 30 },
+      "telemetry": {
+        "gasLevelPct": 30
+      },
+      "points": 3
+    },
+    {
+      "id": "evt-6",
+      "atSec": 170,
+      "type": "power_sim",
+      "description": "Reactive demand rising; consider capacitor switching.",
+      "messageDetail": "Voltage profile drift detected. Consider switching capacitor banks/reactors.",
+      "points": 2
+    },
+    {
+      "id": "evt-7",
+      "atSec": 210,
+      "type": "fault_state",
+      "description": "Fault flagged on DS2 after transient event.",
+      "assetId": "DS2",
       "points": 3
     }
   ]

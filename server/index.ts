@@ -70,7 +70,13 @@ const PORT = Number(process.env.MP_SERVER_PORT ?? 3001);
 const ROOM_CODE_LENGTH = 6;
 const MAX_PLAYERS = 12;
 const USERNAME_REGEX = /^[A-Za-z]{3,12}$/;
-const PROFANITY_LIST = ["BADWORD"];
+const PROFANITY_PATTERNS = [
+  /f+\W*u+\W*c+\W*k+/i,
+  /s+\W*h+\W*i+\W*t+/i,
+  /b+\W*i+\W*t+\W*c+\W*h+/i,
+  /c+\W*u+\W*n+\W*t+/i,
+  /n+\W*i+\W*g+\W*g+\W*e+\W*r+/i,
+];
 const TEAM_LIMITS = { min: 2, max: 4 };
 const DEFAULT_TEAMS = 2;
 const DEFAULT_ROLES: Role[] = ["operator", "field", "planner"];
@@ -109,6 +115,19 @@ function generateCode(): string {
   return code;
 }
 
+
+
+function containsProfanity(input: string): boolean {
+  const normalized = input
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]/g, "");
+  return PROFANITY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function sanitizeMessageText(text: string): string {
+  return text.trim().slice(0, 300);
+}
 function createDefaultAssets(thresholdsByType?: AssetThresholdsByType): Asset[] {
   const now = Date.now();
   const makeAsset = ({
@@ -448,6 +467,23 @@ function broadcastRoom(room: RoomRuntime) {
   }
 }
 
+
+function canViewCommsMessage(message: CommsMessage, player: Player): boolean {
+  if (player.isGM) return true;
+  if (message.audience.scope === "all") return true;
+  if (message.audience.scope === "team") return message.audience.teamId === player.teamId;
+  return message.audience.role === player.role;
+}
+
+function mapTargetRoleToAudience(targetRole: PostCommsMessagePayload["targetRole"], targetTeamId?: string): CommsMessage["audience"] {
+  if (targetRole === "all") return { scope: "all" };
+  if (targetRole === "operator") return { scope: "role", role: "operator" };
+  if (targetRole === "field") return { scope: "role", role: "field" };
+  if (targetRole === "planner") return { scope: "role", role: "planner" };
+  if (targetRole === "team" && targetTeamId) return { scope: "team", teamId: targetTeamId };
+  return { scope: "all" };
+}
+
 function buildRoomView(room: RoomRuntime, role?: Role, playerId?: string): RoomState {
   const isGM = role === "gm";
   const assets = buildAssetViews(room, role, playerId);
@@ -456,6 +492,8 @@ function buildRoomView(room: RoomRuntime, role?: Role, playerId?: string): RoomS
   const plannerRequests = role === "operator" || role === "planner" || isGM ? room.plannerRequestsInternal : [];
   const eventLogShort = role === "operator" || role === "planner" || isGM ? room.eventLogShort : [];
   const fieldLocation = playerId ? room.fieldLocations.get(playerId) : undefined;
+  const requestingPlayer = playerId ? room.players.find((player) => player.id === playerId) : undefined;
+  const commsLog = requestingPlayer ? room.commsLog.filter((msg) => canViewCommsMessage(msg, requestingPlayer)) : [];
   const eventLogDetail =
     role === "field"
       ? fieldLocation === "scadaPanel"
@@ -484,7 +522,8 @@ function buildRoomView(room: RoomRuntime, role?: Role, playerId?: string): RoomS
     workOrders,
     plannerRequests,
     systemState: room.systemState,
-    commsLog: room.commsLog,
+    commsLog,
+    operatorSignals: role === "operator" || isGM ? room.operatorSignals : undefined,
     fieldLocation: role === "field" || isGM ? fieldLocation : undefined,
     orgName: room.orgName,
     resultsVisible: room.resultsVisible,
@@ -516,6 +555,7 @@ function resetRoomState(room: RoomRuntime) {
   room.workOrdersInternal = [];
   room.plannerRequestsInternal = [];
   room.commsLog = [];
+  room.operatorSignals = { powerSimSummary: "Stable", activeFaults: [], lastUpdated: Date.now() };
   room.fieldLocations = new Map();
   room.assetAlarmStates = new Map();
   room.assetsFull = createDefaultAssets(room.scenario?.assetThresholds);
@@ -569,6 +609,27 @@ function handleScenarioEvent(room: RoomRuntime, event: ScenarioEvent) {
         event.description ??
         `Frequency now ${room.systemState.frequencyHz.toFixed(2)} Hz.`,
     });
+  }
+
+
+  if (event.type === "power_sim") {
+    room.operatorSignals = {
+      powerSimSummary: event.messageDetail ?? event.description,
+      activeFaults: room.operatorSignals?.activeFaults ?? [],
+      lastUpdated: Date.now(),
+    };
+    broadcastRoom(room);
+  }
+
+  if (event.type === "fault_state") {
+    const active = new Set(room.operatorSignals?.activeFaults ?? []);
+    if (asset?.id) active.add(asset.id);
+    room.operatorSignals = {
+      powerSimSummary: room.operatorSignals?.powerSimSummary ?? "Stable",
+      activeFaults: [...active],
+      lastUpdated: Date.now(),
+    };
+    broadcastRoom(room);
   }
 
   if (event.type === "telemetry" && asset && event.telemetry) {
@@ -769,8 +830,7 @@ function requireFieldAtAsset(room: RoomRuntime, playerId: string, assetId: strin
 
 function validateName(name: string): boolean {
   if (!USERNAME_REGEX.test(name)) return false;
-  const normalized = name.toLowerCase();
-  return !PROFANITY_LIST.some((word) => normalized.includes(word.toLowerCase()));
+  return !containsProfanity(name);
 }
 
 function assignRandomTeam(room: RoomRuntime): string | undefined {
@@ -842,6 +902,7 @@ io.on("connection", (socket) => {
       plannerRequests: [],
       systemState,
       commsLog: [],
+      operatorSignals: { powerSimSummary: "Stable", activeFaults: [], lastUpdated: Date.now() },
       scenarioCursor: 0,
       orgName: "",
       resultsVisible: false,
@@ -1085,7 +1146,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Operator",
       authorRole: "operator",
-      type: "Switching Instruction",
+      audience: { scope: "all" },
       text: `${asset.name} ${payload.action}ed remotely.`,
     });
   });
@@ -1119,7 +1180,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Operator",
       authorRole: "operator",
-      type: "Switching Instruction",
+      audience: action === "inspect" ? { scope: "role", role: "field" } : { scope: "all" },
       text: `${asset.name}: ${action.toUpperCase()} requested. ${notes ?? ""}`.trim(),
     });
     broadcastRoom(room);
@@ -1200,7 +1261,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Field",
       authorRole: "field",
-      type: "Field Report",
+      audience: { scope: "all" },
       text: `${asset.name}: status ${asset.truth.status}.`,
     });
     broadcastRoom(room);
@@ -1269,7 +1330,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Field",
       authorRole: "field",
-      type: "Switching Instruction",
+      audience: { scope: "all" },
       text: `${asset.name}: ${order.action.toUpperCase()} completed.`,
     });
   });
@@ -1309,7 +1370,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Field",
       authorRole: "field",
-      type: "Field Report",
+      audience: { scope: "all" },
       text: `${asset.name}: maintenance completed, lockout cleared.`,
     });
   });
@@ -1358,7 +1419,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Field",
       authorRole: "field",
-      type: "Field Report",
+      audience: { scope: "all" },
       text: `Local alarm acknowledged (${alarmId}).`,
     });
   });
@@ -1397,7 +1458,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Operator",
       authorRole: "operator",
-      type: "Field Report",
+      audience: { scope: "all" },
       text: `${asset.name} SCADA updated from field report.`,
     });
   });
@@ -1425,7 +1486,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Planner",
       authorRole: "planner",
-      type: "Planner Request",
+      audience: { scope: "all" },
       text: `${type.replace("_", " ")}${notes ? `: ${notes}` : ""}`.trim(),
     });
     broadcastRoom(room);
@@ -1453,7 +1514,7 @@ io.on("connection", (socket) => {
       authorId: player.id,
       authorName: player.name ?? "Operator",
       authorRole: "operator",
-      type: "Planner Request",
+      audience: { scope: "all" },
       text: `Planner request ${request.type} marked ${status}.`,
     });
     broadcastRoom(room);
@@ -1482,19 +1543,37 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("mp/postCommsMessage", ({ type, text }: PostCommsMessagePayload) => {
+  socket.on("mp/postCommsMessage", ({ targetRole, targetTeamId, text }: PostCommsMessagePayload) => {
     const found = findRoomByPlayer(socket.id);
     if (!found) return;
     const { room, player } = found;
     const role: Role = player.isGM ? "gm" : (player.role ?? "operator");
+    const cleanedText = sanitizeMessageText(text);
+    if (!cleanedText) {
+      socket.emit("mp/error", { message: "Message cannot be empty." });
+      return;
+    }
+    if (containsProfanity(cleanedText)) {
+      socket.emit("mp/error", { message: "Message blocked by profanity filter." });
+      return;
+    }
+    const audience = mapTargetRoleToAudience(targetRole, targetTeamId);
+    if (audience.scope === "team" && !player.isGM) {
+      socket.emit("mp/error", { message: "Only the GM can send team-direct messages." });
+      return;
+    }
+    if (audience.scope === "team" && !room.teams.some((team) => team.id === audience.teamId)) {
+      socket.emit("mp/error", { message: "Target team not found." });
+      return;
+    }
     addCommsMessage(room, {
       id: `comms-${randomUUID()}`,
       timestamp: Date.now(),
       authorId: player.id,
       authorName: player.name ?? "Player",
       authorRole: role,
-      type,
-      text,
+      audience,
+      text: cleanedText,
     });
   });
 

@@ -133,11 +133,12 @@ export type AlarmEvent = {
 
 export type FieldLocation = "none" | "scadaPanel" | `asset:${string}`;
 
-export type CommsMessageType =
-  | "Switching Instruction"
-  | "Field Report"
-  | "Planner Request"
-  | "General Note";
+export type CommsTargetRole = "all" | "operator" | "field" | "planner" | "team";
+
+export type CommsAudience =
+  | { scope: "all" }
+  | { scope: "role"; role: Exclude<Role, "gm"> }
+  | { scope: "team"; teamId: string };
 
 export type CommsMessage = {
   id: string;
@@ -145,8 +146,14 @@ export type CommsMessage = {
   authorId: string;
   authorName: string;
   authorRole: Role;
-  type: CommsMessageType;
+  audience: CommsAudience;
   text: string;
+};
+
+export type OperatorOnlySignals = {
+  powerSimSummary: string;
+  activeFaults: string[];
+  lastUpdated: number;
 };
 
 export type SystemState = {
@@ -247,6 +254,7 @@ export type RoomState = {
   plannerRequests: PlannerRequest[];
   systemState: SystemState;
   commsLog: CommsMessage[];
+  operatorSignals?: OperatorOnlySignals;
   fieldLocation?: FieldLocation;
   orgName?: string;
   resultsVisible: boolean;
@@ -383,7 +391,8 @@ export type OperatorConnectGeneratorPayload = {
 };
 
 export type PostCommsMessagePayload = {
-  type: CommsMessageType;
+  targetRole: CommsTargetRole;
+  targetTeamId?: string;
   text: string;
 };
 

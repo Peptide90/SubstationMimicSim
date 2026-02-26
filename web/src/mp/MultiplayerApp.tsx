@@ -373,6 +373,7 @@ function PlayerLayout({
       {room.status === "finished" && room.resultsVisible ? (
         <ResultsPanel room={room} currentPlayer={currentPlayer} />
       ) : null}
+      </div>
     </div>
   );
 }
@@ -697,7 +698,7 @@ function GameMasterPanel({
   );
 
   return (
-    <div style={{ display: "grid", gap: 16, padding: 16, border: "1px solid #1e293b", borderRadius: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16, border: "1px solid #1e293b", borderRadius: 12, minHeight: 640 }}>
       <h3 style={{ marginTop: 0 }}>Game Master Controls</h3>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -721,6 +722,7 @@ function GameMasterPanel({
         </button>
       </div>
 
+      <div style={{ minHeight: 500 }}>
       {activeTab === "player_management" ? (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
@@ -999,6 +1001,7 @@ function GameMasterPanel({
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -1063,6 +1066,15 @@ function OperatorView({
           Connect Generator (+0.2 Hz)
         </button>
       </div>
+      {room.operatorSignals ? (
+        <div style={{ display: "grid", gap: 4, padding: 8, border: "1px solid #334155", borderRadius: 8 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>Power/Fault Simulation (Operator Only)</span>
+          <span style={{ fontSize: 12 }}>{room.operatorSignals.powerSimSummary}</span>
+          <span style={{ fontSize: 12, color: "#fda4af" }}>
+            Active Faults: {room.operatorSignals.activeFaults.length ? room.operatorSignals.activeFaults.join(", ") : "None"}
+          </span>
+        </div>
+      ) : null}
       <div style={{ display: "grid", gap: 6 }}>
         <strong>Field Reports</strong>
         {room.fieldReports.length === 0 ? (
@@ -1098,9 +1110,9 @@ function OperatorView({
             <button
               style={secondaryButton}
               disabled={readOnly}
-              onClick={() => socket.emit("mp/createWorkOrder", { assetId: asset.id, action: "inspect" })}
+              onClick={() => socket.emit("mp/createWorkOrder", { assetId: asset.id, action: "inspect", notes: "Inspection requested by control room." })}
             >
-              Inspect
+              Request Inspection
             </button>
             <button
               style={secondaryButton}
@@ -1228,7 +1240,9 @@ function OperatorView({
           messages={room.commsLog}
           role="operator"
           playerName={currentPlayer?.name}
-          onPost={(type, text) => socket.emit("mp/postCommsMessage", { type, text })}
+          teams={room.teams}
+          allowTeamTarget={currentPlayer?.isGM ?? false}
+          onPost={(targetRole, targetTeamId, text) => socket.emit("mp/postCommsMessage", { targetRole, targetTeamId, text })}
         />
       }
     />
@@ -1333,7 +1347,7 @@ function FieldView({
               disabled={readOnly}
               onClick={() =>
                 socket.emit("mp/postCommsMessage", {
-                  type: "Field Report",
+                  targetRole: "all",
                   text: `${currentAsset?.id ?? "Asset"}: further inspection underway.`,
                 })
               }
@@ -1438,7 +1452,9 @@ function FieldView({
           messages={room.commsLog}
           role="field"
           playerName={currentPlayer?.name}
-          onPost={(type, text) => socket.emit("mp/postCommsMessage", { type, text })}
+          teams={room.teams}
+          allowTeamTarget={currentPlayer?.isGM ?? false}
+          onPost={(targetRole, targetTeamId, text) => socket.emit("mp/postCommsMessage", { targetRole, targetTeamId, text })}
         />
       }
     />
@@ -1527,7 +1543,9 @@ function PlannerView({
           messages={room.commsLog}
           role="planner"
           playerName={currentPlayer?.name}
-          onPost={(type, text) => socket.emit("mp/postCommsMessage", { type, text })}
+          teams={room.teams}
+          allowTeamTarget={currentPlayer?.isGM ?? false}
+          onPost={(targetRole, targetTeamId, text) => socket.emit("mp/postCommsMessage", { targetRole, targetTeamId, text })}
         />
       }
     />
@@ -1677,6 +1695,7 @@ function RoleLayout({
           {scada}
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
