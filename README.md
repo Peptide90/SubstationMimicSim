@@ -53,3 +53,8 @@ npm run dev:mp
 ```
 
 By default, the multiplayer server listens on `http://localhost:3001`. Set `VITE_MP_SERVER_URL` to point the client at a different endpoint if needed.
+
+## Hosting & Telemetry (Docker-ready)
+
+- [Multiplayer hosting guide](docs/multiplayer-hosting.md)
+- [Telemetry & privacy statement](docs/telemetry-privacy.md)
