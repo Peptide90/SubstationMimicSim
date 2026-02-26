@@ -68,6 +68,7 @@ export function ScadaNode(props: NodeProps) {
   const isLockout = data?.protection?.lockout === true;
   const isDestroyed = data?.destroyed === true;
   const isIsolationTagged = data?.isolationTag === true;
+  const isTripped = data?.tripped === true;
 
   const bg = useMemo(() => {
     if (kind === "tx") return isFaulted ? TX_FAULT_BG : TX_BG;
@@ -271,6 +272,45 @@ export function ScadaNode(props: NodeProps) {
           {health === "damaged" ? "DAMAGED" : "FAILED"}
         </div>
       )}
+      {isTripped && (
+        <div
+          title="Breaker tripped on protection"
+          style={{
+            position: "absolute",
+            bottom: -12,
+            right: -8,
+            background: "#f97316",
+            color: "#fff",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          TRIPPED
+        </div>
+      )}
+      {isDestroyed && (
+        <div
+          title="Component destroyed"
+          style={{
+            position: "absolute",
+            bottom: -12,
+            left: -8,
+            background: "#7f1d1d",
+            color: "#fff",
+            fontSize: 10,
+            padding: "2px 6px",
+            borderRadius: 999,
+            fontWeight: 700,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+          }}
+        >
+          DESTROYED
+        </div>
+      )}
+
       {isIsolationTagged && (
         <div
           title="Quoted as point of isolation"
