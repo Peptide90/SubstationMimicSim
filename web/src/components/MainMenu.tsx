@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { CSSProperties } from "react";
 
 import { BrandingCluster } from "./BrandingCluster";
+import { ChangelogModal } from "./ChangelogModal";
 
 type Props = {
   buildTag: string;
@@ -10,6 +12,7 @@ type Props = {
 };
 
 export function MainMenu({ buildTag, onStartSolo, onStartChallenges, onStartMultiplayer }: Props) {
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const buttonStyle: CSSProperties = {
     width: "min(420px, 90vw)",
     padding: "14px 18px",
@@ -48,7 +51,7 @@ export function MainMenu({ buildTag, onStartSolo, onStartChallenges, onStartMult
 
       <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
         <button style={buttonStyle} onClick={onStartSolo}>
-          Solo: Substation Mimic Builder
+          Solo: Mimic Designer V2
         </button>
         <button style={buttonStyle} onClick={onStartChallenges}>
           Solo: Substation Builder Challenges
@@ -59,8 +62,15 @@ export function MainMenu({ buildTag, onStartSolo, onStartChallenges, onStartMult
       </div>
 
       <div style={{ position: "absolute", bottom: 24, left: 0, right: 0 }}>
-        <BrandingCluster buildTag={buildTag} variant="footer" align="center" />
+        <BrandingCluster
+          buildTag={buildTag}
+          variant="footer"
+          align="center"
+          onVersionClick={() => setChangelogOpen(true)}
+        />
       </div>
+
+      <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   );
 }

@@ -27,6 +27,7 @@ import { HelpModal } from "./components/modals/HelpModal";
 import { MainMenu } from "./components/MainMenu";
 import { MultiplayerApp } from "./mp/MultiplayerApp";
 import { ChallengeApp } from "./app/challenges/ChallengeApp";
+import { MimicDesignerV2 } from "./mimic-designer-v2/ui/MimicDesignerV2";
 
 import { ContextMenu } from "./components/ContextMenu";
 
@@ -933,7 +934,7 @@ const isValidConnection = useCallback(
 }
 
 export default function App() {
-  const [view, setView] = useState<"menu" | "editor" | "mp" | "challenges">("menu");
+  const [view, setView] = useState<"menu" | "editor" | "legacy-editor" | "mp" | "challenges">("menu");
 
   return (
     <ReactFlowProvider>
@@ -946,6 +947,9 @@ export default function App() {
         />
       ) : null}
       {view === "editor" ? (
+        <MimicDesignerV2 onRequestMenu={() => setView("menu")} />
+      ) : null}
+      {view === "legacy-editor" ? (
         <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
       ) : null}
       {view === "challenges" ? (

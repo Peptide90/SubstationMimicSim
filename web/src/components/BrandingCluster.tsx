@@ -4,6 +4,7 @@ type Props = {
   buildTag?: string;
   variant?: "compact" | "footer";
   align?: "left" | "right" | "center";
+  onVersionClick?: () => void;
 };
 
 const iconPaths = {
@@ -13,7 +14,7 @@ const iconPaths = {
     "M4.98 3.5C4.98 4.88 3.88 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1 4.98 2.12 4.98 3.5ZM0 8.5h5V24H0V8.5Zm8 0h4.8v2.1h.07c.67-1.27 2.3-2.6 4.73-2.6 5.06 0 6 3.3 6 7.6V24h-5v-6.7c0-1.6-.03-3.7-2.26-3.7-2.27 0-2.62 1.77-2.62 3.58V24H8V8.5Z",
 };
 
-export function BrandingCluster({ buildTag = BUILD_TAG, variant = "compact", align = "right" }: Props) {
+export function BrandingCluster({ buildTag = BUILD_TAG, variant = "compact", align = "right", onVersionClick }: Props) {
   const fontSize = variant === "compact" ? 12 : 13;
   const iconSize = variant === "compact" ? 14 : 16;
   const justify =
@@ -57,7 +58,22 @@ export function BrandingCluster({ buildTag = BUILD_TAG, variant = "compact", ali
           </svg>
         </a>
       </span>
-      <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{buildTag}</span>
+      <button
+        type="button"
+        onClick={onVersionClick}
+        title={onVersionClick ? "Open changelog" : undefined}
+        style={{
+          color: "#e2e8f0",
+          fontWeight: 600,
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: onVersionClick ? "pointer" : "default",
+          fontSize,
+        }}
+      >
+        {buildTag}
+      </button>
     </div>
   );
 }

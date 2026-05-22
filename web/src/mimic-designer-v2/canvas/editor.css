@@ -1,0 +1,26 @@
+.mimic-v2-root { display:flex; width:100vw; height:100vh; background:var(--md2-background); color:var(--md2-text); font-family:Inter,Arial,sans-serif; user-select:none; overflow:hidden; }
+.mimic-v2-sidebar { width:220px; flex:0 0 220px; }
+.mimic-v2-inspector { width:240px; flex:0 0 240px; }
+.mimic-v2-sidebar, .mimic-v2-inspector { background:var(--md2-panel-bg); border:1px solid var(--md2-border); padding:10px; overflow:auto; color:var(--md2-text); }
+.mimic-v2-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.mimic-v2-toolbar { display:flex; gap:10px; padding:8px; background:var(--md2-panel-bg); border-bottom:1px solid var(--md2-border); flex-wrap:wrap; color:var(--md2-text); }
+.mimic-v2-tool-group { display:flex; align-items:center; gap:6px; padding:4px 8px; border-right:1px solid var(--md2-border); }
+.mimic-v2-tool-group span { color:var(--md2-muted-text); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+.mimic-v2-canvas-wrap { flex:1; position:relative; overflow:hidden; }
+.mimic-v2-canvas { width:100%; height:100%; display:block; cursor:crosshair; background:var(--md2-canvas-bg); }
+.mimic-v2-canvas text { fill:var(--md2-text); user-select:none; pointer-events:none; }
+.mimic-v2-btn { border:1px solid var(--md2-border); background:var(--md2-button-bg); color:var(--md2-text); padding:6px 8px; cursor:pointer; border-radius:6px; }
+.mimic-v2-btn:hover { border-color:var(--md2-selected); }
+.mimic-v2-btn.active { background:var(--md2-selected); border-color:var(--md2-selected); color:var(--md2-active-text); }
+.mimic-v2-item { border:1px solid var(--md2-border); margin:4px 0; padding:6px; color:var(--md2-text); }
+.mimic-v2-inspector input { user-select:text; width:100%; box-sizing:border-box; margin:4px 0 10px; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
+.mimic-v2-inspector select, .mimic-v2-tool-group select { background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
+.mimic-v2-component-btn { width:100%; display:grid; grid-template-columns:44px 1fr; align-items:center; gap:8px; border:0; background:transparent; color:var(--md2-text); padding:0; text-align:left; cursor:grab; }
+.mimic-v2-component-btn:active { cursor:grabbing; }
+.mimic-v2-component-icon { display:inline-grid; place-items:center; width:40px; height:28px; border:1px solid var(--md2-border); border-radius:4px; color:var(--md2-selected); }
+.mimic-v2-component-icon svg { width:36px; height:24px; stroke:currentColor; fill:none; stroke-width:1.8; }
+.mimic-v2-component-icon svg text { fill:currentColor; stroke:none; font-size:8px; font-weight:800; }
+.mimic-v2-voltage-row { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
+.mimic-v2-voltage-row.inspector { margin-top:-4px; }
+.mimic-v2-chip { border:1px solid var(--md2-border); border-radius:999px; background:var(--md2-button-bg); color:var(--md2-text); padding:4px 7px; font-size:12px; cursor:pointer; }
+.mimic-v2-chip.active { background:var(--md2-selected); border-color:var(--md2-selected); color:var(--md2-active-text); }
