@@ -590,7 +590,7 @@ export function EditorCanvas(props: {
           onNodeDragStop={onNodeDragStop}
 		  onNodeDoubleClick={onNodeDoubleClick}
           fitView
-          deleteKeyCode={locked ? [] : ["Backspace", "Delete"]}
+          deleteKeyCode={locked ? [] : ["Delete"]}
           panOnDrag={[1, 2]}
           nodesDraggable={!locked}
           nodesConnectable={!locked && connectionsEnabled}

@@ -303,6 +303,15 @@ export interface DrawingDocument {
   version: 2;
   schemaVersion: number;
   name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  drawingType: 'user' | 'template' | 'example';
+  tags: string[];
+  voltageLevels: number[];
+  thumbnail?: string;
+  lastOpenedAt?: string;
+  templateNotes?: string;
   activeView: ViewMode;
   objects: {
     symbols: ElectricalSymbol[];

@@ -7,7 +7,7 @@
 .mimic-v2-tool-group { display:flex; align-items:center; gap:6px; padding:4px 8px; border-right:1px solid var(--md2-border); }
 .mimic-v2-tool-group span { color:var(--md2-muted-text); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
 .mimic-v2-canvas-wrap { flex:1; position:relative; overflow:hidden; }
-.mimic-v2-canvas { width:100%; height:100%; display:block; cursor:crosshair; background:var(--md2-canvas-bg); }
+.mimic-v2-canvas { width:100%; height:100%; display:block; cursor:crosshair; background:var(--md2-canvas-bg); touch-action:none; }
 .mimic-v2-canvas text { fill:var(--md2-text); user-select:none; pointer-events:none; }
 .mimic-v2-btn { border:1px solid var(--md2-border); background:var(--md2-button-bg); color:var(--md2-text); padding:6px 8px; cursor:pointer; border-radius:6px; }
 .mimic-v2-btn:hover { border-color:var(--md2-selected); }
@@ -24,3 +24,27 @@
 .mimic-v2-voltage-row.inspector { margin-top:-4px; }
 .mimic-v2-chip { border:1px solid var(--md2-border); border-radius:999px; background:var(--md2-button-bg); color:var(--md2-text); padding:4px 7px; font-size:12px; cursor:pointer; }
 .mimic-v2-chip.active { background:var(--md2-selected); border-color:var(--md2-selected); color:var(--md2-active-text); }
+.mimic-v2-chip.danger { border-color:var(--md2-warning); color:var(--md2-warning); }
+.mimic-v2-manager-panel { border-bottom:1px solid var(--md2-border); margin-bottom:10px; padding-bottom:10px; }
+.mimic-v2-manager-card { border:1px solid var(--md2-border); border-radius:6px; padding:8px; margin:6px 0; background:var(--md2-button-bg); }
+.mimic-v2-manager-card strong { display:block; margin-bottom:6px; }
+.mimic-v2-manager-card p { margin:4px 0 8px; font-size:12px; color:var(--md2-muted-text); }
+.mimic-v2-camera-controls { position:absolute; left:12px; bottom:12px; display:flex; align-items:center; gap:4px; padding:5px; border:1px solid var(--md2-border); border-radius:6px; background:var(--md2-panel-bg); box-shadow:0 8px 22px rgba(15,23,42,.18); }
+.mimic-v2-camera-btn, .mimic-v2-camera-readout { min-width:32px; height:30px; border:1px solid var(--md2-border); border-radius:4px; background:var(--md2-button-bg); color:var(--md2-text); cursor:pointer; font-weight:800; }
+.mimic-v2-camera-readout { min-width:56px; font-weight:700; font-size:12px; }
+.mimic-v2-camera-btn:hover, .mimic-v2-camera-readout:hover { border-color:var(--md2-selected); }
+.mimic-v2-warning-text { color:var(--md2-warning); font-size:12px; }
+.mimic-v2-modal-backdrop { position:fixed; inset:0; z-index:20; display:grid; place-items:center; background:rgba(15,23,42,.45); }
+.mimic-v2-library-modal { width:min(1120px, calc(100vw - 36px)); height:min(760px, calc(100vh - 36px)); overflow:auto; border:1px solid var(--md2-border); border-radius:8px; background:var(--md2-panel-bg); color:var(--md2-text); box-shadow:0 24px 70px rgba(15,23,42,.32); padding:14px; }
+.mimic-v2-library-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; border-bottom:1px solid var(--md2-border); padding-bottom:10px; margin-bottom:10px; }
+.mimic-v2-library-header h2 { margin:0; font-size:20px; }
+.mimic-v2-library-header p { margin:4px 0 0; color:var(--md2-muted-text); }
+.mimic-v2-library-tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.mimic-v2-library-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:10px; }
+.mimic-v2-library-card { border:1px solid var(--md2-border); border-radius:6px; background:var(--md2-button-bg); padding:10px; min-height:130px; }
+.mimic-v2-library-card img { width:100%; height:94px; object-fit:cover; border:1px solid var(--md2-border); border-radius:4px; background:var(--md2-canvas-bg); }
+.mimic-v2-library-card h3 { margin:6px 0; font-size:15px; }
+.mimic-v2-library-card p { margin:5px 0; color:var(--md2-muted-text); font-size:12px; }
+.mimic-v2-library-actions { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+.mimic-v2-json-tools { margin-top:12px; border-top:1px solid var(--md2-border); padding-top:10px; }
+.mimic-v2-json-tools textarea { width:100%; min-height:180px; box-sizing:border-box; margin-top:8px; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:6px; font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:12px; }

@@ -85,11 +85,21 @@ function migrateSymbol(symbol: ElectricalSymbol): ElectricalSymbol {
 export function migrateDrawingDocument(input: PersistedDrawingDocument | null | undefined): DrawingDocument | null {
   if (!input) return null;
   const objects = (input.objects ?? {}) as Partial<DrawingDocument['objects']>;
+  const now = new Date().toISOString();
   const doc: DrawingDocument = {
     id: input.id ?? `doc-${Date.now()}`,
     version: 2,
     schemaVersion: MIMIC_DESIGNER_V2_SCHEMA_VERSION,
     name: input.name ?? 'Untitled Mimic Drawing',
+    description: input.description ?? '',
+    createdAt: input.createdAt ?? now,
+    updatedAt: input.updatedAt ?? now,
+    drawingType: input.drawingType ?? 'user',
+    tags: input.tags ?? [],
+    voltageLevels: input.voltageLevels ?? inferVoltageLevels(objects),
+    thumbnail: input.thumbnail,
+    lastOpenedAt: input.lastOpenedAt,
+    templateNotes: input.templateNotes,
     activeView: input.activeView ?? 'single-line',
     objects: {
       symbols: ((objects.symbols ?? []) as ElectricalSymbol[]).map(migrateSymbol),
@@ -242,4 +252,15 @@ function hasAllPhases(phases: Phase[]) {
 
 export function serializeDrawingDocument(doc: DrawingDocument): DrawingDocument {
   return migrateDrawingDocument({ ...doc, schemaVersion: MIMIC_DESIGNER_V2_SCHEMA_VERSION })!;
+}
+
+function inferVoltageLevels(objects: Partial<DrawingDocument['objects']>): number[] {
+  const values = new Set<number>();
+  (objects.symbols ?? []).forEach((symbol) => {
+    if (symbol.voltageLevelKv) values.add(symbol.voltageLevelKv);
+    if (symbol.engineering?.tertiaryVoltageKv) values.add(symbol.engineering.tertiaryVoltageKv);
+  });
+  (objects.conductors ?? []).forEach((path) => { if (path.voltageLevelKv) values.add(path.voltageLevelKv); });
+  (objects.busbars ?? []).forEach((path) => { if (path.voltageLevelKv) values.add(path.voltageLevelKv); });
+  return [...values].sort((a, b) => b - a);
 }

@@ -3,7 +3,7 @@ import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, F
 import { SYMBOL_LIBRARY } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels } from '../nomenclature/engine';
-import { loadDocument, saveDocument } from '../storage/documentStore';
+import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
 import { deriveOperationState, operateDevice } from '../topology/operation';
 import { computePowerFlow, MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../schema/documentSchema';
@@ -11,12 +11,16 @@ import { addFault, clearFault, createFault, expireTransientFaults } from '../fau
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from '../rendering/phaseExpansion';
 import { applyProtectionStep, deriveSimulationState, mergePhaseValues } from '../simulation/powerFlow';
 import { applyRelayProtectionStep, loadScenario } from '../simulation/protection';
+import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTemplateIntoDrawing, type DrawingTemplate } from '../templates';
+import { activeDrawingId, clearDraft, deleteDrawing, duplicateDrawing, listDrawings, loadDraft, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
+import { downloadDrawingJson, exportDrawingJson, importDrawingJson } from '../persistence/importExport';
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
 type Tool = 'select' | 'conductor' | 'busbar' | 'fault' | 'pan';
 type RenderMode = 'symbols' | 'nodes';
-type OverlayMode = 'none' | 'topology' | 'thermal';
+type OverlayMode = 'none' | 'power' | 'topology' | 'thermal';
+type ManagerView = 'inspector' | 'power' | 'protection';
 type SelectionBox = { start: Point; current: Point } | null;
 type DragState = {
   initialDoc: DrawingDocument;
@@ -39,6 +43,12 @@ const createEmpty = (): DrawingDocument => ({
   version: 2,
   schemaVersion: MIMIC_DESIGNER_V2_SCHEMA_VERSION,
   name: 'Untitled Mimic Drawing',
+  description: '',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  drawingType: 'user',
+  tags: [],
+  voltageLevels: [],
   activeView: 'single-line',
   objects: { symbols: [], conductors: [], busbars: [], labels: [], annotations: [] },
   faults: [],
@@ -75,9 +85,18 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   const [redoStack, setRedoStack] = useState<DrawingDocument[]>([]);
   const [showTopologyOverlay, setShowTopologyOverlay] = useState(false);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [managerView, setManagerView] = useState<ManagerView>('inspector');
   const [lastOperationReason, setLastOperationReason] = useState('No operation yet');
   const [faultType, setFaultType] = useState<FaultType>('phase-to-earth');
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<'drawings' | 'templates' | 'examples'>('drawings');
+  const [drawingSummaries, setDrawingSummaries] = useState<DrawingSummary[]>(() => listDrawings());
+  const [dirty, setDirty] = useState(false);
+  const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
+  const [draftNotice, setDraftNotice] = useState<string | null>(() => loadDraft() ? 'Unsaved draft recovery is available.' : null);
+  const [jsonPreview, setJsonPreview] = useState<string>('');
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<Point | null>(null);
 
@@ -115,8 +134,130 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   const commit = useCallback((next: DrawingDocument) => {
     setUndoStack((prev) => [...prev, doc]);
     setRedoStack([]);
-    setDoc(next);
+    setDoc({ ...next, updatedAt: new Date().toISOString() });
+    setDirty(true);
   }, [doc]);
+
+  const refreshDrawingSummaries = () => setDrawingSummaries(listDrawings());
+
+  const replaceDocument = (next: DrawingDocument, options: { dirty?: boolean; notice?: string | null } = {}) => {
+    setDoc(next);
+    setSelected([]);
+    setSelectedPhase(undefined);
+    setDraftPath([]);
+    setCursorPoint(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    setDirty(options.dirty ?? false);
+    setMigrationNotice(options.notice ?? null);
+  };
+
+  const confirmDiscard = () => !dirty || window.confirm('This drawing has unsaved changes. Continue and discard them?');
+
+  const saveCurrentDrawing = () => {
+    const saved = saveDrawing(doc);
+    replaceDocument(saved, { dirty: false });
+    refreshDrawingSummaries();
+  };
+
+  const saveCurrentDrawingAs = () => {
+    const name = window.prompt('Save drawing as', doc.name);
+    if (!name) return;
+    const saved = saveDrawingAs(doc, name);
+    replaceDocument(saved, { dirty: false });
+    refreshDrawingSummaries();
+  };
+
+  const createNewDrawing = () => {
+    if (!confirmDiscard()) return;
+    replaceDocument(createEmpty(), { dirty: true });
+  };
+
+  const openStoredDrawing = (id: string) => {
+    if (!confirmDiscard()) return;
+    const result = loadDrawing(id);
+    if (!result) return;
+    replaceDocument(result.doc, {
+      dirty: false,
+      notice: result.migrated ? `Drawing migrated from schema ${result.fromSchemaVersion} to ${MIMIC_DESIGNER_V2_SCHEMA_VERSION}.` : null
+    });
+    refreshDrawingSummaries();
+    setLibraryOpen(false);
+  };
+
+  const duplicateStoredDrawing = (id: string) => {
+    const source = drawingSummaries.find((item) => item.id === id);
+    const name = window.prompt('Duplicate drawing as', `${source?.name ?? 'Drawing'} copy`);
+    if (!name) return;
+    duplicateDrawing(id, name);
+    refreshDrawingSummaries();
+  };
+
+  const renameStoredDrawing = (id: string) => {
+    const source = drawingSummaries.find((item) => item.id === id);
+    const name = window.prompt('Rename drawing', source?.name ?? '');
+    if (!name) return;
+    const renamed = renameDrawing(id, name);
+    if (renamed && renamed.id === doc.id) replaceDocument(renamed, { dirty: false });
+    refreshDrawingSummaries();
+  };
+
+  const deleteStoredDrawing = (id: string) => {
+    const source = drawingSummaries.find((item) => item.id === id);
+    if (!window.confirm(`Delete "${source?.name ?? id}"? This cannot be undone.`)) return;
+    deleteDrawing(id);
+    refreshDrawingSummaries();
+  };
+
+  const createFromTemplate = (template: DrawingTemplate) => {
+    if (!confirmDiscard()) return;
+    replaceDocument(createDrawingFromTemplate(template), { dirty: true });
+    setLibraryOpen(false);
+  };
+
+  const insertTemplateAtCanvasCenter = (template: DrawingTemplate) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    const center = rect ? snappedPoint(worldPointFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2)) : { x: 120, y: 120 };
+    const raw = window.prompt('Insert template at x,y', `${center.x},${center.y}`);
+    if (!raw) return;
+    const [x, y] = raw.split(',').map((value) => Number(value.trim()));
+    const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : center;
+    commit(insertTemplateIntoDrawing(doc, template, snappedPoint(point)));
+    setLibraryOpen(false);
+  };
+
+  const resetToTemplate = () => {
+    if (!confirmDiscard()) return;
+    replaceDocument(createDrawingFromTemplate(builtInTemplates[0]), { dirty: true });
+  };
+
+  const recoverDraft = () => {
+    const draft = loadDraft();
+    if (!draft || !confirmDiscard()) return;
+    replaceDocument(draft.result.doc, {
+      dirty: true,
+      notice: draft.result.migrated ? `Draft migrated from schema ${draft.result.fromSchemaVersion}.` : null
+    });
+    clearDraft();
+    setDraftNotice(null);
+  };
+
+  const exportJsonToPreview = () => setJsonPreview(exportDrawingJson(doc));
+
+  const importJsonText = (json: string) => {
+    if (!confirmDiscard()) return;
+    const result = importDrawingJson(json);
+    replaceDocument({ ...result.doc, drawingType: 'user' }, {
+      dirty: true,
+      notice: result.migrated ? `Imported drawing migrated from schema ${result.fromSchemaVersion}.` : null
+    });
+    setLibraryOpen(false);
+  };
+
+  const importJsonFile = (file: File | undefined) => {
+    if (!file) return;
+    file.text().then(importJsonText);
+  };
 
   const snappedPoint = useCallback((p: Point): Point => {
     if (!doc.uiState.snapToGrid) return p;
@@ -128,6 +269,31 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     if (!rect) return { x: 0, y: 0 };
     return { x: (clientX - rect.left - pan.x) / scale, y: (clientY - rect.top - pan.y) / scale };
   }, [pan.x, pan.y, scale]);
+
+  const zoomAtClientPoint = useCallback((clientX: number, clientY: number, factor: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) {
+      setScale((current) => Math.max(0.4, Math.min(3, current * factor)));
+      return;
+    }
+    const nextScale = Math.max(0.4, Math.min(3, scale * factor));
+    if (nextScale === scale) return;
+    const world = worldPointFromClient(clientX, clientY);
+    setScale(nextScale);
+    setPan({
+      x: clientX - rect.left - world.x * nextScale,
+      y: clientY - rect.top - world.y * nextScale
+    });
+  }, [scale, worldPointFromClient]);
+
+  const zoomFromCanvasCenter = useCallback((factor: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) {
+      setScale((current) => Math.max(0.4, Math.min(3, current * factor)));
+      return;
+    }
+    zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  }, [zoomAtClientPoint]);
 
   const eventPoint = (event: React.MouseEvent<SVGSVGElement | SVGGElement | SVGPolylineElement | SVGRectElement>) =>
     worldPointFromClient(event.clientX, event.clientY);
@@ -512,6 +678,38 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     }
   };
 
+  const updateSourcePowerFlow = (symbolId: string, patch: PowerFlowMetadata) => {
+    commit({
+      ...doc,
+      objects: {
+        ...doc.objects,
+        symbols: doc.objects.symbols.map((symbol) =>
+          symbol.id === symbolId
+            ? { ...symbol, powerFlow: computePowerFlow(mergePhaseValues(symbol.powerFlow, undefined, patch, doc.activeView === 'single-line')) }
+            : symbol
+        )
+      }
+    });
+  };
+
+  const removeRelay = (relayId: string) => commit({ ...doc, relays: doc.relays.filter((relay) => relay.id !== relayId) });
+
+  const removeZone = (zoneId: string) => commit({
+    ...doc,
+    protectionZones: doc.protectionZones.filter((zone) => zone.id !== zoneId),
+    relays: doc.relays.map((relay) => relay.zoneId === zoneId ? { ...relay, zoneId: undefined } : relay)
+  });
+
+  const toggleZoneVisible = (zoneId: string) => commit({
+    ...doc,
+    protectionZones: doc.protectionZones.map((zone) => zone.id === zoneId ? { ...zone, visible: !zone.visible } : zone)
+  });
+
+  const toggleRelayEnabled = (relayId: string) => commit({
+    ...doc,
+    relays: doc.relays.map((relay) => relay.id === relayId ? { ...relay, enabled: !relay.enabled } : relay)
+  });
+
   const createZoneFromSelection = () => {
     if (!selected.length) return;
     const selectedSymbolsForZone = doc.objects.symbols.filter((symbol) => selected.includes(symbol.id));
@@ -616,6 +814,13 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   };
 
   const thermalStrokeForObjectPhase = (objectId: string, phase: Phase | undefined, fallback: string) => {
+    if (overlayMode === 'power') {
+      const state = lineStateForPath(objectId);
+      if (state === 'fault') return 'var(--md2-warning)';
+      if (state === 'earth') return 'var(--md2-earth)';
+      if (state === 'live') return 'var(--md2-live)';
+      return flowForObjectPhase(objectId, phase) ? 'var(--md2-selected)' : fallback;
+    }
     if (overlayMode !== 'thermal') return fallback;
     const flow = flowForObjectPhase(objectId, phase);
     if (flow?.thermalState === 'critical') return '#7f1d1d';
@@ -627,7 +832,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { setSelected([]); setDraftPath([]); setCursorPoint(null); setSelectionBox(null); }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selected.length) {
+      if (event.key === 'Delete' && selected.length) {
         commit({
           ...doc,
           objects: {
@@ -669,6 +874,33 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     }, 250);
     return () => window.clearInterval(timer);
   }, [doc.faults]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoomAtClientPoint(event.clientX, event.clientY, event.deltaY > 0 ? 0.9 : 1.1);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [zoomAtClientPoint]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = window.setTimeout(() => saveDraft(doc), 700);
+    return () => window.clearTimeout(timer);
+  }, [dirty, doc]);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty]);
 
   const renderSymbolGlyph = (symbol: ElectricalSymbol) => {
     const selectedStroke = selected.includes(symbol.id) ? 'var(--md2-selected)' : 'var(--md2-text)';
@@ -778,8 +1010,10 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         </div>
       )}
       <button className='mimic-v2-btn' onClick={() => commit(generateLabels(doc))}>Regenerate auto labels</button>
-      <button className='mimic-v2-btn' onClick={() => setDoc(createEmpty())}>New</button>
-      <button className='mimic-v2-btn' onClick={() => saveDocument(doc)}>Save</button>
+      <button className='mimic-v2-btn' onClick={() => setLibraryOpen(true)}>Drawing library</button>
+      <button className='mimic-v2-btn' onClick={createNewDrawing}>New</button>
+      <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
+      <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
       {onRequestMenu && <button className='mimic-v2-btn' onClick={onRequestMenu}>Main menu</button>}
       <button className='mimic-v2-btn' onClick={() => { const d = createEmpty(); d.objects.symbols.push({ id:'vt-demo', type:'vt', position:{x:300,y:200}, rotation:0, terminals:[{id:'t0',name:'tap',offset:{x:0,y:20},phaseApplicability:['B']}], phaseApplicability:['B'], voltageLevelKv: selectedVoltage, label:{text:'VT101*',autoGenerated:true,manualOverride:false,marker:'* phase-specific device: Phase B only'}, simulation:{} }); setDoc(d); }}>Load sample</button>
     </aside>
@@ -790,11 +1024,12 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         {tool === 'fault' && <div className='mimic-v2-tool-group'><span>Fault</span><select value={faultType} onChange={(event) => setFaultType(event.target.value as FaultType)}><option value='A-E'>A-E</option><option value='B-E'>B-E</option><option value='C-E'>C-E</option><option value='A-B'>A-B</option><option value='B-C'>B-C</option><option value='C-A'>C-A</option><option value='A-B-C'>A-B-C</option><option value='A-B-C-E'>A-B-C-E</option><option value='open-circuit'>open circuit</option><option value='high-impedance'>high Z</option><option value='hot-joint'>hot joint</option><option value='transient'>transient</option><option value='persistent'>persistent</option></select></div>}
         <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button><button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button></div>
         <div className='mimic-v2-tool-group'><span>Display</span><button className={`mimic-v2-btn ${renderMode==='symbols'?'active':''}`} onClick={() => setRenderMode('symbols')}>Symbols</button><button className={`mimic-v2-btn ${renderMode==='nodes'?'active':''}`} onClick={() => setRenderMode('nodes')}>Nodes</button></div>
-        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button></div>
+        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button></div>
+        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className={`mimic-v2-btn ${managerView==='power'?'active':''}`} onClick={() => setManagerView('power')}>Power flows</button><button className={`mimic-v2-btn ${managerView==='protection'?'active':''}`} onClick={() => setManagerView('protection')}>Protection</button></div>
         <div className='mimic-v2-tool-group'><span>Debug</span><button className='mimic-v2-btn' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button><button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button></div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
-      <svg ref={svgRef} className='mimic-v2-canvas' onWheel={(event) => { event.preventDefault(); setScale((s) => Math.max(0.4, Math.min(3, s * (event.deltaY > 0 ? 0.9 : 1.1)))); }} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
+      <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
         <defs>
           <pattern id='grid' width={doc.uiState.gridSize} height={doc.uiState.gridSize} patternUnits='userSpaceOnUse'><path d={`M ${doc.uiState.gridSize} 0 L 0 0 0 ${doc.uiState.gridSize}`} fill='none' stroke='var(--md2-grid-line)' strokeWidth='1'/></pattern>
           <marker id='arrow' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'><path d='M 0 0 L 8 4 L 0 8 z' fill='var(--md2-selected)' /></marker>
@@ -843,10 +1078,73 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
           {selectedBoxRect && <rect x={selectedBoxRect.x1} y={selectedBoxRect.y1} width={selectedBoxRect.x2 - selectedBoxRect.x1} height={selectedBoxRect.y2 - selectedBoxRect.y1} fill='var(--md2-selected-fill)' stroke='var(--md2-selected)' strokeDasharray='4 3' />}
         </g>
       </svg>
+      <div className='mimic-v2-camera-controls' aria-label='Canvas camera controls'>
+        <button className='mimic-v2-camera-btn' title='Zoom out' onClick={() => zoomFromCanvasCenter(0.9)}>-</button>
+        <button className='mimic-v2-camera-readout' title='Canvas zoom' onClick={() => { setScale(1); setPan({ x: 0, y: 0 }); }}>{Math.round(scale * 100)}%</button>
+        <button className='mimic-v2-camera-btn' title='Zoom in' onClick={() => zoomFromCanvasCenter(1.1)}>+</button>
+      </div>
       </div>
     </main>
     <aside className='mimic-v2-inspector'>
-      <h3>Inspector</h3>
+      <h3>{managerView === 'power' ? 'Power Flow Manager' : managerView === 'protection' ? 'Protection Manager' : 'Inspector'}</h3>
+      <p>{doc.name}{dirty ? ' *' : ''}</p>
+      {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
+      {draftNotice && <p className='mimic-v2-warning-text'>{draftNotice} <button className='mimic-v2-chip' onClick={recoverDraft}>Recover</button></p>}
+      <div className='mimic-v2-voltage-row inspector'>
+        <button className='mimic-v2-chip' onClick={() => setLibraryOpen(true)}>Library</button>
+        <button className='mimic-v2-chip' onClick={saveCurrentDrawing}>Save</button>
+        <button className='mimic-v2-chip' onClick={saveCurrentDrawingAs}>Save as</button>
+      </div>
+      <div className='mimic-v2-voltage-row inspector'>
+        <button className={`mimic-v2-chip ${managerView === 'inspector' ? 'active' : ''}`} onClick={() => setManagerView('inspector')}>Inspector</button>
+        <button className={`mimic-v2-chip ${managerView === 'power' ? 'active' : ''}`} onClick={() => setManagerView('power')}>Power flows</button>
+        <button className={`mimic-v2-chip ${managerView === 'protection' ? 'active' : ''}`} onClick={() => setManagerView('protection')}>Protection</button>
+      </div>
+      {managerView === 'power' && <section className='mimic-v2-manager-panel'>
+        <h4>Inputs</h4>
+        {doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((source) => {
+          const flow = source.powerFlow;
+          return <div key={source.id} className='mimic-v2-manager-card'>
+            <strong>{source.label?.text ?? source.id}</strong>
+            <label>MW <input type='number' value={flow?.mw ?? ''} onChange={(event)=>updateSourcePowerFlow(source.id, { mw: Number(event.target.value) || undefined })} /></label>
+            <label>MVAR <input type='number' value={flow?.mvar ?? ''} onChange={(event)=>updateSourcePowerFlow(source.id, { mvar: Number(event.target.value) || undefined })} /></label>
+            <label>Voltage kV <input type='number' value={flow?.voltageKv ?? source.voltageLevelKv ?? ''} onChange={(event)=>updateSourcePowerFlow(source.id, { voltageKv: Number(event.target.value) || undefined })} /></label>
+            <label>Direction <select value={flow?.direction ?? 'forward'} onChange={(event)=>updateSourcePowerFlow(source.id, { direction: event.target.value as PowerFlowMetadata['direction'] })}><option value='forward'>forward</option><option value='reverse'>reverse</option><option value='bidirectional'>bidirectional</option><option value='unknown'>unknown</option></select></label>
+            <p>{source.operation?.sourceOn === false ? 'Offline' : 'Online'} / MVA {flow?.mva?.toFixed(2) ?? 'n/a'} / PF {flow?.powerFactor?.toFixed(3) ?? 'n/a'}</p>
+          </div>;
+        })}
+        {!doc.objects.symbols.some((symbol) => symbol.type === 'source') && <p>No source inputs in this drawing.</p>}
+        <h4>Outputs</h4>
+        {[...simulationState.objectSummaries.values()].map((summary) => {
+          const symbol = doc.objects.symbols.find((item) => item.id === summary.objectId);
+          const path = doc.objects.conductors.find((item) => item.id === summary.objectId) ?? doc.objects.busbars.find((item) => item.id === summary.objectId);
+          return <p key={summary.objectId}>{symbol?.label?.text ?? path?.id ?? summary.objectId}: {summary.aggregate.mw?.toFixed(1) ?? 'n/a'}MW / {summary.aggregate.currentA?.toFixed(0) ?? 'n/a'}A / {summary.thermalState}</p>;
+        })}
+        {!simulationState.objectSummaries.size && <p>No derived flow yet. Add source MW/MVAR and close a path through the topology.</p>}
+      </section>}
+      {managerView === 'protection' && <section className='mimic-v2-manager-panel'>
+        <div className='mimic-v2-voltage-row inspector'>
+          <button className='mimic-v2-chip' onClick={createZoneFromSelection}>Zone from selection</button>
+          <button className='mimic-v2-chip' onClick={() => createRelayForFirstZone('overcurrent')}>Add OC relay</button>
+          <button className='mimic-v2-chip' onClick={() => createRelayForFirstZone('earth-fault')}>Add EF relay</button>
+        </div>
+        <h4>Zones</h4>
+        {doc.protectionZones.map((zone) => <div key={zone.id} className='mimic-v2-manager-card'>
+          <strong>{zone.name}</strong>
+          <p>{zone.assignedObjectIds.length} objects / CT {zone.ctInputIds.join(', ') || 'none'} / VT {zone.vtInputIds.join(', ') || 'none'}</p>
+          <button className='mimic-v2-chip' onClick={() => toggleZoneVisible(zone.id)}>{zone.visible ? 'Hide' : 'Show'}</button>
+          <button className='mimic-v2-chip danger' onClick={() => removeZone(zone.id)}>Remove</button>
+        </div>)}
+        {!doc.protectionZones.length && <p>No protection zones yet.</p>}
+        <h4>Relays</h4>
+        {doc.relays.map((relay) => <div key={relay.id} className='mimic-v2-manager-card'>
+          <strong>{relay.name}</strong>
+          <p>{relay.type} / {relay.state} / zone {relay.zoneId ?? 'all'} / trip {relay.tripTargetBreakerIds.join(', ') || 'none'} / backup {relay.backupTripTargetBreakerIds.join(', ') || 'none'}</p>
+          <button className='mimic-v2-chip' onClick={() => toggleRelayEnabled(relay.id)}>{relay.enabled ? 'Disable' : 'Enable'}</button>
+          <button className='mimic-v2-chip danger' onClick={() => removeRelay(relay.id)}>Remove</button>
+        </div>)}
+        {!doc.relays.length && <p>No relays configured.</p>}
+      </section>}
       <p>Selected: {selected.join(', ') || 'none'}</p>
       <p>Editing: {selectedPhase ? `phase ${selectedPhase}` : doc.activeView === 'three-phase' ? 'whole object / all phases' : 'single-line aggregate (applies to all phases)'}</p>
       {selectedObject && <>
@@ -942,5 +1240,77 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>
+    {libraryOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setLibraryOpen(false)}>
+      <div className='mimic-v2-library-modal' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Drawing Library</h2>
+            <p>Manage saved drawings, templates, examples, and JSON import/export.</p>
+          </div>
+          <button className='mimic-v2-btn' onClick={() => setLibraryOpen(false)}>Close</button>
+        </header>
+        <div className='mimic-v2-library-tabs'>
+          <button className={`mimic-v2-btn ${libraryTab === 'drawings' ? 'active' : ''}`} onClick={() => setLibraryTab('drawings')}>Drawings</button>
+          <button className={`mimic-v2-btn ${libraryTab === 'templates' ? 'active' : ''}`} onClick={() => setLibraryTab('templates')}>Templates</button>
+          <button className={`mimic-v2-btn ${libraryTab === 'examples' ? 'active' : ''}`} onClick={() => setLibraryTab('examples')}>Examples</button>
+          <input ref={importInputRef} type='file' accept='application/json,.json' hidden onChange={(event) => importJsonFile(event.target.files?.[0])} />
+          <button className='mimic-v2-btn' onClick={createNewDrawing}>New drawing</button>
+          <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
+          <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
+          <button className='mimic-v2-btn' onClick={() => importInputRef.current?.click()}>Import JSON</button>
+          <button className='mimic-v2-btn' onClick={() => downloadDrawingJson(doc)}>Export JSON</button>
+          <button className='mimic-v2-btn' onClick={() => downloadDrawingJson({ ...doc, drawingType: 'template' })}>Export as template</button>
+          <button className='mimic-v2-btn' onClick={resetToTemplate}>Reset to default</button>
+        </div>
+        {libraryTab === 'drawings' && <div className='mimic-v2-library-grid'>
+          {drawingSummaries.map((summary) => <article key={summary.id} className='mimic-v2-library-card'>
+            {summary.thumbnail && <img src={summary.thumbnail} alt='' />}
+            <h3>{summary.name}{summary.id === activeDrawingId() ? ' (open)' : ''}</h3>
+            <p>{summary.description || `${summary.objectCount} objects`}</p>
+            <p>Updated {new Date(summary.updatedAt).toLocaleString()} / Schema {summary.schemaVersion}</p>
+            <p>{summary.tags.join(', ') || 'No tags'} / {summary.voltageLevels.map((kv) => `${kv}kV`).join(', ') || 'No voltage set'}</p>
+            <div className='mimic-v2-library-actions'>
+              <button className='mimic-v2-chip' onClick={() => openStoredDrawing(summary.id)}>Open</button>
+              <button className='mimic-v2-chip' onClick={() => duplicateStoredDrawing(summary.id)}>Duplicate</button>
+              <button className='mimic-v2-chip' onClick={() => renameStoredDrawing(summary.id)}>Rename</button>
+              <button className='mimic-v2-chip' onClick={() => { const loaded = loadDrawing(summary.id); if (loaded) downloadDrawingJson(loaded.doc); }}>Export</button>
+              <button className='mimic-v2-chip danger' onClick={() => deleteStoredDrawing(summary.id)}>Delete</button>
+            </div>
+          </article>)}
+          {!drawingSummaries.length && <p>No saved drawings yet.</p>}
+        </div>}
+        {libraryTab === 'templates' && <div className='mimic-v2-library-grid'>
+          {builtInTemplates.map((template) => <article key={template.id} className='mimic-v2-library-card'>
+            <h3>{template.name}</h3>
+            <p>{template.description}</p>
+            <p>{template.tags.join(', ')} / {template.voltageLevels.map((kv) => `${kv}kV`).join(', ')}</p>
+            {template.notes && <p>{template.notes}</p>}
+            <div className='mimic-v2-library-actions'>
+              <button className='mimic-v2-chip' onClick={() => createFromTemplate(template)}>New from template</button>
+              <button className='mimic-v2-chip' onClick={() => insertTemplateAtCanvasCenter(template)}>Insert into current</button>
+            </div>
+          </article>)}
+        </div>}
+        {libraryTab === 'examples' && <div className='mimic-v2-library-grid'>
+          {builtInExamples.map((template) => <article key={template.id} className='mimic-v2-library-card'>
+            <h3>{template.name}</h3>
+            <p>{template.description}</p>
+            <p>{template.tags.join(', ')} / {template.voltageLevels.map((kv) => `${kv}kV`).join(', ')}</p>
+            <div className='mimic-v2-library-actions'>
+              <button className='mimic-v2-chip' onClick={() => createFromTemplate(template)}>Copy as drawing</button>
+              <button className='mimic-v2-chip' onClick={() => insertTemplateAtCanvasCenter(template)}>Insert into current</button>
+            </div>
+          </article>)}
+        </div>}
+        <details className='mimic-v2-json-tools'>
+          <summary>Manual JSON</summary>
+          <div className='mimic-v2-library-actions'>
+            <button className='mimic-v2-chip' onClick={exportJsonToPreview}>Show export JSON</button>
+            <button className='mimic-v2-chip' onClick={() => importJsonText(jsonPreview)}>Import text below</button>
+          </div>
+          <textarea value={jsonPreview} onChange={(event) => setJsonPreview(event.target.value)} spellCheck={false} />
+        </details>
+      </div>
+    </div>}
   </div>;
 }
