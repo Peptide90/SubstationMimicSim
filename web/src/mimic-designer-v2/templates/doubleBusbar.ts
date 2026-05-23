@@ -27,8 +27,12 @@ function doubleBusTemplate(id: string, name: string, bayCount: number, includeCo
           symbol(`${id}-coupler-ds2`, 'disconnector', 650, 300, 'BC DS2', 275, 90, { operation: { switchState: 'closed' } })
         ] : []),
         ...(includeSection ? [
+          symbol(`${id}-section-ct-a-left`, 'ct', 360, 110, 'MAIN CT L', 275, 0, { engineering: { ctPolarity: 'P1-left' } }),
           symbol(`${id}-section-cb-a`, 'circuit-breaker', 420, 110, 'MAIN SECTION CB', 275, 0, { operation: { switchState: 'closed' } }),
-          symbol(`${id}-section-cb-b`, 'circuit-breaker', 420, 220, 'RES SECTION CB', 275, 0, { operation: { switchState: 'closed' } })
+          symbol(`${id}-section-ct-a-right`, 'ct', 480, 110, 'MAIN CT R', 275, 0, { engineering: { ctPolarity: 'P1-right' } }),
+          symbol(`${id}-section-ct-b-left`, 'ct', 360, 220, 'RES CT L', 275, 0, { engineering: { ctPolarity: 'P1-left' } }),
+          symbol(`${id}-section-cb-b`, 'circuit-breaker', 420, 220, 'RES SECTION CB', 275, 0, { operation: { switchState: 'closed' } }),
+          symbol(`${id}-section-ct-b-right`, 'ct', 480, 220, 'RES CT R', 275, 0, { engineering: { ctPolarity: 'P1-right' } })
         ] : [])
       ];
       const conductors = [
@@ -50,8 +54,8 @@ function doubleBusTemplate(id: string, name: string, bayCount: number, includeCo
         objects: {
           symbols,
           busbars: [
-            busbar(`${id}-main-bus`, [{ x: 120, y: 110 }, { x: 720, y: 110 }], 275),
-            busbar(`${id}-reserve-bus`, [{ x: 120, y: 220 }, { x: 720, y: 220 }], 275)
+            busbar(`${id}-main-bus`, includeSection ? [{ x: 120, y: 110 }, { x: 340, y: 110 }, { x: 380, y: 110 }, { x: 390, y: 110 }, { x: 450, y: 110 }, { x: 460, y: 110 }, { x: 500, y: 110 }, { x: 720, y: 110 }] : [{ x: 120, y: 110 }, { x: 720, y: 110 }], 275),
+            busbar(`${id}-reserve-bus`, includeSection ? [{ x: 120, y: 220 }, { x: 340, y: 220 }, { x: 380, y: 220 }, { x: 390, y: 220 }, { x: 450, y: 220 }, { x: 460, y: 220 }, { x: 500, y: 220 }, { x: 720, y: 220 }] : [{ x: 120, y: 220 }, { x: 720, y: 220 }], 275)
           ],
           conductors,
           labels: [],

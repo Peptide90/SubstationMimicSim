@@ -105,15 +105,17 @@ export function conductor(id: string, vertices: Point[], voltageLevelKv = 132): 
 
 export function feederChain(prefix: string, y: number, startX: number, labelPrefix: string, voltage = 132, closed = true) {
   const source = symbol(`${prefix}-source`, 'source', startX, y, `${labelPrefix} SRC`, voltage);
-  const ds1 = symbol(`${prefix}-ds1`, 'disconnector', startX + 70, y, `${labelPrefix} DS1`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const cb = symbol(`${prefix}-cb`, 'circuit-breaker', startX + 130, y, `${labelPrefix} CB`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const ct = symbol(`${prefix}-ct`, 'ct', startX + 180, y, `${labelPrefix} CT`, voltage);
-  const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 230, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const load = symbol(`${prefix}-load`, 'load', startX + 300, y, `${labelPrefix} LOAD`, voltage);
-  const earth = symbol(`${prefix}-es`, 'earth-switch', startX + 160, y, `${labelPrefix} ES`, voltage);
+  const es1 = symbol(`${prefix}-es1`, 'earth-switch', startX + 70, y, `${labelPrefix} ES1`, voltage);
+  const ds1 = symbol(`${prefix}-ds1`, 'disconnector', startX + 120, y, `${labelPrefix} DS1`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const cb = symbol(`${prefix}-cb`, 'circuit-breaker', startX + 180, y, `${labelPrefix} CB`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const ct = symbol(`${prefix}-ct`, 'ct', startX + 230, y, `${labelPrefix} CT`, voltage);
+  const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 285, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 340, y, `${labelPrefix} ES2`, voltage);
+  const vt = symbol(`${prefix}-vt`, 'vt', startX + 390, y - 20, `${labelPrefix} VT`, voltage);
+  const load = symbol(`${prefix}-load`, 'load', startX + 470, y, `${labelPrefix} LINE`, voltage);
   return {
-    symbols: [source, ds1, cb, ct, ds2, load, earth],
-    busbars: [busbar(`${prefix}-bus`, [{ x: startX + 40, y }, { x: startX + 100, y }, { x: startX + 160, y }, { x: startX + 200, y }, { x: startX + 260, y }], voltage)]
+    symbols: [source, es1, ds1, cb, ct, ds2, es2, vt, load],
+    busbars: [busbar(`${prefix}-bus`, [{ x: startX + 40, y }, { x: startX + 70, y }, { x: startX + 120, y }, { x: startX + 180, y }, { x: startX + 230, y }, { x: startX + 285, y }, { x: startX + 340, y }, { x: startX + 390, y }, { x: startX + 430, y }], voltage)]
   };
 }
 

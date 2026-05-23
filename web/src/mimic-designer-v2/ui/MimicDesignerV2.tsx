@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, Phase, Point, PowerFlowMetadata, ScenarioEventType, ScenarioObjective } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventType, ScenarioObjective } from '../drawing/model';
 import { SYMBOL_LIBRARY } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels } from '../nomenclature/engine';
@@ -23,8 +23,11 @@ import '../canvas/editor.css';
 
 type Tool = 'select' | 'conductor' | 'busbar' | 'fault' | 'pan';
 type RenderMode = 'symbols' | 'nodes';
-type OverlayMode = 'none' | 'power' | 'topology' | 'thermal';
-type ManagerView = 'inspector' | 'power' | 'protection' | 'scenario';
+type OverlayMode = 'none' | 'power' | 'topology' | 'thermal' | 'protection';
+type ManagerView = 'inspector' | 'scenario';
+type ModalView = 'power' | 'protection' | null;
+type PowerFlowTab = 'inputs' | 'phases' | 'outputs' | 'assumptions';
+type ProtectionTab = 'relays' | 'inputs' | 'functions' | 'outputs' | 'events';
 type SelectionBox = { start: Point; current: Point } | null;
 type DragState = {
   initialDoc: DrawingDocument;
@@ -90,6 +93,12 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   const [showTopologyOverlay, setShowTopologyOverlay] = useState(false);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
   const [managerView, setManagerView] = useState<ManagerView>('inspector');
+  const [modalView, setModalView] = useState<ModalView>(null);
+  const [powerFlowTab, setPowerFlowTab] = useState<PowerFlowTab>('inputs');
+  const [powerFlowTargetId, setPowerFlowTargetId] = useState<string>('');
+  const [balancedPowerFlow, setBalancedPowerFlow] = useState(true);
+  const [protectionTab, setProtectionTab] = useState<ProtectionTab>('relays');
+  const [selectedRelayId, setSelectedRelayId] = useState<string>('');
   const [lastOperationReason, setLastOperationReason] = useState('No operation yet');
   const [faultType, setFaultType] = useState<FaultType>('phase-to-earth');
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -618,6 +627,25 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     const dy = snappedPoint({ x: 0, y: point.y - drag.start.y }).y;
     if (dx === 0 && dy === 0) return;
     drag.moved = true;
+    const draggedTerminalMoves = doc.objects.symbols
+      .filter((symbol) => drag.symbolPositions.has(symbol.id))
+      .flatMap((symbol) => symbol.terminals.map((terminal) => {
+        const originalSymbolPosition = drag.symbolPositions.get(symbol.id)!;
+        const rotated = rotatePoint(terminal.offset, symbol.rotation);
+        return {
+          from: { x: originalSymbolPosition.x + rotated.x, y: originalSymbolPosition.y + rotated.y },
+          to: { x: originalSymbolPosition.x + rotated.x + dx, y: originalSymbolPosition.y + rotated.y + dy }
+        };
+      }));
+    const stretchAttachedVertices = (vertices: Point[]) => vertices.map((vertex) => {
+      const move = draggedTerminalMoves.find((terminal) => pointKey(terminal.from) === pointKey(vertex));
+      return move ? move.to : vertex;
+    });
+    const pathWithConnectionPoints = <T extends ConductorPath | BusbarSegment>(path: T, vertices: Point[]): T => ({
+      ...path,
+      vertices,
+      connectionPoints: vertices.map((position, index) => ({ id: `${path.id}-cp-${index}`, position }))
+    });
     setDoc((prev) => ({
       ...prev,
       objects: {
@@ -628,11 +656,13 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         }),
         conductors: prev.objects.conductors.map((path) => {
           const original = drag.conductorVertices.get(path.id);
-          return original ? { ...path, vertices: original.map((p) => ({ x: p.x + dx, y: p.y + dy })), connectionPoints: original.map((p, i) => ({ id: `${path.id}-cp-${i}`, position: { x: p.x + dx, y: p.y + dy } })) } : path;
+          if (original) return pathWithConnectionPoints(path, original.map((p) => ({ x: p.x + dx, y: p.y + dy })));
+          return pathWithConnectionPoints(path, stretchAttachedVertices(path.vertices));
         }),
         busbars: prev.objects.busbars.map((path) => {
           const original = drag.busbarVertices.get(path.id);
-          return original ? { ...path, vertices: original.map((p) => ({ x: p.x + dx, y: p.y + dy })), connectionPoints: original.map((p, i) => ({ id: `${path.id}-cp-${i}`, position: { x: p.x + dx, y: p.y + dy } })) } : path;
+          if (original) return pathWithConnectionPoints(path, original.map((p) => ({ x: p.x + dx, y: p.y + dy })));
+          return pathWithConnectionPoints(path, stretchAttachedVertices(path.vertices));
         })
       }
     }));
@@ -807,25 +837,6 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     }
   };
 
-  const updatePowerFlow = (patch: PowerFlowMetadata) => {
-    const phasePatch = patch;
-    const applyAll = doc.activeView === 'single-line';
-    if (selectedObject) {
-      updateSelectedSymbol((symbol) => ({ ...symbol, powerFlow: computePowerFlow(mergePhaseValues(symbol.powerFlow, selectedPhase, phasePatch, applyAll)) }));
-      return;
-    }
-    if (selectedPath) {
-      commit({
-        ...doc,
-        objects: {
-          ...doc.objects,
-          conductors: doc.objects.conductors.map((path) => path.id === selectedPath.id ? { ...path, powerFlow: computePowerFlow(mergePhaseValues(path.powerFlow, selectedPhase, phasePatch, applyAll)) } : path),
-          busbars: doc.objects.busbars.map((path) => path.id === selectedPath.id ? { ...path, powerFlow: computePowerFlow(mergePhaseValues(path.powerFlow, selectedPhase, phasePatch, applyAll)) } : path)
-        }
-      });
-    }
-  };
-
   const updateSourcePowerFlow = (symbolId: string, patch: PowerFlowMetadata) => {
     commit({
       ...doc,
@@ -838,6 +849,60 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         )
       }
     });
+  };
+
+  const allPowerFlowObjects = [
+    ...doc.objects.symbols.map((object) => ({ id: object.id, label: object.label?.text ?? object.id, kind: object.type, flow: object.powerFlow })),
+    ...doc.objects.busbars.map((object) => ({ id: object.id, label: object.label?.text ?? object.id, kind: 'busbar', flow: object.powerFlow })),
+    ...doc.objects.conductors.map((object) => ({ id: object.id, label: object.label?.text ?? object.id, kind: 'conductor', flow: object.powerFlow }))
+  ];
+
+  const powerFlowTarget = allPowerFlowObjects.find((object) => object.id === (powerFlowTargetId || selected[0])) ?? allPowerFlowObjects[0];
+  const powerFlowTargetSummary = powerFlowTarget ? simulationState.objectSummaries.get(powerFlowTarget.id) : undefined;
+
+  const openPowerFlowModal = () => {
+    setPowerFlowTargetId(selected[0] ?? '');
+    setPowerFlowTab('inputs');
+    setModalView('power');
+  };
+
+  const openProtectionModal = () => {
+    setSelectedRelayId(doc.relays[0]?.id ?? '');
+    setProtectionTab('relays');
+    setModalView('protection');
+  };
+
+  const updatePowerFlowForObject = (objectId: string, patch: PowerFlowMetadata, phase?: Phase, applyAll = false) => {
+    const update = (flow: PowerFlowMetadata | undefined) => computePowerFlow(mergePhaseValues(flow, phase, patch, applyAll));
+    commit({
+      ...doc,
+      objects: {
+        ...doc.objects,
+        symbols: doc.objects.symbols.map((symbol) => symbol.id === objectId ? { ...symbol, powerFlow: update(symbol.powerFlow) } : symbol),
+        busbars: doc.objects.busbars.map((busbar) => busbar.id === objectId ? { ...busbar, powerFlow: update(busbar.powerFlow) } : busbar),
+        conductors: doc.objects.conductors.map((conductor) => conductor.id === objectId ? { ...conductor, powerFlow: update(conductor.powerFlow) } : conductor)
+      }
+    });
+  };
+
+  const applyAggregateToAllPhases = (objectId: string) => {
+    const target = allPowerFlowObjects.find((object) => object.id === objectId);
+    if (!target?.flow) return;
+    updatePowerFlowForObject(objectId, target.flow, undefined, true);
+  };
+
+  const copyPhaseAToBC = (objectId: string) => {
+    const target = allPowerFlowObjects.find((object) => object.id === objectId);
+    const phaseA = target?.flow?.perPhase?.A;
+    if (!phaseA) return;
+    const next: PowerFlowMetadata = { ...(target.flow ?? {}), perPhase: { ...(target.flow?.perPhase ?? {}), B: { ...phaseA, manualOverride: true }, C: { ...phaseA, manualOverride: true } } };
+    updatePowerFlowForObject(objectId, next);
+  };
+
+  const resetPerPhaseOverrides = (objectId: string) => {
+    const target = allPowerFlowObjects.find((object) => object.id === objectId);
+    if (!target?.flow) return;
+    updatePowerFlowForObject(objectId, { ...target.flow, perPhase: undefined });
   };
 
   const removeRelay = (relayId: string) => commit({ ...doc, relays: doc.relays.filter((relay) => relay.id !== relayId) });
@@ -916,6 +981,72 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     commit({ ...doc, relays: [...doc.relays, relay] });
   };
 
+  const updateRelay = (relayId: string, patcher: (relay: RelaySettings) => RelaySettings) => commit({
+    ...doc,
+    relays: doc.relays.map((relay) => relay.id === relayId ? patcher(relay) : relay)
+  });
+
+  const addRelay = () => {
+    const breakers = doc.objects.symbols.filter((symbol) => symbol.type === 'circuit-breaker');
+    const cts = doc.objects.symbols.filter((symbol) => symbol.type === 'ct');
+    const relay: RelaySettings = {
+      id: `relay-${Date.now()}`,
+      name: `Relay ${doc.relays.length + 1}`,
+      role: 'first-main',
+      zoneId: doc.protectionZones[0]?.id,
+      protectedAssetId: selected[0],
+      type: 'overcurrent',
+      enabled: true,
+      phases: phasesAll,
+      pickupCurrentA: 500,
+      timeDelayMs: 500,
+      directional: false,
+      tripTargetBreakerIds: breakers[0] ? [breakers[0].id] : [],
+      backupTripTargetBreakerIds: breakers[1] ? [breakers[1].id] : [],
+      breakerFailEnabled: true,
+      breakerFailDelayMs: 500,
+      state: 'idle',
+      inputs: cts[0] ? [{ id: `input-${Date.now()}`, sourceType: 'ct', sourceObjectId: cts[0].id, sourceLabel: cts[0].label?.text ?? cts[0].id, phases: phasesAll, quantity: 'current', polarity: 'forward' }] : [],
+      functions: [{ id: `fn-${Date.now()}`, type: 'overcurrent', enabled: true, pickupThreshold: 500, timeDelayMs: 500, instantaneous: false, phases: phasesAll, requiredInputType: 'current', logic: 'any-phase', state: 'inactive' }],
+      outputActions: breakers[0] ? [{ id: `output-${Date.now()}`, targetType: 'circuit-breaker', targetObjectId: breakers[0].id, action: 'trip-open-breaker' }] : [],
+      eventHistory: []
+    };
+    commit({ ...doc, relays: [...doc.relays, relay] });
+    setSelectedRelayId(relay.id);
+  };
+
+  const duplicateRelay = (relayId: string) => {
+    const relay = doc.relays.find((item) => item.id === relayId);
+    if (!relay) return;
+    const id = `relay-${Date.now()}`;
+    commit({ ...doc, relays: [...doc.relays, { ...relay, id, name: `${relay.name} copy`, state: 'idle', pickedUpAt: undefined, trippedAt: undefined, resetAt: undefined }] });
+    setSelectedRelayId(id);
+  };
+
+  const addRelayInput = (relayId: string, sourceType: RelayInputSourceType = 'ct', quantity: RelayMeasuredQuantity = 'current') => updateRelay(relayId, (relay) => ({
+    ...relay,
+    inputs: [
+      ...(relay.inputs ?? []),
+      { id: `input-${Date.now()}`, sourceType, sourceObjectId: selectableProtectionSources.find((source) => source.sourceType === sourceType)?.id, sourceLabel: selectableProtectionSources.find((source) => source.sourceType === sourceType)?.label, phases: phasesAll, quantity, polarity: 'forward' }
+    ]
+  }));
+
+  const addRelayFunction = (relayId: string, type: RelayFunctionType = 'overcurrent') => updateRelay(relayId, (relay) => ({
+    ...relay,
+    functions: [
+      ...(relay.functions ?? []),
+      { id: `fn-${Date.now()}`, type, enabled: true, pickupThreshold: type.includes('earth') ? 50 : type.includes('voltage') ? relay.inputs?.find((input) => input.quantity === 'voltage')?.sourceObjectId ? 132 : 1 : 500, timeDelayMs: type === 'breaker-fail' ? relay.breakerFailDelayMs : 500, instantaneous: false, phases: phasesAll, requiredInputType: type.includes('voltage') ? 'voltage' : type.includes('earth') ? 'earth-residual-current' : type === 'thermal-overload' ? 'temperature' : 'current', logic: type.includes('earth') ? 'residual-earth' : type === 'differential' ? 'differential-between-inputs' : 'any-phase', state: 'inactive' }
+    ]
+  }));
+
+  const addRelayOutput = (relayId: string, targetType: RelayOutputTargetType = 'circuit-breaker', action: RelayOutputActionType = 'trip-open-breaker') => updateRelay(relayId, (relay) => ({
+    ...relay,
+    outputActions: [
+      ...(relay.outputActions ?? []),
+      { id: `output-${Date.now()}`, targetType, targetObjectId: selectableOutputTargets.find((target) => target.targetType === targetType)?.id, action }
+    ]
+  }));
+
   const toggleCtPolarity = () => updateSelectedSymbol((symbol) => ({
     ...symbol,
     engineering: { ...symbol.engineering, ctPolarity: symbol.engineering?.ctPolarity === 'P1-right' ? 'P1-left' : 'P1-right' }
@@ -954,6 +1085,22 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     : selectedObject?.powerFlow ?? selectedPath?.powerFlow;
   const selectedPhases = selectedObject?.phaseApplicability ?? selectedPath?.phaseApplicability;
   const selectedSummary = selected.length === 1 ? simulationState.objectSummaries.get(selected[0]) : undefined;
+  const selectableProtectionSources = [
+    ...doc.objects.symbols.map((symbol) => ({
+      id: symbol.id,
+      label: symbol.label?.text ?? symbol.id,
+      sourceType: symbol.type === 'ct' ? 'ct' as const : symbol.type === 'vt' ? 'vt' as const : symbol.type === 'transformer' ? 'transformer-winding' as const : 'feeder-load-source' as const
+    })),
+    ...doc.objects.busbars.map((busbar) => ({ id: busbar.id, label: busbar.label?.text ?? busbar.id, sourceType: 'busbar' as const })),
+    ...doc.objects.conductors.map((conductor) => ({ id: conductor.id, label: conductor.label?.text ?? conductor.id, sourceType: 'conductor' as const })),
+    ...doc.protectionZones.map((zone) => ({ id: zone.id, label: zone.name, sourceType: 'zone' as const }))
+  ];
+  const selectableOutputTargets = [
+    ...doc.objects.symbols.filter((symbol) => symbol.type === 'circuit-breaker').map((symbol) => ({ id: symbol.id, label: symbol.label?.text ?? symbol.id, targetType: 'circuit-breaker' as const })),
+    ...doc.objects.symbols.filter((symbol) => symbol.type === 'disconnector').map((symbol) => ({ id: symbol.id, label: symbol.label?.text ?? symbol.id, targetType: 'disconnector' as const })),
+    ...doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((symbol) => ({ id: symbol.id, label: symbol.label?.text ?? symbol.id, targetType: 'source' as const }))
+  ];
+  const selectedRelay = doc.relays.find((relay) => relay.id === selectedRelayId) ?? doc.relays[0];
 
   const flowForObjectPhase = (objectId: string, phase?: Phase) => {
     const summary = simulationState.objectSummaries.get(objectId);
@@ -1055,10 +1202,15 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     if (renderMode === 'nodes') return <circle cx={0} cy={0} r={18} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2} />;
     if (symbol.type === 'cable-sealing-end') return <polygon points='-14,-13 18,0 -14,13' fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={2} />;
     if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'ct') return <circle cx={0} cy={0} r={15} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/>;
+    if (symbol.type === 'ct') return <g><line x1={-30} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/><path d='M -8 -14 C 8 -14 8 14 -8 14' fill='none' stroke={selectedStroke} strokeWidth={2}/><path d='M 4 -14 C 20 -14 20 14 4 14' fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>V</text></g>;
     if (symbol.type === 'circuit-breaker') {
       const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
-      return <rect x={-20} y={-12} width={40} height={24} fill={fill} stroke={selectedStroke} strokeWidth={2}/>;
+      return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><line x1={14} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+    }
+    if (symbol.type === 'disconnector') {
+      const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
+      return <g><line x1={-30} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={2.5} fill={selectedStroke}/><circle cx={12} cy={0} r={2.5} fill={selectedStroke}/><line x1={12} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={2}/></g>;
     }
     if (symbol.type === 'earth-switch') return <g><line x1={0} y1={-18} x2={0} y2={18} stroke={selectedStroke} strokeWidth={2}/><line x1={0} y1={18} x2={0} y2={30} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={30} x2={9} y2={30} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={34} x2={6} y2={34} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={38} x2={3} y2={38} stroke={selectedStroke} strokeWidth={2}/></g>;
     return <rect x={-20} y={-14} width={40} height={28} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/>;
@@ -1172,8 +1324,8 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         {tool === 'fault' && <div className='mimic-v2-tool-group'><span>Fault</span><select value={faultType} onChange={(event) => setFaultType(event.target.value as FaultType)}><option value='A-E'>A-E</option><option value='B-E'>B-E</option><option value='C-E'>C-E</option><option value='A-B'>A-B</option><option value='B-C'>B-C</option><option value='C-A'>C-A</option><option value='A-B-C'>A-B-C</option><option value='A-B-C-E'>A-B-C-E</option><option value='open-circuit'>open circuit</option><option value='high-impedance'>high Z</option><option value='hot-joint'>hot joint</option><option value='transient'>transient</option><option value='persistent'>persistent</option></select></div>}
         <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button><button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button></div>
         <div className='mimic-v2-tool-group'><span>Display</span><button className={`mimic-v2-btn ${renderMode==='symbols'?'active':''}`} onClick={() => setRenderMode('symbols')}>Symbols</button><button className={`mimic-v2-btn ${renderMode==='nodes'?'active':''}`} onClick={() => setRenderMode('nodes')}>Nodes</button></div>
-        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button></div>
-        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className={`mimic-v2-btn ${managerView==='power'?'active':''}`} onClick={() => setManagerView('power')}>Power flows</button><button className={`mimic-v2-btn ${managerView==='protection'?'active':''}`} onClick={() => setManagerView('protection')}>Protection</button><button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
+        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button><button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button></div>
+        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button><button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button><button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
         <div className='mimic-v2-tool-group'><span>Debug</span><button className='mimic-v2-btn' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button><button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button></div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
@@ -1204,8 +1356,8 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
             {instance.phase && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize='10' fill='var(--md2-selected)'>3P</text>}
             {renderSymbolGlyph(instance.symbol)}
-            <text x={0} y={4} textAnchor='middle' fontSize='8'>{renderMode === 'nodes' ? instance.symbol.type.slice(0, 4) : instance.symbol.type}</text>
-            <text x={0} y={31} textAnchor='middle' fontSize='8'>{instance.symbol.label?.text ?? ''}</text>
+            {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize='8'>{instance.symbol.type.slice(0, 4)}</text>}
+            <text x={0} y={35} textAnchor='middle' fontSize='8' transform={`rotate(${-instance.symbol.rotation} 0 35)`}>{instance.symbol.label?.text ?? ''}</text>
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
@@ -1219,6 +1371,19 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
             <title>{!hasAllPhases(instance.symbol.phaseApplicability) ? `* phase-specific device: ${instance.symbol.phaseApplicability.join(',')}` : 'all phases'}</title>
           </g>)}
           {doc.faults.filter((fault) => fault.active && fault.location).map((fault) => <g key={fault.id} transform={`translate(${fault.location!.x},${fault.location!.y})`}><path d='M -8 -8 L 8 8 M 8 -8 L -8 8' stroke='var(--md2-warning)' strokeWidth={3}/><text x={10} y={-8} fontSize='8'>{fault.label ?? fault.type}</text></g>)}
+          {overlayMode === 'protection' && doc.relays.flatMap((relay) => {
+            const targets = [
+              ...(relay.inputs ?? []).map((input) => input.sourceObjectId).filter(Boolean) as string[],
+              ...(relay.outputActions ?? []).map((action) => action.targetObjectId).filter(Boolean) as string[],
+              ...(relay.tripTargetBreakerIds ?? [])
+            ];
+            return [...new Set(targets)].map((objectId, index) => {
+              const symbol = doc.objects.symbols.find((item) => item.id === objectId);
+              if (!symbol) return null;
+              const color = relay.state === 'tripped' ? 'var(--md2-warning)' : relay.state === 'picked-up' ? 'var(--md2-selected)' : relay.enabled ? 'var(--md2-live)' : 'var(--md2-muted-text)';
+              return <g key={`${relay.id}-${objectId}-${index}`} transform={`translate(${symbol.position.x + 24},${symbol.position.y - 26 - index * 12})`}><rect x={-18} y={-8} width={36} height={14} rx={3} fill='var(--md2-panel-bg)' stroke={color} strokeWidth={1.5}/><text x={0} y={3} textAnchor='middle' fontSize='7' fill={color}>{relay.name.slice(0, 6)}</text></g>;
+            });
+          })}
           {showTopologyOverlay && topology.branches.map((branch) => { const from = topology.nodes.find((node)=>node.id===branch.fromNodeId); const to = topology.nodes.find((node)=>node.id===branch.toNodeId); if(!from||!to) return null; const symbol = branch.objectId ? doc.objects.symbols.find((item) => item.id === branch.objectId) : undefined; const open = branch.kind === 'device-internal' && isSwitchingDevice(symbol?.type as ElectricalSymbol['type']) && symbol?.operation?.switchState !== 'closed'; return <line key={`dbg-${branch.id}`} x1={from.position.x} y1={from.position.y} x2={to.position.x} y2={to.position.y} stroke={topologyBranchStroke(branch.id)} strokeWidth={branch.kind === 'device-internal' ? 2 : 1} opacity={open ? 0.35 : 0.9} strokeDasharray={open ? '2 5' : branch.kind === 'device-internal' ? '5 3' : '3 3'} />; })}
           {showTopologyOverlay && topology.nodes.map((node) => <g key={`node-${node.id}`}><circle cx={node.position.x} cy={node.position.y} r={4} fill={operateState.faultNodeIds.has(node.id) ? 'var(--md2-warning)' : operateState.earthedNodeIds.has(node.id) ? 'var(--md2-earth)' : operateState.liveNodeIds.has(node.id) ? 'var(--md2-live)' : node.junction ? 'var(--md2-warning)' : 'var(--md2-selected)'} /><text x={node.position.x+6} y={node.position.y-6} fontSize='7'>{node.id}</text></g>)}
           {showTopologyOverlay && topology.terminals.filter((terminal)=>!terminal.connectedNodeIds.length).map((terminal)=> <circle key={`floating-${terminal.id}`} cx={terminal.worldPosition.x} cy={terminal.worldPosition.y} r={5} fill='none' stroke='var(--md2-warning)' strokeWidth={2} />)}
@@ -1234,7 +1399,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       </div>
     </main>
     <aside className='mimic-v2-inspector'>
-      <h3>{managerView === 'power' ? 'Power Flow Manager' : managerView === 'protection' ? 'Protection Manager' : managerView === 'scenario' ? 'Scenario Manager' : 'Inspector'}</h3>
+      <h3>{managerView === 'scenario' ? 'Scenario Manager' : 'Inspector'}</h3>
       <p>{doc.name}{dirty ? ' *' : ''}</p>
       {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
       {draftNotice && <p className='mimic-v2-warning-text'>{draftNotice} <button className='mimic-v2-chip' onClick={recoverDraft}>Recover</button></p>}
@@ -1245,11 +1410,11 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       </div>
       <div className='mimic-v2-voltage-row inspector'>
         <button className={`mimic-v2-chip ${managerView === 'inspector' ? 'active' : ''}`} onClick={() => setManagerView('inspector')}>Inspector</button>
-        <button className={`mimic-v2-chip ${managerView === 'power' ? 'active' : ''}`} onClick={() => setManagerView('power')}>Power flows</button>
-        <button className={`mimic-v2-chip ${managerView === 'protection' ? 'active' : ''}`} onClick={() => setManagerView('protection')}>Protection</button>
+        <button className='mimic-v2-chip' onClick={openPowerFlowModal}>Power flow...</button>
+        <button className='mimic-v2-chip' onClick={openProtectionModal}>Protection...</button>
         <button className={`mimic-v2-chip ${managerView === 'scenario' ? 'active' : ''}`} onClick={() => setManagerView('scenario')}>Scenarios</button>
       </div>
-      {managerView === 'power' && <section className='mimic-v2-manager-panel'>
+      {false && <section className='mimic-v2-manager-panel'>
         <h4>Inputs</h4>
         {doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((source) => {
           const flow = source.powerFlow;
@@ -1271,7 +1436,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         })}
         {!simulationState.objectSummaries.size && <p>No derived flow yet. Add source MW/MVAR and close a path through the topology.</p>}
       </section>}
-      {managerView === 'protection' && <section className='mimic-v2-manager-panel'>
+      {false && <section className='mimic-v2-manager-panel'>
         <div className='mimic-v2-voltage-row inspector'>
           <button className='mimic-v2-chip' onClick={createZoneFromSelection}>Zone from selection</button>
           <button className='mimic-v2-chip' onClick={() => createRelayForFirstZone('overcurrent')}>Add OC relay</button>
@@ -1371,27 +1536,9 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
             ['CA', ['C','A']]
           ].map(([label, phases]) => <button key={label as string} className={`mimic-v2-chip ${(selectedPhases ?? []).join('') === (phases as Phase[]).join('') ? 'active' : ''}`} onClick={() => setSelectedPhases(phases as Phase[])}>{label as string}</button>)}
         </div>
-        {selectedObject?.type === 'source' && <>
-          <h4>Source Power</h4>
-          <label>MW <input type='number' value={selectedPowerFlow?.mw ?? ''} onChange={(event)=>updatePowerFlow({ mw: Number(event.target.value) || undefined })} /></label>
-          <label>MVAR <input type='number' value={selectedPowerFlow?.mvar ?? ''} onChange={(event)=>updatePowerFlow({ mvar: Number(event.target.value) || undefined })} /></label>
-          <label>Voltage kV <input type='number' value={selectedPowerFlow?.voltageKv ?? selectedObject.voltageLevelKv ?? ''} onChange={(event)=>updatePowerFlow({ voltageKv: Number(event.target.value) || undefined })} /></label>
-          <label>Direction <select value={selectedPowerFlow?.direction ?? 'forward'} onChange={(event)=>updatePowerFlow({ direction: event.target.value as PowerFlowMetadata['direction'] })}><option value='forward'>forward</option><option value='reverse'>reverse</option><option value='bidirectional'>bidirectional</option><option value='unknown'>unknown</option></select></label>
-          <p>MVA: {selectedPowerFlow?.mva?.toFixed(2) ?? 'n/a'} PF: {selectedPowerFlow?.powerFactor?.toFixed(3) ?? 'n/a'}</p>
-        </>}
-        {selectedObject && selectedObject.type !== 'source' && <p>Power is entered on source components and derived through closed topology.</p>}
-        {selectedPath && <>
-          <h4>Impedance</h4>
-          <label>R ohm <input type='number' value={selectedPowerFlow?.resistanceOhms ?? ''} onChange={(event)=>updatePowerFlow({ resistanceOhms: Number(event.target.value) || undefined })} /></label>
-          <label>X ohm <input type='number' value={selectedPowerFlow?.reactanceOhms ?? ''} onChange={(event)=>updatePowerFlow({ reactanceOhms: Number(event.target.value) || undefined })} /></label>
-          <label>Z ohm <input type='number' value={selectedPowerFlow?.impedanceOhms ?? ''} onChange={(event)=>updatePowerFlow({ impedanceOhms: Number(event.target.value) || undefined })} /></label>
-        </>}
-        {selectedSummary && <>
-          <h4>Derived</h4>
-          <p>{selectedPhase ? `${selectedPhase}: ` : 'Aggregate: '}MW {flowForObjectPhase(selected[0], selectedPhase)?.mw?.toFixed(1) ?? selectedSummary.aggregate.mw?.toFixed(1) ?? 'n/a'} / A {flowForObjectPhase(selected[0], selectedPhase)?.currentA?.toFixed(0) ?? selectedSummary.aggregate.currentA?.toFixed(0) ?? 'n/a'}</p>
-          <p>Loading {flowForObjectPhase(selected[0], selectedPhase)?.loadingPercent?.toFixed(0) ?? selectedSummary.aggregate.loadingPercent?.toFixed(0) ?? 'n/a'}% / Thermal {flowForObjectPhase(selected[0], selectedPhase)?.thermalState ?? selectedSummary.thermalState}</p>
-          {selectedSummary.imbalance && <p>Phase imbalance detected.</p>}
-        </>}
+        <h4>Power Flow</h4>
+        <p>Input {selectedPowerFlow?.mw ?? 'n/a'}MW / {selectedPowerFlow?.mvar ?? 'n/a'}MVAR. Derived {selectedSummary?.aggregate.mw?.toFixed(1) ?? 'n/a'}MW / {selectedSummary?.aggregate.currentA?.toFixed(0) ?? 'n/a'}A.</p>
+        <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Edit Power Flow...</button>
       </>}
       <h4>Simulation</h4>
       <div className='mimic-v2-voltage-row inspector'>
@@ -1405,13 +1552,10 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       <p>{simulationState.approximationLabel}</p>
       {overlayMode === 'thermal' && <p>Thermal legend: green normal, amber warm, red hot, dark red critical.</p>}
       <h4>Protection</h4>
-      <div className='mimic-v2-voltage-row inspector'>
-        <button className='mimic-v2-chip' onClick={createZoneFromSelection}>Zone from selection</button>
-        <button className='mimic-v2-chip' onClick={() => createRelayForFirstZone('overcurrent')}>Add OC relay</button>
-        <button className='mimic-v2-chip' onClick={() => createRelayForFirstZone('earth-fault')}>Add EF relay</button>
-      </div>
-      {doc.protectionZones.map((zone) => <p key={zone.id}>{zone.name}: {zone.assignedObjectIds.length} objects CT {zone.ctInputIds.join(', ') || 'none'} VT {zone.vtInputIds.join(', ') || 'none'}</p>)}
-      {doc.relays.map((relay) => <p key={relay.id}>{relay.name}: {relay.state} zone {relay.zoneId ?? 'all'} trip {relay.tripTargetBreakerIds.join(', ') || 'none'} backup {relay.backupTripTargetBreakerIds.join(', ') || 'none'} {relay.directional ? 'DIR' : 'non-dir'}</p>)}
+      <p>{doc.relays.length} relays / {doc.protectionZones.length} zones. {doc.relays.filter((relay) => relay.state === 'picked-up' || relay.state === 'tripped').length} active.</p>
+      <button className='mimic-v2-btn' onClick={openProtectionModal}>Edit Protection...</button>
+      <h4>Faults</h4>
+      <button className='mimic-v2-btn' onClick={() => setTool('fault')}>View Faults...</button>
       {doc.scenarios.length > 0 && <>
         <h4>Scenarios</h4>
         {doc.scenarios.map((scenario) => <button key={scenario.id} className='mimic-v2-btn' onClick={() => setDoc((prev) => migrateDrawingDocument(loadScenario(prev, scenario.id))!)}>{scenario.name}</button>)}
@@ -1435,6 +1579,154 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>
+    {modalView === 'power' && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setModalView(null)}>
+      <div className='mimic-v2-workflow-modal' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Power Flow</h2>
+            <p>{powerFlowTarget ? `${powerFlowTarget.label} / ${powerFlowTarget.kind}` : 'Whole drawing network summary'}</p>
+          </div>
+          <button className='mimic-v2-btn' onClick={() => setModalView(null)}>Close</button>
+        </header>
+        <div className='mimic-v2-modal-tabs'>
+          {(['inputs', 'phases', 'outputs', 'assumptions'] as PowerFlowTab[]).map((tab) => <button key={tab} className={`mimic-v2-chip ${powerFlowTab === tab ? 'active' : ''}`} onClick={() => setPowerFlowTab(tab)}>{tab}</button>)}
+        </div>
+        <div className='mimic-v2-form-grid'>
+          <label>Context<select value={powerFlowTarget?.id ?? ''} onChange={(event) => setPowerFlowTargetId(event.target.value)}>{allPowerFlowObjects.map((object) => <option key={object.id} value={object.id}>{object.label} / {object.kind}</option>)}</select></label>
+          <label>Balanced<input type='checkbox' checked={balancedPowerFlow} onChange={(event) => setBalancedPowerFlow(event.target.checked)} /></label>
+        </div>
+        {powerFlowTarget && powerFlowTab === 'inputs' && <section className='mimic-v2-modal-section'>
+          <h3>Inputs</h3>
+          <div className='mimic-v2-form-grid'>
+            <label>Voltage kV<input type='number' value={powerFlowTarget.flow?.voltageKv ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { voltageKv: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>MW<input type='number' value={powerFlowTarget.flow?.mw ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { mw: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>MVAR<input type='number' value={powerFlowTarget.flow?.mvar ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { mvar: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>MVA<input type='number' value={powerFlowTarget.flow?.mva ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { mva: Number(event.target.value) || undefined, manualOverride: true }, undefined, balancedPowerFlow)} /></label>
+            <label>Current A<input type='number' value={powerFlowTarget.flow?.currentA ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { currentA: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>Power factor<input type='number' step='0.01' value={powerFlowTarget.flow?.powerFactor ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { powerFactor: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>R ohm<input type='number' value={powerFlowTarget.flow?.resistanceOhms ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { resistanceOhms: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>X ohm<input type='number' value={powerFlowTarget.flow?.reactanceOhms ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { reactanceOhms: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>Z ohm<input type='number' value={powerFlowTarget.flow?.impedanceOhms ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { impedanceOhms: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>Loading limit %<input type='number' value={powerFlowTarget.flow?.loadingPercent ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { loadingPercent: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
+            <label>Direction<select value={powerFlowTarget.flow?.direction ?? 'unknown'} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { direction: event.target.value as PowerFlowMetadata['direction'] }, undefined, balancedPowerFlow)}><option value='forward'>forward</option><option value='reverse'>reverse</option><option value='bidirectional'>bidirectional</option><option value='unknown'>unknown</option></select></label>
+          </div>
+        </section>}
+        {powerFlowTarget && powerFlowTab === 'phases' && <section className='mimic-v2-modal-section'>
+          <h3>Per-phase Values</h3>
+          <div className='mimic-v2-voltage-row'>
+            <button className='mimic-v2-chip' onClick={() => applyAggregateToAllPhases(powerFlowTarget.id)}>Apply aggregate equally</button>
+            <button className='mimic-v2-chip' onClick={() => copyPhaseAToBC(powerFlowTarget.id)}>Copy phase A to B/C</button>
+            <button className='mimic-v2-chip danger' onClick={() => resetPerPhaseOverrides(powerFlowTarget.id)}>Reset overrides</button>
+          </div>
+          <div className='mimic-v2-phase-grid'>
+            {phasesAll.map((phase) => {
+              const flow = powerFlowTarget.flow?.perPhase?.[phase] ?? {};
+              return <div key={phase} className='mimic-v2-manager-card'>
+                <strong>Phase {phase}</strong>
+                <label>MW<input type='number' value={flow.mw ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { mw: Number(event.target.value) || undefined, manualOverride: true }, phase)} /></label>
+                <label>MVAR<input type='number' value={flow.mvar ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { mvar: Number(event.target.value) || undefined, manualOverride: true }, phase)} /></label>
+                <label>Current A<input type='number' value={flow.currentA ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { currentA: Number(event.target.value) || undefined, manualOverride: true }, phase)} /></label>
+                <label>Voltage kV<input type='number' value={flow.voltageKv ?? ''} onChange={(event) => updatePowerFlowForObject(powerFlowTarget.id, { voltageKv: Number(event.target.value) || undefined, manualOverride: true }, phase)} /></label>
+                <p>{flow.manualOverride ? 'Manual phase override' : 'Calculated from aggregate unless edited'}</p>
+              </div>;
+            })}
+          </div>
+        </section>}
+        {powerFlowTab === 'outputs' && <section className='mimic-v2-modal-section'>
+          <h3>Outputs/results</h3>
+          {powerFlowTargetSummary ? <div className='mimic-v2-library-grid'>
+            {phasesAll.map((phase) => {
+              const flow = powerFlowTargetSummary.phases[phase];
+              return <div key={phase} className='mimic-v2-manager-card'><strong>Phase {phase}</strong><p>MW {flow?.mw?.toFixed(2) ?? 'n/a'} / MVA {flow?.mva?.toFixed(2) ?? 'n/a'} / A {flow?.currentA?.toFixed(0) ?? 'n/a'}</p><p>PF {flow?.powerFactor?.toFixed(3) ?? 'n/a'} / drop {flow?.voltageDropKv?.toFixed(3) ?? 'n/a'}kV / loading {flow?.loadingPercent?.toFixed(0) ?? 'n/a'}%</p><p>{flow?.thermalState ?? 'normal'}</p></div>;
+            })}
+            <div className='mimic-v2-manager-card'><strong>Status</strong><p>{powerFlowTargetSummary.imbalance ? 'Phase imbalance detected' : 'No material imbalance detected'}</p><p>Thermal {powerFlowTargetSummary.thermalState}</p><p>Live {operateState.liveBranchIds.size} / earthed {operateState.earthedBranchIds.size} / faulted {operateState.faultBranchIds.size}</p></div>
+          </div> : <p>No derived flow for this object yet. Check source values and closed topology.</p>}
+        </section>}
+        {powerFlowTab === 'assumptions' && <section className='mimic-v2-modal-section'>
+          <h3>Assumptions/settings</h3>
+          <p>{simulationState.approximationLabel}</p>
+          <p>Single-line editing can apply aggregate values across phases. Three-phase mode keeps phase B edits isolated unless you use the explicit balancing buttons.</p>
+          <p>Source power is shared across reachable loads as a teaching approximation, not an industrial load-flow calculation.</p>
+        </section>}
+      </div>
+    </div>}
+    {modalView === 'protection' && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setModalView(null)}>
+      <div className='mimic-v2-workflow-modal' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Protection Manager</h2>
+            <p>Form-driven relay configuration for the current drawing.</p>
+          </div>
+          <button className='mimic-v2-btn' onClick={() => setModalView(null)}>Close</button>
+        </header>
+        <div className='mimic-v2-modal-tabs'>
+          {(['relays', 'inputs', 'functions', 'outputs', 'events'] as ProtectionTab[]).map((tab) => <button key={tab} className={`mimic-v2-chip ${protectionTab === tab ? 'active' : ''}`} onClick={() => setProtectionTab(tab)}>{tab}</button>)}
+        </div>
+        <div className='mimic-v2-protection-layout'>
+          <section>
+            <div className='mimic-v2-voltage-row'><button className='mimic-v2-chip' onClick={addRelay}>Add relay</button>{selectedRelay && <button className='mimic-v2-chip' onClick={() => duplicateRelay(selectedRelay.id)}>Duplicate</button>}{selectedRelay && <button className='mimic-v2-chip danger' onClick={() => removeRelay(selectedRelay.id)}>Delete</button>}</div>
+            {doc.relays.map((relay) => <button key={relay.id} className={`mimic-v2-relay-row ${selectedRelay?.id === relay.id ? 'active' : ''}`} onClick={() => setSelectedRelayId(relay.id)}><strong>{relay.name}</strong><span>{relay.role ?? 'first-main'} / {relay.state}</span></button>)}
+            {!doc.relays.length && <p>No relays yet.</p>}
+          </section>
+          <section>
+            {selectedRelay ? <>
+              {protectionTab === 'relays' && <div className='mimic-v2-modal-section'>
+                <h3>Relay</h3>
+                <div className='mimic-v2-form-grid'>
+                  <label>Name<input value={selectedRelay.name} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, name: event.target.value }))} /></label>
+                  <label>Enabled<input type='checkbox' checked={selectedRelay.enabled} onChange={() => toggleRelayEnabled(selectedRelay.id)} /></label>
+                  <label>Role<select value={selectedRelay.role ?? 'first-main'} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, role: event.target.value as RelayRole }))}><option value='first-main'>first main</option><option value='second-main'>second main</option><option value='backup'>backup</option><option value='busbar-protection'>busbar protection</option><option value='transformer-protection'>transformer protection</option><option value='feeder-protection'>feeder protection</option><option value='motor-load-protection'>motor/load protection</option></select></label>
+                  <label>Protected zone<select value={selectedRelay.zoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, zoneId: event.target.value || undefined }))}><option value=''>Whole network</option>{doc.protectionZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}</select></label>
+                  <label>Legacy pickup A<input type='number' value={selectedRelay.pickupCurrentA} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, pickupCurrentA: Number(event.target.value) || 0 }))} /></label>
+                  <label>Legacy delay ms<input type='number' value={selectedRelay.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, timeDelayMs: Number(event.target.value) || 0 }))} /></label>
+                  <label>Breaker fail<input type='checkbox' checked={selectedRelay.breakerFailEnabled} onChange={() => updateRelay(selectedRelay.id, (relay) => ({ ...relay, breakerFailEnabled: !relay.breakerFailEnabled }))} /></label>
+                </div>
+              </div>}
+              {protectionTab === 'inputs' && <div className='mimic-v2-modal-section'>
+                <h3>Measuring Inputs</h3>
+                <div className='mimic-v2-voltage-row'><button className='mimic-v2-chip' onClick={() => addRelayInput(selectedRelay.id, 'ct', 'current')}>Add CT input</button><button className='mimic-v2-chip' onClick={() => addRelayInput(selectedRelay.id, 'vt', 'voltage')}>Add VT input</button></div>
+                {(selectedRelay.inputs ?? []).map((input) => <div key={input.id} className='mimic-v2-manager-card'>
+                  <div className='mimic-v2-form-grid'>
+                    <label>Source<select value={input.sourceObjectId ?? input.sourceZoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, sourceObjectId: event.target.value, sourceLabel: selectableProtectionSources.find((source) => source.id === event.target.value)?.label } : item) }))}>{selectableProtectionSources.map((source) => <option key={source.id} value={source.id}>{source.label} / {source.sourceType}</option>)}</select></label>
+                    <label>Quantity<select value={input.quantity} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, quantity: event.target.value as RelayMeasuredQuantity } : item) }))}><option value='current'>current</option><option value='voltage'>voltage</option><option value='power'>power</option><option value='earth-residual-current'>earth/residual current</option><option value='differential-current'>differential current</option><option value='temperature'>temperature</option><option value='frequency'>frequency</option></select></label>
+                    <label>CT ratio<input value={input.ctRatio ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, ctRatio: event.target.value } : item) }))} /></label>
+                    <label>VT ratio<input value={input.vtRatio ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, vtRatio: event.target.value } : item) }))} /></label>
+                  </div>
+                  {!input.sourceObjectId && <p className='mimic-v2-warning-text'>Missing source object.</p>}
+                </div>)}
+              </div>}
+              {protectionTab === 'functions' && <div className='mimic-v2-modal-section'>
+                <h3>Functions</h3>
+                <div className='mimic-v2-voltage-row'><button className='mimic-v2-chip' onClick={() => addRelayFunction(selectedRelay.id, 'overcurrent')}>Overcurrent</button><button className='mimic-v2-chip' onClick={() => addRelayFunction(selectedRelay.id, 'earth-fault')}>Earth fault</button><button className='mimic-v2-chip' onClick={() => addRelayFunction(selectedRelay.id, 'differential')}>Differential</button><button className='mimic-v2-chip' onClick={() => addRelayFunction(selectedRelay.id, 'breaker-fail')}>Breaker fail</button></div>
+                {(selectedRelay.functions ?? []).map((fn) => <div key={fn.id} className='mimic-v2-manager-card'>
+                  <div className='mimic-v2-form-grid'>
+                    <label>Type<select value={fn.type} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, type: event.target.value as RelayFunctionType } : item) }))}><option value='overcurrent'>Overcurrent</option><option value='earth-fault'>Earth fault</option><option value='directional-overcurrent'>Directional OC</option><option value='directional-earth-fault'>Directional EF</option><option value='overvoltage'>Overvoltage</option><option value='undervoltage'>Undervoltage</option><option value='thermal-overload'>Thermal overload</option><option value='differential'>Differential</option><option value='restricted-earth-fault'>Restricted EF</option><option value='breaker-fail'>Breaker fail</option><option value='intertrip'>Intertrip</option><option value='trip-circuit-supervision'>Trip circuit supervision</option></select></label>
+                    <label>Pickup<input type='number' value={fn.pickupThreshold ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, pickupThreshold: Number(event.target.value) || undefined } : item) }))} /></label>
+                    <label>Delay ms<input type='number' value={fn.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, timeDelayMs: Number(event.target.value) || 0 } : item) }))} /></label>
+                    <label>Logic<select value={fn.logic} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, logic: event.target.value as RelayLogicCondition } : item) }))}><option value='any-phase'>any phase</option><option value='all-phases'>all phases</option><option value='selected-phase'>selected phase</option><option value='residual-earth'>residual/earth</option><option value='differential-between-inputs'>differential between inputs</option></select></label>
+                    <label>Instantaneous<input type='checkbox' checked={fn.instantaneous} onChange={() => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, instantaneous: !item.instantaneous } : item) }))} /></label>
+                  </div>
+                  <p>State {fn.state}</p>
+                </div>)}
+              </div>}
+              {protectionTab === 'outputs' && <div className='mimic-v2-modal-section'>
+                <h3>Output Actions</h3>
+                <button className='mimic-v2-chip' onClick={() => addRelayOutput(selectedRelay.id)}>Add breaker trip output</button>
+                {(selectedRelay.outputActions ?? []).map((action) => <div key={action.id} className='mimic-v2-manager-card'>
+                  <div className='mimic-v2-form-grid'>
+                    <label>Target<select value={action.targetObjectId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, outputActions: (relay.outputActions ?? []).map((item) => item.id === action.id ? { ...item, targetObjectId: event.target.value } : item) }))}>{selectableOutputTargets.map((target) => <option key={target.id} value={target.id}>{target.label} / {target.targetType}</option>)}</select></label>
+                    <label>Action<select value={action.action} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, outputActions: (relay.outputActions ?? []).map((item) => item.id === action.id ? { ...item, action: event.target.value as RelayOutputActionType } : item) }))}><option value='trip-open-breaker'>trip/open breaker</option><option value='block-close'>block close</option><option value='alarm'>alarm</option><option value='apply-lockout'>apply lockout</option><option value='clear-auto-reset'>clear/auto-reset</option><option value='trigger-backup-relay'>trigger backup relay</option></select></label>
+                    <label>Delay ms<input type='number' value={action.delayMs ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, outputActions: (relay.outputActions ?? []).map((item) => item.id === action.id ? { ...item, delayMs: Number(event.target.value) || undefined } : item) }))} /></label>
+                  </div>
+                  {selectableOutputTargets.find((target) => target.id === action.targetObjectId)?.targetType === 'disconnector' && <p className='mimic-v2-warning-text'>Disconnector trip/open is intentionally unusual. Check load and interlocking assumptions.</p>}
+                </div>)}
+              </div>}
+              {protectionTab === 'events' && <div className='mimic-v2-modal-section'><h3>Relay Status & Event History</h3><p>{selectedRelay.state}</p>{doc.operationEvents.filter((event) => event.message.toLowerCase().includes(selectedRelay.name.toLowerCase()) || event.message.toLowerCase().includes('relay')).slice(-12).map((event) => <p key={event.id}>{event.timestamp}: {event.message}</p>)}</div>}
+            </> : <p>Select or add a relay.</p>}
+          </section>
+        </div>
+      </div>
+    </div>}
     {libraryOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setLibraryOpen(false)}>
       <div className='mimic-v2-library-modal' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>

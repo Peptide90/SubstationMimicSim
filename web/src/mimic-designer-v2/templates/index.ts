@@ -25,12 +25,19 @@ const transformerTertiaryTemplate: DrawingTemplate = {
       symbols: [
         symbol('txopt-src', 'source', 80, 160, '275kV SRC', 275),
         symbol('txopt-hv-cb', 'circuit-breaker', 190, 160, 'HV CB', 275, 0, { operation: { switchState: 'closed' } }),
+        symbol('txopt-hv-ct', 'ct', 250, 160, 'HV CT', 275),
         symbol('txopt-tx', 'transformer', 310, 160, 'T1', 275, 0, { engineering: { hasTertiary: true, tertiaryVoltageKv: 33, transformerPolarity: 'hv-left' } }),
+        symbol('txopt-lv-ct', 'ct', 390, 160, 'LV CT', 132),
         symbol('txopt-lv-load', 'load', 500, 160, '132kV BUS', 132),
+        symbol('txopt-ter-ct', 'ct', 310, 220, 'TER CT', 33, 90),
         symbol('txopt-ter-load', 'load', 310, 260, '33kV TER', 33, 90)
       ],
       busbars: [busbar('txopt-lv-bus', [{ x: 350, y: 160 }, { x: 460, y: 160 }], 132)],
-      conductors: [conductor('txopt-hv', [{ x: 120, y: 160 }, { x: 160, y: 160 }, { x: 220, y: 160 }, { x: 270, y: 160 }], 275), conductor('txopt-ter', [{ x: 310, y: 194 }, { x: 310, y: 220 }], 33)],
+      conductors: [
+        conductor('txopt-hv', [{ x: 120, y: 160 }, { x: 160, y: 160 }, { x: 220, y: 160 }, { x: 230, y: 160 }, { x: 270, y: 160 }], 275),
+        conductor('txopt-lv', [{ x: 350, y: 160 }, { x: 370, y: 160 }, { x: 410, y: 160 }, { x: 460, y: 160 }], 132),
+        conductor('txopt-ter', [{ x: 310, y: 194 }, { x: 310, y: 200 }, { x: 310, y: 240 }], 33)
+      ],
       labels: [],
       annotations: []
     }

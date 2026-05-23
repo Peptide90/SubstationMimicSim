@@ -95,6 +95,37 @@ describe('phase-resolved simulation foundation', () => {
     expect(simulation.objectSummaries.get('bus-1')).toBeUndefined();
   });
 
+  it('shares source power across multiple reachable loads for the teaching overlay', () => {
+    const base = feederDoc('closed');
+    const doc = migrateDrawingDocument({
+      ...base,
+      objects: {
+        ...base.objects,
+        symbols: [
+          ...base.objects.symbols,
+          symbol({
+            id: 'load-2',
+            type: 'load',
+            position: { x: 300, y: 0 },
+            terminals: [{ id: 'in', name: 'in', offset: { x: -40, y: 0 }, phaseApplicability: phases }]
+          })
+        ],
+        busbars: base.objects.busbars.map((busbar) => ({
+          ...busbar,
+          vertices: [{ x: 100, y: 0 }, { x: 180, y: 0 }, { x: 260, y: 0 }],
+          connectionPoints: [
+            { id: 'bus-1-cp-0', position: { x: 100, y: 0 } },
+            { id: 'bus-1-cp-1', position: { x: 180, y: 0 } },
+            { id: 'bus-1-cp-2', position: { x: 260, y: 0 } }
+          ]
+        }))
+      }
+    })!;
+    const simulation = derive(doc);
+
+    expect(simulation.objectSummaries.get('cb-1')?.phases.A?.mw).toBeCloseTo(5);
+  });
+
   it('stores phase-specific edits without changing the other phases', () => {
     const flow = mergePhaseValues({ mw: 9, mvar: 3 }, 'B', { resistanceOhms: 0.5, mw: 5 }, false);
     expect(flow.perPhase?.B?.resistanceOhms).toBe(0.5);

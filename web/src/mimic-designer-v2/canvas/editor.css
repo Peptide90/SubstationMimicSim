@@ -48,3 +48,19 @@
 .mimic-v2-library-actions { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
 .mimic-v2-json-tools { margin-top:12px; border-top:1px solid var(--md2-border); padding-top:10px; }
 .mimic-v2-json-tools textarea { width:100%; min-height:180px; box-sizing:border-box; margin-top:8px; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:6px; font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:12px; }
+.mimic-v2-workflow-modal { width:min(1180px, calc(100vw - 32px)); height:min(820px, calc(100vh - 32px)); overflow:auto; border:1px solid var(--md2-border); border-radius:8px; background:var(--md2-panel-bg); color:var(--md2-text); box-shadow:0 24px 70px rgba(15,23,42,.34); padding:14px; }
+.mimic-v2-modal-tabs { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--md2-border); }
+.mimic-v2-modal-section { padding:8px 0 14px; }
+.mimic-v2-modal-section h3 { margin:0 0 10px; font-size:15px; }
+.mimic-v2-form-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; align-items:end; }
+.mimic-v2-form-grid label { display:grid; gap:4px; font-size:12px; color:var(--md2-muted-text); }
+.mimic-v2-form-grid input, .mimic-v2-form-grid select, .mimic-v2-manager-card input, .mimic-v2-manager-card select { width:100%; box-sizing:border-box; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:6px; }
+.mimic-v2-form-grid input[type='checkbox'] { width:auto; justify-self:start; }
+.mimic-v2-phase-grid { display:grid; grid-template-columns:repeat(3, minmax(180px, 1fr)); gap:10px; }
+.mimic-v2-protection-layout { display:grid; grid-template-columns:250px 1fr; gap:14px; }
+.mimic-v2-relay-row { width:100%; display:grid; gap:4px; text-align:left; border:1px solid var(--md2-border); border-radius:6px; background:var(--md2-button-bg); color:var(--md2-text); padding:8px; margin-bottom:6px; cursor:pointer; }
+.mimic-v2-relay-row span { color:var(--md2-muted-text); font-size:12px; }
+.mimic-v2-relay-row.active { border-color:var(--md2-selected); box-shadow:inset 3px 0 0 var(--md2-selected); }
+@media (max-width: 820px) {
+  .mimic-v2-phase-grid, .mimic-v2-protection-layout { grid-template-columns:1fr; }
+}

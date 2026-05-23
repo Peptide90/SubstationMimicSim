@@ -73,14 +73,22 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
       objects: {
         symbols: [
           symbol('sbt-src', 'source', 80, 120, '132kV SRC', 132),
-          symbol('sbt-ds', 'disconnector', 220, 190, 'T1 DS', 132, 90, { operation: { switchState: 'closed' } }),
-          symbol('sbt-cb', 'circuit-breaker', 220, 255, 'T1 CB', 132, 90, { operation: { switchState: 'closed' } }),
-          symbol('sbt-ct', 'ct', 220, 310, 'T1 CT', 132, 90),
-          symbol('sbt-tx', 'transformer', 220, 390, 'T1', 132, 90, { engineering: { tertiaryVoltageKv: 11, hasTertiary: true } }),
-          symbol('sbt-lv-load', 'load', 220, 500, '33kV BUS', 33, 90)
+          symbol('sbt-es1', 'earth-switch', 220, 170, 'T1 ES1', 132, 90),
+          symbol('sbt-ds1', 'disconnector', 220, 220, 'T1 DS1', 132, 90, { operation: { switchState: 'closed' } }),
+          symbol('sbt-cb', 'circuit-breaker', 220, 275, 'T1 CB', 132, 90, { operation: { switchState: 'closed' } }),
+          symbol('sbt-hv-ct', 'ct', 220, 330, 'T1 HV CT', 132, 90),
+          symbol('sbt-ds2', 'disconnector', 220, 385, 'T1 DS2', 132, 90, { operation: { switchState: 'closed' } }),
+          symbol('sbt-es2', 'earth-switch', 220, 440, 'T1 ES2', 132, 90),
+          symbol('sbt-tx', 'transformer', 220, 510, 'T1', 132, 90, { engineering: { tertiaryVoltageKv: 11, hasTertiary: true } }),
+          symbol('sbt-lv-ct', 'ct', 220, 590, 'T1 LV CT', 33, 90, { engineering: { ctPolarity: 'P1-left' } }),
+          symbol('sbt-lv-load', 'load', 220, 680, '33kV BUS', 33, 90)
         ],
         busbars: [busbar('sbt-main-bus', [{ x: 120, y: 120 }, { x: 360, y: 120 }], 132)],
-        conductors: [conductor('sbt-incomer', [{ x: 120, y: 120 }, { x: 360, y: 120 }], 132), conductor('sbt-drop', [{ x: 220, y: 120 }, { x: 220, y: 160 }, { x: 220, y: 220 }, { x: 220, y: 285 }, { x: 220, y: 350 }, { x: 220, y: 460 }], 132)],
+        conductors: [
+          conductor('sbt-incomer', [{ x: 120, y: 120 }, { x: 360, y: 120 }], 132),
+          conductor('sbt-hv-drop', [{ x: 220, y: 120 }, { x: 220, y: 170 }, { x: 220, y: 190 }, { x: 220, y: 245 }, { x: 220, y: 305 }, { x: 220, y: 310 }, { x: 220, y: 350 }, { x: 220, y: 355 }, { x: 220, y: 415 }, { x: 220, y: 440 }, { x: 220, y: 470 }], 132),
+          conductor('sbt-lv-side', [{ x: 220, y: 550 }, { x: 220, y: 570 }, { x: 220, y: 610 }, { x: 220, y: 640 }], 33)
+        ],
         labels: [],
         annotations: []
       }

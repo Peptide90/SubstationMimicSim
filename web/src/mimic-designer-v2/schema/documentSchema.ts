@@ -1,6 +1,6 @@
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultMetadata, HotJointMetadata, Phase, PowerFlowMetadata, ProtectionElement, ProtectionZone, RelaySettings, ScenarioDefinition } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultMetadata, HotJointMetadata, Phase, PowerFlowMetadata, ProtectionElement, ProtectionZone, RelayFunction, RelayInput, RelayOutputAction, RelaySettings, ScenarioDefinition } from '../drawing/model';
 
-export const MIMIC_DESIGNER_V2_SCHEMA_VERSION = 6;
+export const MIMIC_DESIGNER_V2_SCHEMA_VERSION = 7;
 
 const phasesAll = ['A', 'B', 'C'] as Phase[];
 const switchingTypes = new Set<ElectricalSymbol['type']>(['circuit-breaker', 'disconnector', 'earth-switch']);
@@ -170,12 +170,16 @@ function migrateZone(zone: ProtectionZone): ProtectionZone {
 }
 
 function migrateRelay(relay: RelaySettings): RelaySettings {
+  const phases = relay.phases?.length ? relay.phases : phasesAll;
+  const functions = (relay.functions?.length ? relay.functions : legacyFunctionsForRelay(relay, phases)).map(migrateRelayFunction);
+  const outputActions = (relay.outputActions?.length ? relay.outputActions : legacyOutputsForRelay(relay)).map(migrateRelayOutput);
   return {
     ...relay,
     name: relay.name ?? relay.id,
+    role: relay.role ?? (relay.type === 'earth-fault' ? 'backup' : 'first-main'),
     type: relay.type ?? 'overcurrent',
     enabled: relay.enabled ?? true,
-    phases: relay.phases?.length ? relay.phases : phasesAll,
+    phases,
     pickupCurrentA: relay.pickupCurrentA ?? 500,
     timeDelayMs: relay.timeDelayMs ?? 500,
     directional: relay.directional ?? false,
@@ -183,8 +187,81 @@ function migrateRelay(relay: RelaySettings): RelaySettings {
     backupTripTargetBreakerIds: relay.backupTripTargetBreakerIds ?? [],
     breakerFailEnabled: relay.breakerFailEnabled ?? false,
     breakerFailDelayMs: relay.breakerFailDelayMs ?? 500,
-    state: relay.state ?? 'idle'
+    state: relay.enabled === false ? 'disabled' : relay.state ?? 'idle',
+    inputs: (relay.inputs ?? []).map(migrateRelayInput),
+    functions,
+    outputActions,
+    eventHistory: relay.eventHistory ?? []
   };
+}
+
+function migrateRelayInput(input: RelayInput): RelayInput {
+  return {
+    ...input,
+    id: input.id ?? `input-${Date.now()}`,
+    sourceType: input.sourceType ?? 'ct',
+    phases: input.phases?.length ? input.phases : phasesAll,
+    quantity: input.quantity ?? 'current',
+    polarity: input.polarity ?? 'none'
+  };
+}
+
+function migrateRelayFunction(fn: RelayFunction): RelayFunction {
+  return {
+    ...fn,
+    id: fn.id ?? `fn-${Date.now()}`,
+    type: fn.type ?? 'overcurrent',
+    enabled: fn.enabled ?? true,
+    timeDelayMs: fn.timeDelayMs ?? 500,
+    instantaneous: fn.instantaneous ?? false,
+    phases: fn.phases?.length ? fn.phases : phasesAll,
+    logic: fn.logic ?? (fn.type === 'earth-fault' ? 'residual-earth' : 'any-phase'),
+    state: fn.state ?? 'inactive'
+  };
+}
+
+function migrateRelayOutput(output: RelayOutputAction): RelayOutputAction {
+  return {
+    ...output,
+    id: output.id ?? `output-${Date.now()}`,
+    targetType: output.targetType ?? 'circuit-breaker',
+    action: output.action ?? 'trip-open-breaker'
+  };
+}
+
+function legacyFunctionsForRelay(relay: RelaySettings, phases: Phase[]): RelayFunction[] {
+  return [{
+    id: `${relay.id}-fn-${relay.type ?? 'overcurrent'}`,
+    type: relay.type ?? 'overcurrent',
+    enabled: relay.enabled ?? true,
+    pickupThreshold: relay.type === 'earth-fault' ? relay.earthFaultPickupA ?? relay.pickupCurrentA ?? 50 : relay.pickupCurrentA ?? 500,
+    timeDelayMs: relay.timeDelayMs ?? 500,
+    instantaneous: false,
+    phases,
+    requiredInputType: relay.type === 'earth-fault' ? 'earth-residual-current' : 'current',
+    logic: relay.type === 'earth-fault' ? 'residual-earth' : 'any-phase',
+    state: relay.state === 'picked-up' ? 'picked-up' : relay.state === 'tripped' ? 'tripped' : 'inactive',
+    pickedUpAt: relay.pickedUpAt,
+    trippedAt: relay.trippedAt
+  }];
+}
+
+function legacyOutputsForRelay(relay: RelaySettings): RelayOutputAction[] {
+  return [
+    ...(relay.tripTargetBreakerIds ?? []).map((targetObjectId) => ({
+      id: `${relay.id}-trip-${targetObjectId}`,
+      targetType: 'circuit-breaker' as const,
+      targetObjectId,
+      action: 'trip-open-breaker' as const
+    })),
+    ...(relay.backupTripTargetBreakerIds ?? []).map((targetObjectId) => ({
+      id: `${relay.id}-backup-${targetObjectId}`,
+      targetType: 'circuit-breaker' as const,
+      targetObjectId,
+      action: 'trip-open-breaker' as const,
+      delayMs: relay.breakerFailDelayMs
+    }))
+  ];
 }
 
 function migrateScenario(scenario: ScenarioDefinition): ScenarioDefinition {

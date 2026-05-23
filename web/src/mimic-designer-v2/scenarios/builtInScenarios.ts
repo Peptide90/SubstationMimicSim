@@ -30,7 +30,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     tags: ['earthing', 'interlock'],
     objectives: [
       { id: 'open-cb', text: 'Open the circuit breaker', type: 'operate-switchgear', targetObjectId: 'radial-cb', targetState: 'open' },
-      { id: 'no-live-earth', text: 'Maintain no live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es', hint: 'Do not close the earth switch onto a live busbar.' }
+      { id: 'no-live-earth', text: 'Maintain no live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es2', hint: 'Do not close the earth switch onto a live busbar.' }
     ],
     successRules: { requireNoLiveEarthConflict: true }
   }),

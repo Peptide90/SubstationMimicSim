@@ -1,4 +1,4 @@
-import type { DrawingDocument, ElectricalSymbol, FaultMetadata, RelaySettings } from '../drawing/model';
+import type { DrawingDocument, ElectricalSymbol, FaultMetadata, RelayFunction, RelayOutputAction, RelaySettings } from '../drawing/model';
 import type { SimulationDerivedState } from './powerFlow';
 
 const earthFaultTypes = new Set(['phase-to-earth', 'A-E', 'B-E', 'C-E', 'A-B-C-E', 'persistent', 'transient', 'high-impedance']);
@@ -19,21 +19,18 @@ export interface RelayStepResult {
 
 export function deriveRelayRuntime(doc: DrawingDocument, simulation: SimulationDerivedState, now = Date.now()): Map<string, RelayRuntimeState> {
   return new Map(doc.relays.map((relay) => {
-    const fault = faultInRelayZone(doc, relay);
-    const maxCurrent = maxZoneCurrent(doc, simulation, relay);
-    const overcurrentPickup = relay.type === 'overcurrent' && maxCurrent >= relay.pickupCurrentA;
-    const earthPickup = relay.type === 'earth-fault' && Boolean(fault && earthFaultTypes.has(fault.type));
-    const pickedUp = relay.enabled && (overcurrentPickup || earthPickup);
-    const pickedUpAt = relay.pickedUpAt ? Date.parse(relay.pickedUpAt) : now;
-    const tripped = pickedUp && now - pickedUpAt >= relay.timeDelayMs;
+    const functionStates = relayFunctions(relay).map((fn) => evaluateRelayFunction(doc, simulation, relay, fn, now));
+    const pickedUp = relay.enabled && functionStates.some((state) => state.pickedUp);
+    const tripped = relay.enabled && functionStates.some((state) => state.tripped);
     const breakerFailActive = tripped && relay.breakerFailEnabled && primaryTripFailed(doc, relay);
+    const reason = functionStates.find((state) => state.pickedUp)?.reason;
     return [relay.id, {
       relayId: relay.id,
-      state: tripped ? 'tripped' : pickedUp ? 'picked-up' : 'idle',
+      state: relay.enabled ? tripped ? 'tripped' : pickedUp ? 'picked-up' : 'idle' : 'disabled',
       pickedUp,
       tripped,
       breakerFailActive,
-      reason: pickedUp ? `${relay.name} ${relay.type} pickup` : undefined
+      reason
     }];
   }));
 }
@@ -48,22 +45,29 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
   const relays = doc.relays.map((relay) => {
     const state = runtime.get(relay.id);
     if (!state || !relay.enabled || !state.pickedUp) {
-      return relay.state === 'idle' && !relay.pickedUpAt ? relay : { ...relay, state: 'idle' as const, pickedUpAt: undefined, trippedAt: undefined, resetAt: timestamp };
+      const resetFunctions = relayFunctions(relay).map((fn) => fn.state === 'inactive' ? fn : { ...fn, state: 'reset' as const });
+      return relay.state === 'idle' && !relay.pickedUpAt ? { ...relay, functions: resetFunctions } : { ...relay, state: relay.enabled ? 'idle' as const : 'disabled' as const, pickedUpAt: undefined, trippedAt: undefined, resetAt: timestamp, functions: resetFunctions };
     }
     const pickedUpAt = relay.pickedUpAt ?? timestamp;
-    if (!state.tripped) return { ...relay, state: 'picked-up' as const, pickedUpAt };
-
-    relay.tripTargetBreakerIds.forEach((breakerId) => {
-      if (breakerWillFail(doc, breakerId)) failedBreakers.add(breakerId);
-      else openedBreakers.add(breakerId);
+    const functions = relayFunctions(relay).map((fn) => {
+      const fnRuntime = evaluateRelayFunction(doc, simulation, relay, fn, now, Date.parse(pickedUpAt));
+      return {
+        ...fn,
+        state: fnRuntime.tripped ? 'tripped' as const : fnRuntime.pickedUp ? 'timing' as const : 'inactive' as const,
+        pickedUpAt: fnRuntime.pickedUp ? fn.pickedUpAt ?? pickedUpAt : undefined,
+        trippedAt: fnRuntime.tripped ? fn.trippedAt ?? timestamp : undefined
+      };
     });
+    if (!state.tripped) return { ...relay, state: 'picked-up' as const, pickedUpAt, functions };
+
+    relayOutputs(relay).forEach((action) => applyRelayOutput(doc, action, openedBreakers, failedBreakers));
 
     const pickupAge = now - Date.parse(pickedUpAt);
     if (relay.breakerFailEnabled && pickupAge >= relay.timeDelayMs + relay.breakerFailDelayMs) {
       relay.backupTripTargetBreakerIds.forEach((breakerId) => backupBreakers.add(breakerId));
     }
 
-    return { ...relay, state: 'tripped' as const, pickedUpAt, trippedAt: relay.trippedAt ?? timestamp };
+    return { ...relay, state: 'tripped' as const, pickedUpAt, trippedAt: relay.trippedAt ?? timestamp, functions };
   });
 
   const allOpened = new Set([...openedBreakers, ...backupBreakers]);
@@ -97,6 +101,63 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
     },
     runtime
   };
+}
+
+function relayFunctions(relay: RelaySettings): RelayFunction[] {
+  return relay.functions?.length ? relay.functions : [{
+    id: `${relay.id}-fn-${relay.type}`,
+    type: relay.type,
+    enabled: relay.enabled,
+    pickupThreshold: relay.type === 'earth-fault' ? relay.earthFaultPickupA ?? relay.pickupCurrentA : relay.pickupCurrentA,
+    timeDelayMs: relay.timeDelayMs,
+    instantaneous: false,
+    phases: relay.phases,
+    requiredInputType: relay.type === 'earth-fault' ? 'earth-residual-current' : 'current',
+    logic: relay.type === 'earth-fault' ? 'residual-earth' : 'any-phase',
+    state: relay.state === 'picked-up' ? 'picked-up' : relay.state === 'tripped' ? 'tripped' : 'inactive',
+    pickedUpAt: relay.pickedUpAt,
+    trippedAt: relay.trippedAt
+  }];
+}
+
+function relayOutputs(relay: RelaySettings): RelayOutputAction[] {
+  return relay.outputActions?.length ? relay.outputActions : relay.tripTargetBreakerIds.map((targetObjectId) => ({
+    id: `${relay.id}-trip-${targetObjectId}`,
+    targetType: 'circuit-breaker',
+    targetObjectId,
+    action: 'trip-open-breaker'
+  }));
+}
+
+function evaluateRelayFunction(doc: DrawingDocument, simulation: SimulationDerivedState, relay: RelaySettings, fn: RelayFunction, now: number, fallbackPickedUpAt?: number) {
+  if (!relay.enabled || !fn.enabled) return { pickedUp: false, tripped: false };
+  const fault = faultInRelayZone(doc, relay);
+  const maxCurrent = maxZoneCurrent(doc, simulation, relay, fn);
+  const maxVoltage = maxZoneVoltage(doc, simulation, relay, fn);
+  const thermalActive = fn.type === 'thermal-overload' && maxZoneThermalState(doc, simulation, relay, fn);
+  const earthPickup = ['earth-fault', 'directional-earth-fault', 'restricted-earth-fault'].includes(fn.type) && Boolean(fault && earthFaultTypes.has(fault.type));
+  const overcurrentPickup = ['overcurrent', 'directional-overcurrent'].includes(fn.type) && maxCurrent >= (fn.pickupThreshold ?? relay.pickupCurrentA);
+  const overvoltagePickup = fn.type === 'overvoltage' && maxVoltage >= (fn.pickupThreshold ?? 0);
+  const undervoltagePickup = fn.type === 'undervoltage' && maxVoltage > 0 && maxVoltage <= (fn.pickupThreshold ?? 0);
+  const differentialPickup = fn.type === 'differential' && Boolean(fault);
+  const breakerFailPickup = fn.type === 'breaker-fail' && primaryTripFailed(doc, relay);
+  const pickedUp = overcurrentPickup || earthPickup || overvoltagePickup || undervoltagePickup || thermalActive || differentialPickup || breakerFailPickup;
+  const pickedUpAt = fn.pickedUpAt ? Date.parse(fn.pickedUpAt) : fallbackPickedUpAt ?? now;
+  const tripped = pickedUp && (fn.instantaneous || now - pickedUpAt >= fn.timeDelayMs);
+  return {
+    pickedUp,
+    tripped,
+    reason: pickedUp ? `${relay.name} ${fn.type} pickup` : undefined
+  };
+}
+
+function applyRelayOutput(doc: DrawingDocument, action: RelayOutputAction, openedBreakers: Set<string>, failedBreakers: Set<string>) {
+  if (!action.targetObjectId || !['trip-open-breaker', 'apply-lockout'].includes(action.action)) return;
+  const target = doc.objects.symbols.find((symbol) => symbol.id === action.targetObjectId);
+  if (!target) return;
+  if (target.type !== 'circuit-breaker' && action.targetType !== 'source') return;
+  if (breakerWillFail(doc, action.targetObjectId)) failedBreakers.add(action.targetObjectId);
+  else openedBreakers.add(action.targetObjectId);
 }
 
 export function loadScenario(doc: DrawingDocument, scenarioId: string, now = Date.now()): DrawingDocument {
@@ -137,16 +198,40 @@ function faultInRelayZone(doc: DrawingDocument, relay: RelaySettings): FaultMeta
   });
 }
 
-function maxZoneCurrent(doc: DrawingDocument, simulation: SimulationDerivedState, relay: RelaySettings): number {
+function maxZoneCurrent(doc: DrawingDocument, simulation: SimulationDerivedState, relay: RelaySettings, fn?: RelayFunction): number {
   const zone = relay.zoneId ? doc.protectionZones.find((item) => item.id === relay.zoneId) : undefined;
-  const objectIds = zone?.assignedObjectIds ?? [...simulation.objectSummaries.keys()];
+  const inputObjectIds = relay.inputs?.filter((input) => ['current', 'earth-residual-current', 'differential-current'].includes(input.quantity) && input.sourceObjectId).map((input) => input.sourceObjectId!) ?? [];
+  const objectIds = inputObjectIds.length ? inputObjectIds : zone?.assignedObjectIds ?? [...simulation.objectSummaries.keys()];
   return Math.max(
     ...objectIds.flatMap((objectId) => {
       const summary = simulation.objectSummaries.get(objectId);
-      return relay.phases.map((phase) => summary?.phases[phase]?.currentA ?? 0);
+      return (fn?.phases?.length ? fn.phases : relay.phases).map((phase) => summary?.phases[phase]?.currentA ?? 0);
     }),
     0
   );
+}
+
+function maxZoneVoltage(doc: DrawingDocument, simulation: SimulationDerivedState, relay: RelaySettings, fn: RelayFunction): number {
+  const zone = relay.zoneId ? doc.protectionZones.find((item) => item.id === relay.zoneId) : undefined;
+  const inputObjectIds = relay.inputs?.filter((input) => input.quantity === 'voltage' && input.sourceObjectId).map((input) => input.sourceObjectId!) ?? [];
+  const objectIds = inputObjectIds.length ? inputObjectIds : zone?.assignedObjectIds ?? [...simulation.objectSummaries.keys()];
+  return Math.max(
+    ...objectIds.flatMap((objectId) => {
+      const summary = simulation.objectSummaries.get(objectId);
+      return fn.phases.map((phase) => summary?.phases[phase]?.voltageKv ?? 0);
+    }),
+    0
+  );
+}
+
+function maxZoneThermalState(doc: DrawingDocument, simulation: SimulationDerivedState, relay: RelaySettings, fn: RelayFunction): boolean {
+  const zone = relay.zoneId ? doc.protectionZones.find((item) => item.id === relay.zoneId) : undefined;
+  const inputObjectIds = relay.inputs?.filter((input) => input.quantity === 'temperature' && input.sourceObjectId).map((input) => input.sourceObjectId!) ?? [];
+  const objectIds = inputObjectIds.length ? inputObjectIds : zone?.assignedObjectIds ?? [...simulation.objectSummaries.keys()];
+  return objectIds.some((objectId) => {
+    const summary = simulation.objectSummaries.get(objectId);
+    return summary && ['hot', 'critical'].includes(summary.thermalState) && fn.phases.some((phase) => summary.phases[phase]);
+  });
 }
 
 function primaryTripFailed(doc: DrawingDocument, relay: RelaySettings): boolean {

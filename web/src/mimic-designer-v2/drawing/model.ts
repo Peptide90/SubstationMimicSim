@@ -61,8 +61,28 @@ export type FaultType =
 
 export type ThermalState = 'normal' | 'warm' | 'hot' | 'critical';
 export type ProtectionElementType = 'overcurrent' | 'earth-fault' | 'thermal-overload' | 'breaker-fail' | 'differential';
-export type ProtectionRuntimeState = 'idle' | 'picked-up' | 'tripped';
+export type ProtectionRuntimeState = 'idle' | 'picked-up' | 'tripped' | 'blocked' | 'disabled' | 'failed';
 export type RelayLogicType = 'overcurrent' | 'earth-fault';
+export type RelayRole = 'first-main' | 'second-main' | 'backup' | 'busbar-protection' | 'transformer-protection' | 'feeder-protection' | 'motor-load-protection';
+export type RelayInputSourceType = 'ct' | 'vt' | 'transformer-winding' | 'busbar' | 'conductor' | 'feeder-load-source' | 'topology-node' | 'zone';
+export type RelayMeasuredQuantity = 'current' | 'voltage' | 'power' | 'earth-residual-current' | 'differential-current' | 'temperature' | 'frequency';
+export type RelayFunctionType =
+  | 'overcurrent'
+  | 'earth-fault'
+  | 'directional-overcurrent'
+  | 'directional-earth-fault'
+  | 'overvoltage'
+  | 'undervoltage'
+  | 'thermal-overload'
+  | 'differential'
+  | 'restricted-earth-fault'
+  | 'breaker-fail'
+  | 'intertrip'
+  | 'trip-circuit-supervision';
+export type RelayFunctionState = 'inactive' | 'picked-up' | 'timing' | 'tripped' | 'reset';
+export type RelayLogicCondition = 'any-phase' | 'all-phases' | 'selected-phase' | 'residual-earth' | 'differential-between-inputs';
+export type RelayOutputTargetType = 'circuit-breaker' | 'disconnector' | 'source' | 'alarm' | 'lockout' | 'intertrip-target' | 'event-log';
+export type RelayOutputActionType = 'trip-open-breaker' | 'block-close' | 'alarm' | 'apply-lockout' | 'clear-auto-reset' | 'trigger-backup-relay';
 
 export interface PhaseElectricalValues {
   mw?: number;
@@ -167,10 +187,59 @@ export interface ProtectionZone {
   visible: boolean;
 }
 
+export interface RelayInput {
+  id: string;
+  sourceType: RelayInputSourceType;
+  sourceObjectId?: string;
+  sourceTopologyNodeId?: string;
+  sourceZoneId?: string;
+  sourceLabel?: string;
+  phases: Phase[];
+  quantity: RelayMeasuredQuantity;
+  polarity?: 'forward' | 'reverse' | 'none';
+  ctRatio?: string;
+  vtRatio?: string;
+}
+
+export interface RelayFunction {
+  id: string;
+  type: RelayFunctionType;
+  enabled: boolean;
+  pickupThreshold?: number;
+  resetThreshold?: number;
+  timeDelayMs: number;
+  instantaneous: boolean;
+  phases: Phase[];
+  requiredInputType?: RelayMeasuredQuantity;
+  logic: RelayLogicCondition;
+  state: RelayFunctionState;
+  pickedUpAt?: string;
+  trippedAt?: string;
+}
+
+export interface RelayOutputAction {
+  id: string;
+  targetType: RelayOutputTargetType;
+  targetObjectId?: string;
+  action: RelayOutputActionType;
+  delayMs?: number;
+  warning?: string;
+}
+
+export interface RelayEvent {
+  id: string;
+  timestamp: string;
+  message: string;
+  functionId?: string;
+  targetObjectId?: string;
+}
+
 export interface RelaySettings {
   id: string;
   name: string;
   zoneId?: string;
+  role?: RelayRole;
+  protectedAssetId?: string;
   type: RelayLogicType;
   enabled: boolean;
   phases: Phase[];
@@ -186,6 +255,10 @@ export interface RelaySettings {
   pickedUpAt?: string;
   trippedAt?: string;
   resetAt?: string;
+  inputs?: RelayInput[];
+  functions?: RelayFunction[];
+  outputActions?: RelayOutputAction[];
+  eventHistory?: RelayEvent[];
 }
 
 export interface ScenarioObjective {

@@ -60,6 +60,7 @@ export function deriveSimulationState(doc: DrawingDocument, graph: TopologyGraph
   sourceSymbols.forEach((source) => {
     const sourceRoots = rootsForSymbol(graph, source.id);
     const reached = traceFromRoots(graph, symbolById, sourceRoots);
+    const loadShare = loadShareForReach(source.id, doc, graph, reached.nodes);
     graph.branches
       .filter((branch) => reached.branches.has(branch.id) && operation.liveBranchIds.has(branch.id))
       .forEach((branch) => {
@@ -67,7 +68,7 @@ export function deriveSimulationState(doc: DrawingDocument, graph: TopologyGraph
         branch.phases
           .filter((phase) => phaseOrder.includes(phase))
           .forEach((phase) => {
-            state.phases[phase] = calculatePhaseFlow(source, branch, phase, doc, elapsedMs);
+            state.phases[phase] = calculatePhaseFlow(source, branch, phase, doc, elapsedMs, loadShare);
           });
         branchFlows.set(branch.id, state);
       });
@@ -159,8 +160,8 @@ export function computePhaseMath(flow: PowerFlowMetadata): PowerFlowMetadata {
   };
 }
 
-function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, phase: Phase, doc: DrawingDocument, elapsedMs: number): DerivedPhaseFlow {
-  const sourceValue = valueForPhase(source.powerFlow, phase, source.voltageLevelKv);
+function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, phase: Phase, doc: DrawingDocument, elapsedMs: number, loadShare = 1): DerivedPhaseFlow {
+  const sourceValue = scalePhaseValue(valueForPhase(source.powerFlow, phase, source.voltageLevelKv), loadShare);
   const branchObject = findObjectPowerFlow(doc, branch.objectId);
   const impedance = impedanceForPhase(branchObject, phase) + hotJointResistance(doc.hotJoints, branch, phase);
   const voltageKv = sourceValue.voltageKv ?? source.voltageLevelKv ?? defaultVoltageKv;
@@ -183,6 +184,29 @@ function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, 
     direction: source.powerFlow?.direction ?? 'forward',
     sourceId: source.id,
     teachingApproximation: true
+  };
+}
+
+function loadShareForReach(sourceId: string, doc: DrawingDocument, graph: TopologyGraph, liveNodeIds: Set<string>): number {
+  const reachableLoads = doc.objects.symbols.filter((symbol) => {
+    if (symbol.id === sourceId || symbol.type !== 'load') return false;
+    const terminalIds = graph.devices.find((device) => device.symbolId === symbol.id)?.terminalIds ?? [];
+    return terminalIds.some((terminalId) => {
+      const terminal = graph.terminals.find((item) => item.id === terminalId);
+      return terminal ? terminal.connectedNodeIds.some((nodeId) => liveNodeIds.has(nodeId)) : false;
+    });
+  });
+  return reachableLoads.length > 1 ? 1 / reachableLoads.length : 1;
+}
+
+function scalePhaseValue(value: PhaseElectricalValues, factor: number): PhaseElectricalValues {
+  if (factor === 1) return value;
+  return {
+    ...value,
+    mw: value.mw !== undefined ? value.mw * factor : value.mw,
+    mvar: value.mvar !== undefined ? value.mvar * factor : value.mvar,
+    mva: value.mva !== undefined ? value.mva * factor : value.mva,
+    currentA: value.currentA !== undefined ? value.currentA * factor : value.currentA
   };
 }
 

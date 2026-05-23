@@ -79,11 +79,11 @@ describe('Mimic Designer V2 scenario packaging', () => {
       ...doc,
       objects: {
         ...doc.objects,
-        symbols: doc.objects.symbols.map((symbol) => symbol.id === 'radial-es' ? { ...symbol, operation: { ...symbol.operation, switchState: 'closed' as const } } : symbol)
+        symbols: doc.objects.symbols.map((symbol) => symbol.id === 'radial-es2' ? { ...symbol, operation: { ...symbol.operation, switchState: 'closed' as const } } : symbol)
       }
     };
     const pkg = createScenarioFromDrawing(conflictDoc, {
-      objectives: [{ id: 'obj-no-conflict', text: 'No live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es' }],
+      objectives: [{ id: 'obj-no-conflict', text: 'No live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es2' }],
       failureRules: { requireNoLiveEarthConflict: true }
     });
     const result = evaluateScenario(conflictDoc, pkg.scenario);
