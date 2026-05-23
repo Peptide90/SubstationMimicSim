@@ -1,0 +1,10 @@
+.mimic-v2-root { display:flex; height:100vh; background:var(--md2-background); color:var(--md2-text); font-family:Inter,Arial,sans-serif; }
+.mimic-v2-sidebar, .mimic-v2-inspector { width:260px; background:var(--md2-panel-bg); border:1px solid var(--md2-border); padding:10px; overflow:auto; }
+.mimic-v2-main { flex:1; display:flex; flex-direction:column; }
+.mimic-v2-toolbar { display:flex; gap:6px; padding:8px; background:var(--md2-panel-bg); border-bottom:1px solid var(--md2-border); flex-wrap:wrap; }
+.mimic-v2-canvas-wrap { flex:1; position:relative; overflow:hidden; }
+.mimic-v2-canvas { width:100%; height:100%; display:block; cursor:crosshair; background:var(--md2-canvas-bg); }
+.mimic-v2-btn { border:1px solid var(--md2-border); background:#fff; padding:6px 8px; cursor:pointer; }
+[data-theme='dark'] .mimic-v2-btn { background:#1f2937; color:var(--md2-text); }
+.mimic-v2-btn.active { outline:2px solid var(--md2-selected); }
+.mimic-v2-item { border:1px solid var(--md2-border); margin:4px 0; padding:6px; }
