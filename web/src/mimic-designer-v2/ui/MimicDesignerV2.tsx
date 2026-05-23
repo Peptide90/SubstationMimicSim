@@ -1101,6 +1101,21 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     ...doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((symbol) => ({ id: symbol.id, label: symbol.label?.text ?? symbol.id, targetType: 'source' as const }))
   ];
   const selectedRelay = doc.relays.find((relay) => relay.id === selectedRelayId) ?? doc.relays[0];
+  const info = (text: string) => <button className='mimic-v2-info-btn' type='button' title={text} aria-label={text}>?</button>;
+  const quantitiesForSource = (sourceType: RelayInputSourceType): RelayMeasuredQuantity[] => {
+    if (sourceType === 'ct') return ['current', 'earth-residual-current', 'differential-current'];
+    if (sourceType === 'vt') return ['voltage', 'power', 'frequency'];
+    if (sourceType === 'transformer-winding') return ['current', 'voltage', 'power', 'differential-current', 'temperature'];
+    if (sourceType === 'busbar') return ['voltage', 'power', 'frequency'];
+    if (sourceType === 'conductor') return ['current', 'power', 'temperature'];
+    if (sourceType === 'feeder-load-source') return ['current', 'voltage', 'power', 'temperature'];
+    if (sourceType === 'zone') return ['current', 'voltage', 'power', 'earth-residual-current', 'differential-current', 'temperature'];
+    return ['current'];
+  };
+  const sourceTypeForInput = (input: { sourceType?: RelayInputSourceType; sourceObjectId?: string }) => {
+    return input.sourceType ?? selectableProtectionSources.find((source) => source.id === input.sourceObjectId)?.sourceType ?? 'ct';
+  };
+  const normaliseQuantityForSource = (sourceType: RelayInputSourceType, quantity: RelayMeasuredQuantity) => quantitiesForSource(sourceType).includes(quantity) ? quantity : quantitiesForSource(sourceType)[0];
 
   const flowForObjectPhase = (objectId: string, phase?: Phase) => {
     const summary = simulationState.objectSummaries.get(objectId);
@@ -1206,7 +1221,8 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>V</text></g>;
     if (symbol.type === 'circuit-breaker') {
       const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
-      return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><line x1={14} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+      const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
+      return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><text x={0} y={5} textAnchor='middle' fontSize='14' fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
     }
     if (symbol.type === 'disconnector') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
@@ -1272,13 +1288,8 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       const on = symbol.operation?.sourceOn !== false;
       return <circle cx={0} cy={-26} r={4} fill={on ? 'var(--md2-live)' : 'var(--md2-deenergised)'} />;
     }
-    if (!isSwitchingDevice(symbol.type)) return null;
-    const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
-    const tripped = symbol.operation?.tripped;
-    return <g>
-      <line x1={-16} y1={14} x2={closed ? 16 : 7} y2={closed ? 14 : 4} stroke={tripped ? 'var(--md2-warning)' : 'var(--md2-selected)'} strokeWidth={2} />
-      {tripped && <text x={-11} y={-23} fontSize='8' fill='var(--md2-warning)'>TRIP</text>}
-    </g>;
+    if (symbol.operation?.tripped) return <text x={-11} y={-23} fontSize='8' fill='var(--md2-warning)'>TRIP</text>;
+    return null;
   };
 
   const componentGlyph = (type: ElectricalSymbol['type']) => {
@@ -1675,20 +1686,29 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
                 <div className='mimic-v2-form-grid'>
                   <label>Name<input value={selectedRelay.name} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, name: event.target.value }))} /></label>
                   <label>Enabled<input type='checkbox' checked={selectedRelay.enabled} onChange={() => toggleRelayEnabled(selectedRelay.id)} /></label>
-                  <label>Role<select value={selectedRelay.role ?? 'first-main'} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, role: event.target.value as RelayRole }))}><option value='first-main'>first main</option><option value='second-main'>second main</option><option value='backup'>backup</option><option value='busbar-protection'>busbar protection</option><option value='transformer-protection'>transformer protection</option><option value='feeder-protection'>feeder protection</option><option value='motor-load-protection'>motor/load protection</option></select></label>
-                  <label>Protected zone<select value={selectedRelay.zoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, zoneId: event.target.value || undefined }))}><option value=''>Whole network</option>{doc.protectionZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}</select></label>
-                  <label>Legacy pickup A<input type='number' value={selectedRelay.pickupCurrentA} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, pickupCurrentA: Number(event.target.value) || 0 }))} /></label>
-                  <label>Legacy delay ms<input type='number' value={selectedRelay.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, timeDelayMs: Number(event.target.value) || 0 }))} /></label>
+                  <label>Role {info('Role is descriptive for now. First main, second main, and backup relays can watch the same assets with different timings.')}<select value={selectedRelay.role ?? 'first-main'} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, role: event.target.value as RelayRole }))}><option value='first-main'>first main</option><option value='second-main'>second main</option><option value='backup'>backup</option><option value='busbar-protection'>busbar protection</option><option value='transformer-protection'>transformer protection</option><option value='feeder-protection'>feeder protection</option><option value='motor-load-protection'>motor/load protection</option></select></label>
+                  <label>Protection scope {info('Optional drawing zone used to limit simple fault/current checks. Leave as whole network when the relay inputs already define what it measures.')}<select value={selectedRelay.zoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, zoneId: event.target.value || undefined }))}><option value=''>Whole network</option>{doc.protectionZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}</select></label>
                   <label>Breaker fail<input type='checkbox' checked={selectedRelay.breakerFailEnabled} onChange={() => updateRelay(selectedRelay.id, (relay) => ({ ...relay, breakerFailEnabled: !relay.breakerFailEnabled }))} /></label>
                 </div>
+                <details className='mimic-v2-guidance-box'>
+                  <summary>Compatibility defaults</summary>
+                  <p>These keep older relay packages working and seed new functions. Use the Functions tab for normal pickup and timing settings.</p>
+                  <div className='mimic-v2-form-grid'>
+                    <label>Default pickup A<input type='number' value={selectedRelay.pickupCurrentA} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, pickupCurrentA: Number(event.target.value) || 0 }))} /></label>
+                    <label>Default delay ms<input type='number' value={selectedRelay.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, timeDelayMs: Number(event.target.value) || 0 }))} /></label>
+                  </div>
+                </details>
               </div>}
               {protectionTab === 'inputs' && <div className='mimic-v2-modal-section'>
                 <h3>Measuring Inputs</h3>
                 <div className='mimic-v2-voltage-row'><button className='mimic-v2-chip' onClick={() => addRelayInput(selectedRelay.id, 'ct', 'current')}>Add CT input</button><button className='mimic-v2-chip' onClick={() => addRelayInput(selectedRelay.id, 'vt', 'voltage')}>Add VT input</button></div>
                 {(selectedRelay.inputs ?? []).map((input) => <div key={input.id} className='mimic-v2-manager-card'>
                   <div className='mimic-v2-form-grid'>
-                    <label>Source<select value={input.sourceObjectId ?? input.sourceZoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, sourceObjectId: event.target.value, sourceLabel: selectableProtectionSources.find((source) => source.id === event.target.value)?.label } : item) }))}>{selectableProtectionSources.map((source) => <option key={source.id} value={source.id}>{source.label} / {source.sourceType}</option>)}</select></label>
-                    <label>Quantity<select value={input.quantity} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, quantity: event.target.value as RelayMeasuredQuantity } : item) }))}><option value='current'>current</option><option value='voltage'>voltage</option><option value='power'>power</option><option value='earth-residual-current'>earth/residual current</option><option value='differential-current'>differential current</option><option value='temperature'>temperature</option><option value='frequency'>frequency</option></select></label>
+                    <label>Source {info('Pick the real drawing object that provides this relay measurement. The available quantities change to match the source type.')}<select value={input.sourceObjectId ?? input.sourceZoneId ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => {
+                      const source = selectableProtectionSources.find((item) => item.id === event.target.value);
+                      return { ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, sourceObjectId: event.target.value, sourceType: source?.sourceType ?? item.sourceType, sourceLabel: source?.label, quantity: normaliseQuantityForSource(source?.sourceType ?? item.sourceType, item.quantity) } : item) };
+                    })}>{selectableProtectionSources.map((source) => <option key={source.id} value={source.id}>{source.label} / {source.sourceType}</option>)}</select></label>
+                    <label>Quantity {info('CT inputs measure current quantities. VT/PT inputs measure voltage-type quantities. Thermal and power quantities appear on assets that can sensibly expose them.')}<select value={normaliseQuantityForSource(sourceTypeForInput(input), input.quantity)} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, quantity: event.target.value as RelayMeasuredQuantity } : item) }))}>{quantitiesForSource(sourceTypeForInput(input)).map((quantity) => <option key={quantity} value={quantity}>{quantity}</option>)}</select></label>
                     <label>CT ratio<input value={input.ctRatio ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, ctRatio: event.target.value } : item) }))} /></label>
                     <label>VT ratio<input value={input.vtRatio ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, inputs: (relay.inputs ?? []).map((item) => item.id === input.id ? { ...item, vtRatio: event.target.value } : item) }))} /></label>
                   </div>
@@ -1701,9 +1721,9 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
                 {(selectedRelay.functions ?? []).map((fn) => <div key={fn.id} className='mimic-v2-manager-card'>
                   <div className='mimic-v2-form-grid'>
                     <label>Type<select value={fn.type} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, type: event.target.value as RelayFunctionType } : item) }))}><option value='overcurrent'>Overcurrent</option><option value='earth-fault'>Earth fault</option><option value='directional-overcurrent'>Directional OC</option><option value='directional-earth-fault'>Directional EF</option><option value='overvoltage'>Overvoltage</option><option value='undervoltage'>Undervoltage</option><option value='thermal-overload'>Thermal overload</option><option value='differential'>Differential</option><option value='restricted-earth-fault'>Restricted EF</option><option value='breaker-fail'>Breaker fail</option><option value='intertrip'>Intertrip</option><option value='trip-circuit-supervision'>Trip circuit supervision</option></select></label>
-                    <label>Pickup<input type='number' value={fn.pickupThreshold ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, pickupThreshold: Number(event.target.value) || undefined } : item) }))} /></label>
-                    <label>Delay ms<input type='number' value={fn.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, timeDelayMs: Number(event.target.value) || 0 } : item) }))} /></label>
-                    <label>Logic<select value={fn.logic} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, logic: event.target.value as RelayLogicCondition } : item) }))}><option value='any-phase'>any phase</option><option value='all-phases'>all phases</option><option value='selected-phase'>selected phase</option><option value='residual-earth'>residual/earth</option><option value='differential-between-inputs'>differential between inputs</option></select></label>
+                    <label>Pickup {info('Teaching-grade threshold for this function. Current functions use amps, voltage functions use kV, and thermal/differential functions are simplified placeholders.')}<input type='number' value={fn.pickupThreshold ?? ''} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, pickupThreshold: Number(event.target.value) || undefined } : item) }))} /></label>
+                    <label>Delay ms {info('The function must remain picked up for this delay before its output actions are issued. Backup protection usually uses a longer delay.')}<input type='number' value={fn.timeDelayMs} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, timeDelayMs: Number(event.target.value) || 0 } : item) }))} /></label>
+                    <label>Logic {info('How the selected phases or inputs are combined. This is deterministic teaching logic, not a manufacturer relay curve.')}<select value={fn.logic} onChange={(event) => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, logic: event.target.value as RelayLogicCondition } : item) }))}><option value='any-phase'>any phase</option><option value='all-phases'>all phases</option><option value='selected-phase'>selected phase</option><option value='residual-earth'>residual/earth</option><option value='differential-between-inputs'>differential between inputs</option></select></label>
                     <label>Instantaneous<input type='checkbox' checked={fn.instantaneous} onChange={() => updateRelay(selectedRelay.id, (relay) => ({ ...relay, functions: (relay.functions ?? []).map((item) => item.id === fn.id ? { ...item, instantaneous: !item.instantaneous } : item) }))} /></label>
                   </div>
                   <p>State {fn.state}</p>
