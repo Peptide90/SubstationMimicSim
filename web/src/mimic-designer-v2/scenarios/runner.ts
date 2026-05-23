@@ -16,17 +16,17 @@ export interface ScenarioRunResult {
 
 export function startScenario(doc: DrawingDocument, scenario: ScenarioDefinition, now = Date.now()): ScenarioRunResult {
   const resetDoc = resetScenario(doc, scenario, now);
-  const started = {
+  const started: ScenarioDefinition = {
     ...scenario,
     startedAt: new Date(now).toISOString(),
     elapsedMs: 0,
-    replayLog: [{ id: `replay-${now}`, atMs: 0, action: 'reset', message: 'Scenario started' }],
+    replayLog: [{ id: `replay-${now}`, atMs: 0, action: 'reset' as const, message: 'Scenario started' }],
     events: scenario.events?.map((event) => ({ ...event, fired: false })) ?? [],
     objectives: scenario.objectives.map((objective) => ({ ...objective, completed: false, failed: false })),
     wrongOperationCount: 0,
     currentHintIndex: 0
   };
-  return evaluateScenario({ ...resetDoc, activeScenarioId: started.id, scenarios: [started] }, started, now);
+  return evaluateScenario({ ...resetDoc, activeScenarioId: started.id, scenarios: [started] }, started);
 }
 
 export function resetScenario(doc: DrawingDocument, scenario: ScenarioDefinition, now = Date.now()): DrawingDocument {
@@ -71,10 +71,10 @@ export function tickScenario(doc: DrawingDocument, scenario: ScenarioDefinition,
     return { ...event, fired: true };
   });
   const nextScenario = appendReplay({ ...scenario, elapsedMs, events }, 'event', messages.join(' / ') || `Tick ${elapsedMs}ms`, elapsedMs);
-  return evaluateScenario(nextDoc, nextScenario, now, messages);
+  return evaluateScenario(nextDoc, nextScenario, messages);
 }
 
-export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinition, now = Date.now(), priorMessages: string[] = []): ScenarioRunResult {
+export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinition, priorMessages: string[] = []): ScenarioRunResult {
   const topology = extractTopology(doc);
   const operation = deriveOperationState(doc, topology);
   const objectives = scenario.objectives.map((objective) => evaluateObjective(objective, doc, operation, topology, scenario));

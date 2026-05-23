@@ -49,7 +49,7 @@ export function symbol(id: string, type: ElectricalSymbol['type'], x: number, y:
     type,
     position: { x, y },
     rotation,
-    terminals: terminalDefs.map((terminal, index) => ({ id: terminal.id ?? `t-${index}`, name: terminal.name, offset: { x: terminal.x, y: terminal.y }, phaseApplicability: patch.phaseApplicability ?? phases })),
+    terminals: terminalDefs.map((terminal, index) => ({ id: terminalId(terminal, index), name: terminal.name, offset: { x: terminal.x, y: terminal.y }, phaseApplicability: patch.phaseApplicability ?? phases })),
     phaseApplicability: patch.phaseApplicability ?? phases,
     voltageLevelKv,
     phaseMode: 'three-phase',
@@ -146,4 +146,8 @@ function terminalsFor(type: ElectricalSymbol['type']) {
   if (type === 'vt') return [{ name: 'tap', x: 0, y: 20 }];
   if (type === 'ct') return [{ name: 'in', x: -20, y: 0 }, { name: 'out', x: 20, y: 0 }];
   return [{ name: 'in', x: -30, y: 0 }, { name: 'out', x: 30, y: 0 }];
+}
+
+function terminalId(terminal: ReturnType<typeof terminalsFor>[number], index: number): string {
+  return 'id' in terminal ? terminal.id : `t-${index}`;
 }
