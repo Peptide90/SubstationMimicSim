@@ -191,19 +191,84 @@ export interface RelaySettings {
 export interface ScenarioObjective {
   id: string;
   text: string;
+  type?:
+    | 'energise-target-busbar'
+    | 'isolate-faulted-section'
+    | 'restore-supply-to-load'
+    | 'operate-switchgear'
+    | 'avoid-disconnector-under-load'
+    | 'clear-fault-using-breaker'
+    | 'identify-hot-joint'
+    | 'explain-protection-trip'
+    | 'maintain-no-live-earth-conflict';
   targetObjectId?: string;
+  targetTopologyNodeId?: string;
+  targetTopologyBranchId?: string;
+  targetState?: 'open' | 'closed' | 'live' | 'dead' | 'isolated' | 'cleared' | 'identified';
+  hint?: string;
   completed?: boolean;
+  failed?: boolean;
+}
+
+export type ScenarioDifficulty = 'intro' | 'standard' | 'advanced';
+export type ScenarioEventType = 'scheduled-fault' | 'transient-fault' | 'load-increase' | 'source-trip' | 'breaker-fail' | 'relay-pickup-trip' | 'operator-prompt' | 'hint-popup';
+
+export interface ScenarioEvent {
+  id: string;
+  type: ScenarioEventType;
+  atMs: number;
+  targetObjectId?: string;
+  fault?: FaultMetadata;
+  loadMw?: number;
+  sourceOn?: boolean;
+  message?: string;
+  hint?: string;
+  fired?: boolean;
+}
+
+export interface ScenarioSuccessRules {
+  targetEnergisedObjectIds?: string[];
+  isolatedFaultObjectIds?: string[];
+  restoredLoadObjectIds?: string[];
+  requiredSwitchStates?: Record<string, 'open' | 'closed'>;
+  maxWrongOperations?: number;
+  requireNoLiveEarthConflict?: boolean;
+  requireNoDamagedEquipment?: boolean;
+  timeLimitMs?: number;
+}
+
+export interface ScenarioReplayStep {
+  id: string;
+  atMs: number;
+  action: 'operate' | 'hint' | 'prompt' | 'reset' | 'event';
+  targetObjectId?: string;
+  message: string;
 }
 
 export interface ScenarioDefinition {
   id: string;
   name: string;
   description?: string;
+  learningObjectives?: string[];
+  difficulty?: ScenarioDifficulty;
+  tags?: string[];
   initialSwitchStates: Record<string, 'open' | 'closed'>;
   initialSourceStates: Record<string, boolean>;
   faults: FaultMetadata[];
   relays: RelaySettings[];
+  protection?: ProtectionElement[];
+  powerFlows?: Record<string, PowerFlowMetadata>;
+  activeView?: ViewMode | 'thermal' | 'topology';
   objectives: ScenarioObjective[];
+  events?: ScenarioEvent[];
+  successRules?: ScenarioSuccessRules;
+  failureRules?: ScenarioSuccessRules;
+  expectedSolution?: ScenarioReplayStep[];
+  replayLog?: ScenarioReplayStep[];
+  startedAt?: string;
+  elapsedMs?: number;
+  wrongOperationCount?: number;
+  currentHintIndex?: number;
 }
 
 export interface SimulationControlState {

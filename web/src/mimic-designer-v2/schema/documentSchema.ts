@@ -191,11 +191,24 @@ function migrateScenario(scenario: ScenarioDefinition): ScenarioDefinition {
   return {
     ...scenario,
     name: scenario.name ?? scenario.id,
+    learningObjectives: scenario.learningObjectives ?? scenario.objectives?.map((objective) => objective.text) ?? [],
+    difficulty: scenario.difficulty ?? 'intro',
+    tags: scenario.tags ?? [],
     initialSwitchStates: scenario.initialSwitchStates ?? {},
     initialSourceStates: scenario.initialSourceStates ?? {},
     faults: (scenario.faults ?? []).map(migrateFault),
     relays: (scenario.relays ?? []).map(migrateRelay),
-    objectives: scenario.objectives ?? []
+    protection: (scenario.protection ?? []).map(migrateProtection),
+    powerFlows: scenario.powerFlows ?? {},
+    activeView: scenario.activeView ?? 'single-line',
+    objectives: (scenario.objectives ?? []).map((objective) => ({ type: 'operate-switchgear', ...objective })),
+    events: (scenario.events ?? []).map((event) => ({ ...event, fired: event.fired ?? false, fault: event.fault ? migrateFault(event.fault) : undefined })),
+    successRules: scenario.successRules ?? {},
+    failureRules: scenario.failureRules ?? {},
+    expectedSolution: scenario.expectedSolution ?? [],
+    replayLog: scenario.replayLog ?? [],
+    wrongOperationCount: scenario.wrongOperationCount ?? 0,
+    currentHintIndex: scenario.currentHintIndex ?? 0
   };
 }
 

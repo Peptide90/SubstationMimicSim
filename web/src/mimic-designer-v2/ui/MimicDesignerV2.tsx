@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, Phase, Point, PowerFlowMetadata } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, Phase, Point, PowerFlowMetadata, ScenarioEventType, ScenarioObjective } from '../drawing/model';
 import { SYMBOL_LIBRARY } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels } from '../nomenclature/engine';
@@ -14,13 +14,17 @@ import { applyRelayProtectionStep, loadScenario } from '../simulation/protection
 import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTemplateIntoDrawing, type DrawingTemplate } from '../templates';
 import { activeDrawingId, clearDraft, deleteDrawing, duplicateDrawing, listDrawings, loadDraft, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
 import { downloadDrawingJson, exportDrawingJson, importDrawingJson } from '../persistence/importExport';
+import { builtInScenarioPackages } from '../scenarios/builtInScenarios';
+import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage } from '../scenarios/packageScenario';
+import { deleteScenarioPackage, duplicateScenario, listScenarioPackages, saveScenarioPackage } from '../scenarios/scenarioStore';
+import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScenario, startScenario, tickScenario } from '../scenarios/runner';
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
 type Tool = 'select' | 'conductor' | 'busbar' | 'fault' | 'pan';
 type RenderMode = 'symbols' | 'nodes';
 type OverlayMode = 'none' | 'power' | 'topology' | 'thermal';
-type ManagerView = 'inspector' | 'power' | 'protection';
+type ManagerView = 'inspector' | 'power' | 'protection' | 'scenario';
 type SelectionBox = { start: Point; current: Point } | null;
 type DragState = {
   initialDoc: DrawingDocument;
@@ -95,6 +99,9 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const [draftNotice, setDraftNotice] = useState<string | null>(() => loadDraft() ? 'Unsaved draft recovery is available.' : null);
   const [jsonPreview, setJsonPreview] = useState<string>('');
+  const [scenarioPackages, setScenarioPackages] = useState<ScenarioPackage[]>(() => listScenarioPackages());
+  const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
+  const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
   const svgRef = useRef<SVGSVGElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -139,6 +146,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   }, [doc]);
 
   const refreshDrawingSummaries = () => setDrawingSummaries(listDrawings());
+  const refreshScenarioPackages = () => setScenarioPackages(listScenarioPackages());
 
   const replaceDocument = (next: DrawingDocument, options: { dirty?: boolean; notice?: string | null } = {}) => {
     setDoc(next);
@@ -259,6 +267,136 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
     file.text().then(importJsonText);
   };
 
+  const saveCurrentAsScenario = () => {
+    const name = window.prompt('Scenario title', `${doc.name} scenario`);
+    if (!name) return;
+    const description = window.prompt('Scenario description', doc.description ?? '') ?? '';
+    const learningObjective = window.prompt('Primary learning objective', 'Operate the schematic safely and complete the objectives.') ?? '';
+    const pkg = createScenarioFromDrawing(doc, { name, description, learningObjectives: [learningObjective], tags: doc.tags, difficulty: 'intro' });
+    saveScenarioPackage(pkg);
+    setActiveScenarioPackage(pkg);
+    refreshScenarioPackages();
+    setScenarioMessage(`Saved scenario: ${name}`);
+  };
+
+  const duplicateScenarioPackageById = (id: string) => {
+    const source = [...scenarioPackages, ...builtInScenarioPackages].find((item) => item.id === id);
+    const name = window.prompt('Duplicate scenario as', `${source?.title ?? 'Scenario'} copy`);
+    if (!name) return;
+    const newId = `scenario-${Date.now()}`;
+    const duplicated = source && scenarioPackages.some((item) => item.id === id) ? duplicateScenario(id, name) : source ? saveScenarioPackage({ ...source, id: newId, title: name, scenario: { ...source.scenario, id: newId, name }, drawing: { ...source.drawing, name, scenarios: [{ ...source.scenario, id: newId, name }], activeScenarioId: newId } }) : null;
+    if (duplicated) setActiveScenarioPackage(duplicated);
+    refreshScenarioPackages();
+  };
+
+  const deleteScenarioById = (id: string) => {
+    const source = scenarioPackages.find((item) => item.id === id);
+    if (!source || !window.confirm(`Delete scenario "${source.title}"?`)) return;
+    deleteScenarioPackage(id);
+    if (activeScenarioPackage?.id === id) setActiveScenarioPackage(null);
+    refreshScenarioPackages();
+  };
+
+  const loadScenarioPackageIntoEditor = (pkg: ScenarioPackage) => {
+    if (!confirmDiscard()) return;
+    replaceDocument(pkg.drawing, { dirty: false });
+    if (pkg.scenario.activeView === 'thermal') setOverlayMode('thermal');
+    if (pkg.scenario.activeView === 'topology') setShowTopologyOverlay(true);
+    setActiveScenarioPackage(pkg);
+    setScenarioMessage(`Loaded scenario: ${pkg.title}`);
+  };
+
+  const startActiveScenario = (pkg = activeScenarioPackage) => {
+    if (!pkg) return;
+    const result = startScenario(pkg.drawing, pkg.scenario);
+    replaceDocument(result.doc, { dirty: true });
+    if (pkg.scenario.activeView === 'thermal') setOverlayMode('thermal');
+    if (pkg.scenario.activeView === 'topology') setShowTopologyOverlay(true);
+    setActiveScenarioPackage({ ...pkg, scenario: result.scenario, drawing: result.doc });
+    setScenarioMessage(result.messages.join(' '));
+  };
+
+  const resetActiveScenario = () => {
+    if (!activeScenarioPackage) return;
+    const resetDoc = resetScenario(activeScenarioPackage.drawing, activeScenarioPackage.scenario);
+    replaceDocument(resetDoc, { dirty: true });
+    setScenarioMessage(`Scenario reset: ${activeScenarioPackage.title}`);
+  };
+
+  const tickActiveScenario = () => {
+    if (!activeScenarioPackage) return;
+    const elapsed = (activeScenarioPackage.scenario.elapsedMs ?? 0) + 1000;
+    const result = tickScenario(doc, activeScenarioPackage.scenario, elapsed);
+    replaceDocument(result.doc, { dirty: true });
+    setActiveScenarioPackage({ ...activeScenarioPackage, scenario: result.scenario, drawing: result.doc });
+    setScenarioMessage(result.messages.join(' '));
+  };
+
+  const showNextScenarioHint = () => {
+    if (!activeScenarioPackage) return;
+    const next = nextScenarioHint(activeScenarioPackage.scenario);
+    setActiveScenarioPackage({ ...activeScenarioPackage, scenario: next.scenario });
+    setScenarioMessage(next.hint ?? 'No scenario hints configured.');
+  };
+
+  const evaluateActiveScenario = () => {
+    if (!activeScenarioPackage) return;
+    const result = evaluateScenario(doc, activeScenarioPackage.scenario);
+    setActiveScenarioPackage({ ...activeScenarioPackage, scenario: result.scenario, drawing: result.doc });
+    setScenarioMessage(result.messages.join(' '));
+  };
+
+  const renameActiveScenario = () => {
+    if (!activeScenarioPackage) return;
+    const name = window.prompt('Scenario title', activeScenarioPackage.title);
+    if (!name) return;
+    const updated = updateScenarioPackage(activeScenarioPackage, { name });
+    setActiveScenarioPackage(saveScenarioPackage(updated));
+    refreshScenarioPackages();
+  };
+
+  const editActiveScenarioMetadata = () => {
+    if (!activeScenarioPackage) return;
+    const description = window.prompt('Scenario description', activeScenarioPackage.description) ?? activeScenarioPackage.description;
+    const learningObjectives = (window.prompt('Learning objectives, separated by semicolons', activeScenarioPackage.scenario.learningObjectives?.join('; ') ?? '') ?? '')
+      .split(';')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const difficultyInput = window.prompt('Difficulty: intro, standard, advanced', activeScenarioPackage.difficulty) ?? activeScenarioPackage.difficulty;
+    const tags = (window.prompt('Tags, comma separated', activeScenarioPackage.tags.join(', ')) ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const difficulty = difficultyInput === 'advanced' || difficultyInput === 'standard' ? difficultyInput : 'intro';
+    const updated = updateScenarioPackage(activeScenarioPackage, { description, learningObjectives, difficulty, tags });
+    setActiveScenarioPackage(saveScenarioPackage(updated));
+    refreshScenarioPackages();
+  };
+
+  const addScenarioObjective = () => {
+    if (!activeScenarioPackage) return;
+    const text = window.prompt('Objective text', 'Energise target busbar');
+    if (!text) return;
+    const type = window.prompt('Objective type', 'energise-target-busbar') as NonNullable<ScenarioObjective['type']>;
+    const targetObjectId = window.prompt('Target object id', selected[0] ?? '') ?? undefined;
+    const hint = window.prompt('Hint', '') ?? undefined;
+    const objective = { id: `objective-${Date.now()}`, text, type, targetObjectId, hint };
+    const updated = updateScenarioPackage(activeScenarioPackage, { objectives: [...activeScenarioPackage.scenario.objectives, objective] });
+    setActiveScenarioPackage(saveScenarioPackage(updated));
+    refreshScenarioPackages();
+  };
+
+  const addScenarioEvent = () => {
+    if (!activeScenarioPackage) return;
+    const type = window.prompt('Event type', 'operator-prompt') as ScenarioEventType;
+    const atMs = Number(window.prompt('Fire at milliseconds', '1000') ?? '1000');
+    const message = window.prompt('Message / hint text', 'Check the next switching step.') ?? '';
+    const event = { id: `scenario-event-${Date.now()}`, type, atMs: Number.isFinite(atMs) ? atMs : 1000, message };
+    const updated = updateScenarioPackage(activeScenarioPackage, { events: [...(activeScenarioPackage.scenario.events ?? []), event] });
+    setActiveScenarioPackage(saveScenarioPackage(updated));
+    refreshScenarioPackages();
+  };
+
   const snappedPoint = useCallback((p: Point): Point => {
     if (!doc.uiState.snapToGrid) return p;
     return { x: snap(p.x, doc.uiState.gridSize), y: snap(p.y, doc.uiState.gridSize) };
@@ -359,11 +497,21 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
   const simulationState = useMemo(() => deriveSimulationState(doc, topology, operateState), [doc, topology, operateState]);
 
   const operateSymbol = (symbol: ElectricalSymbol) => {
+    const disconnectorLiveOperation = symbol.type === 'disconnector' && topology.terminals
+      .filter((terminal) => terminal.parentObjectId === symbol.id)
+      .flatMap((terminal) => terminal.connectedNodeIds)
+      .some((nodeId) => operateState.liveNodeIds.has(nodeId));
     const result = operateDevice(doc, topology, symbol.id);
-    setDoc(migrateDrawingDocument(result.doc)!);
+    const nextDoc = migrateDrawingDocument(result.doc)!;
+    setDoc(nextDoc);
     setUndoStack((prev) => [...prev, doc]);
     setRedoStack([]);
     setLastOperationReason(result.reason);
+    setDirty(true);
+    if (activeScenarioPackage) {
+      const event = nextDoc.operationEvents[nextDoc.operationEvents.length - 1];
+      if (event) setActiveScenarioPackage({ ...activeScenarioPackage, scenario: recordScenarioOperation(activeScenarioPackage.scenario, event, disconnectorLiveOperation) });
+    }
   };
 
   const placeSymbol = (type: ElectricalSymbol['type'], position: Point = { x: 200, y: 200 }) => {
@@ -1025,7 +1173,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button><button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button></div>
         <div className='mimic-v2-tool-group'><span>Display</span><button className={`mimic-v2-btn ${renderMode==='symbols'?'active':''}`} onClick={() => setRenderMode('symbols')}>Symbols</button><button className={`mimic-v2-btn ${renderMode==='nodes'?'active':''}`} onClick={() => setRenderMode('nodes')}>Nodes</button></div>
         <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button></div>
-        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className={`mimic-v2-btn ${managerView==='power'?'active':''}`} onClick={() => setManagerView('power')}>Power flows</button><button className={`mimic-v2-btn ${managerView==='protection'?'active':''}`} onClick={() => setManagerView('protection')}>Protection</button></div>
+        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className={`mimic-v2-btn ${managerView==='power'?'active':''}`} onClick={() => setManagerView('power')}>Power flows</button><button className={`mimic-v2-btn ${managerView==='protection'?'active':''}`} onClick={() => setManagerView('protection')}>Protection</button><button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
         <div className='mimic-v2-tool-group'><span>Debug</span><button className='mimic-v2-btn' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button><button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button></div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
@@ -1086,7 +1234,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       </div>
     </main>
     <aside className='mimic-v2-inspector'>
-      <h3>{managerView === 'power' ? 'Power Flow Manager' : managerView === 'protection' ? 'Protection Manager' : 'Inspector'}</h3>
+      <h3>{managerView === 'power' ? 'Power Flow Manager' : managerView === 'protection' ? 'Protection Manager' : managerView === 'scenario' ? 'Scenario Manager' : 'Inspector'}</h3>
       <p>{doc.name}{dirty ? ' *' : ''}</p>
       {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
       {draftNotice && <p className='mimic-v2-warning-text'>{draftNotice} <button className='mimic-v2-chip' onClick={recoverDraft}>Recover</button></p>}
@@ -1099,6 +1247,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
         <button className={`mimic-v2-chip ${managerView === 'inspector' ? 'active' : ''}`} onClick={() => setManagerView('inspector')}>Inspector</button>
         <button className={`mimic-v2-chip ${managerView === 'power' ? 'active' : ''}`} onClick={() => setManagerView('power')}>Power flows</button>
         <button className={`mimic-v2-chip ${managerView === 'protection' ? 'active' : ''}`} onClick={() => setManagerView('protection')}>Protection</button>
+        <button className={`mimic-v2-chip ${managerView === 'scenario' ? 'active' : ''}`} onClick={() => setManagerView('scenario')}>Scenarios</button>
       </div>
       {managerView === 'power' && <section className='mimic-v2-manager-panel'>
         <h4>Inputs</h4>
@@ -1144,6 +1293,52 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
           <button className='mimic-v2-chip danger' onClick={() => removeRelay(relay.id)}>Remove</button>
         </div>)}
         {!doc.relays.length && <p>No relays configured.</p>}
+      </section>}
+      {managerView === 'scenario' && <section className='mimic-v2-manager-panel'>
+        <div className='mimic-v2-voltage-row inspector'>
+          <button className='mimic-v2-chip' onClick={saveCurrentAsScenario}>Convert current drawing</button>
+          <button className='mimic-v2-chip' onClick={() => activeScenarioPackage && startActiveScenario()}>Start</button>
+          <button className='mimic-v2-chip' onClick={resetActiveScenario}>Reset</button>
+          <button className='mimic-v2-chip' onClick={tickActiveScenario}>Step event</button>
+          <button className='mimic-v2-chip' onClick={showNextScenarioHint}>Hint</button>
+          <button className='mimic-v2-chip' onClick={evaluateActiveScenario}>Check</button>
+          <button className='mimic-v2-chip' onClick={renameActiveScenario}>Rename</button>
+          <button className='mimic-v2-chip' onClick={editActiveScenarioMetadata}>Edit metadata</button>
+          <button className='mimic-v2-chip' onClick={addScenarioObjective}>Add objective</button>
+          <button className='mimic-v2-chip' onClick={addScenarioEvent}>Add event</button>
+        </div>
+        <p>{scenarioMessage}</p>
+        {activeScenarioPackage && <>
+          <h4>Active Scenario</h4>
+          <p>{activeScenarioPackage.title} / {activeScenarioPackage.difficulty}</p>
+          <p>{activeScenarioPackage.description}</p>
+          <h4>Objectives</h4>
+          {activeScenarioPackage.scenario.objectives.map((objective) => <p key={objective.id}>{objective.completed ? 'Done' : objective.failed ? 'Failed' : 'Open'}: {objective.text}</p>)}
+          <h4>Events</h4>
+          {(activeScenarioPackage.scenario.events ?? []).map((event) => <p key={event.id}>{event.fired ? 'Fired' : 'Pending'} {event.atMs}ms: {event.message ?? event.type}</p>)}
+          <h4>Expected Solution</h4>
+          {(activeScenarioPackage.scenario.expectedSolution ?? []).map((step) => <p key={step.id}>{step.atMs}ms {step.message}</p>)}
+          <h4>Replay Log</h4>
+          {(activeScenarioPackage.scenario.replayLog ?? []).slice(-6).map((step) => <p key={step.id}>{step.atMs}ms {step.action}: {step.message}</p>)}
+        </>}
+        <h4>Saved Scenarios</h4>
+        {scenarioPackages.map((pkg) => <div key={pkg.id} className='mimic-v2-manager-card'>
+          <strong>{pkg.title}</strong>
+          <p>{pkg.description || 'No description'} / {pkg.difficulty} / {pkg.tags.join(', ') || 'no tags'}</p>
+          <button className='mimic-v2-chip' onClick={() => loadScenarioPackageIntoEditor(pkg)}>Load</button>
+          <button className='mimic-v2-chip' onClick={() => { setActiveScenarioPackage(pkg); startActiveScenario(pkg); }}>Run</button>
+          <button className='mimic-v2-chip' onClick={() => duplicateScenarioPackageById(pkg.id)}>Duplicate</button>
+          <button className='mimic-v2-chip danger' onClick={() => deleteScenarioById(pkg.id)}>Delete</button>
+        </div>)}
+        {!scenarioPackages.length && <p>No saved scenarios yet.</p>}
+        <h4>Built-in Scenarios</h4>
+        {builtInScenarioPackages.map((pkg) => <div key={pkg.id} className='mimic-v2-manager-card'>
+          <strong>{pkg.title}</strong>
+          <p>{pkg.description} / {pkg.difficulty} / {pkg.tags.join(', ')}</p>
+          <button className='mimic-v2-chip' onClick={() => loadScenarioPackageIntoEditor(pkg)}>Load copy</button>
+          <button className='mimic-v2-chip' onClick={() => { setActiveScenarioPackage(pkg); startActiveScenario(pkg); }}>Run</button>
+          <button className='mimic-v2-chip' onClick={() => duplicateScenarioPackageById(pkg.id)}>Duplicate editable</button>
+        </div>)}
       </section>}
       <p>Selected: {selected.join(', ') || 'none'}</p>
       <p>Editing: {selectedPhase ? `phase ${selectedPhase}` : doc.activeView === 'three-phase' ? 'whole object / all phases' : 'single-line aggregate (applies to all phases)'}</p>
