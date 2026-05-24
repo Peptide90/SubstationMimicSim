@@ -26,7 +26,6 @@ import { ConfirmModal } from "./components/modals/ConfirmModal";
 import { HelpModal } from "./components/modals/HelpModal";
 import { MainMenu } from "./components/MainMenu";
 import { MultiplayerApp } from "./mp/MultiplayerApp";
-import { ChallengeApp } from "./app/challenges/ChallengeApp";
 import { MimicDesignerV2 } from "./mimic-designer-v2/ui/MimicDesignerV2";
 
 import { ContextMenu } from "./components/ContextMenu";
@@ -953,7 +952,7 @@ export default function App() {
         <AppInner buildTag={BUILD_TAG} onRequestMenu={() => setView("menu")} />
       ) : null}
       {view === "challenges" ? (
-        <ChallengeApp buildTag={BUILD_TAG} onExit={() => setView("menu")} />
+        <MimicDesignerV2 onRequestMenu={() => setView("menu")} initialPlatformView="scenarios" />
       ) : null}
       {view === "mp" ? <MultiplayerApp onExit={() => setView("menu")} /> : null}
     </ReactFlowProvider>

@@ -111,4 +111,29 @@ describe('Mimic Designer V2 scenario packaging', () => {
       'Bus coupler restoration'
     ]));
   });
+
+  it('packages scenarios with briefing, restrictions, and scoring defaults', () => {
+    const pkg = createScenarioFromDrawing(createDrawingFromTemplate(builtInTemplates[0]), { name: 'Training package', mode: 'challenge' });
+
+    expect(pkg.scenario.mode).toBe('challenge');
+    expect(pkg.scenario.restrictions?.disableDrawingTools).toBe(true);
+    expect(pkg.scenario.briefing?.winConditions?.length).toBeGreaterThan(0);
+    expect(pkg.scenario.successRules?.requireVoltageSegregation).toBe(true);
+    expect(pkg.scenario.scoring?.score).toBe(0);
+  });
+
+  it('progresses lesson steps and assigns challenge scoring', () => {
+    const doc = createDrawingFromTemplate(builtInTemplates[0]);
+    const pkg = createScenarioFromDrawing(doc, {
+      mode: 'challenge',
+      objectives: [{ id: 'obj-live', text: 'Energise bus', type: 'energise-target-busbar', targetObjectId: 'radial-bus', targetState: 'live' }],
+      teachingSteps: [{ id: 'step-live', title: 'Energise', body: 'Make the busbar live.', targetObjectId: 'radial-bus', waitFor: 'target-energised' }]
+    });
+    const result = evaluateScenario(doc, pkg.scenario);
+
+    expect(result.success).toBe(true);
+    expect(result.scenario.currentStepIndex).toBe(0);
+    expect(result.scenario.scoring?.stars).toBe(3);
+    expect(result.scenario.scoring?.score).toBeGreaterThan(0);
+  });
 });

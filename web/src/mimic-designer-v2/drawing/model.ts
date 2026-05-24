@@ -285,6 +285,8 @@ export interface ScenarioObjective {
 
 export type ScenarioDifficulty = 'intro' | 'standard' | 'advanced';
 export type ScenarioEventType = 'scheduled-fault' | 'transient-fault' | 'load-increase' | 'source-trip' | 'breaker-fail' | 'relay-pickup-trip' | 'operator-prompt' | 'hint-popup';
+export type ScenarioMode = 'lesson' | 'challenge' | 'sandbox';
+export type ScenarioEventSeverity = 'info' | 'operation' | 'warning' | 'protection' | 'alarm' | 'fault' | 'scenario';
 
 export interface ScenarioEvent {
   id: string;
@@ -306,8 +308,57 @@ export interface ScenarioSuccessRules {
   requiredSwitchStates?: Record<string, 'open' | 'closed'>;
   maxWrongOperations?: number;
   requireNoLiveEarthConflict?: boolean;
+  requireVoltageSegregation?: boolean;
+  requiredSequence?: string[];
+  requireAlarmsCleared?: boolean;
+  keepSuppliedObjectIds?: string[];
   requireNoDamagedEquipment?: boolean;
   timeLimitMs?: number;
+}
+
+export interface ScenarioRestrictions {
+  disableDrawingTools?: boolean;
+  disablePlacement?: boolean;
+  disableDelete?: boolean;
+  disableTopologyOverlay?: boolean;
+  disableInspectorEditing?: boolean;
+  allowedTools?: string[];
+  allowedComponentTypes?: ElectricalSymbol['type'][];
+  allowedOperationObjectIds?: string[];
+}
+
+export interface ScenarioTeachingStep {
+  id: string;
+  title: string;
+  body: string;
+  targetObjectId?: string;
+  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'manual';
+  expectedObjectId?: string;
+  expectedState?: 'open' | 'closed' | 'live' | 'dead' | 'cleared';
+  pauseSimulation?: boolean;
+  unlockTool?: string;
+  eventIdToTrigger?: string;
+}
+
+export interface ScenarioScoring {
+  stars?: number;
+  score?: number;
+  operationCount?: number;
+  penalties?: number;
+  speedBonus?: number;
+  safetyBonus?: number;
+  noTripBonus?: number;
+  noIncorrectOperationBonus?: number;
+}
+
+export interface ScenarioBriefing {
+  expectedOperatorRole?: string;
+  initialCondition?: string;
+  restrictions?: string[];
+  warnings?: string[];
+  winConditions?: string[];
+  loseConditions?: string[];
+  estimatedMinutes?: number;
 }
 
 export interface ScenarioReplayStep {
@@ -323,8 +374,15 @@ export interface ScenarioDefinition {
   name: string;
   description?: string;
   learningObjectives?: string[];
+  mode?: ScenarioMode;
   difficulty?: ScenarioDifficulty;
   tags?: string[];
+  briefing?: ScenarioBriefing;
+  restrictions?: ScenarioRestrictions;
+  teachingSteps?: ScenarioTeachingStep[];
+  currentStepIndex?: number;
+  scoring?: ScenarioScoring;
+  completionRating?: number;
   initialSwitchStates: Record<string, 'open' | 'closed'>;
   initialSourceStates: Record<string, boolean>;
   faults: FaultMetadata[];
@@ -357,6 +415,8 @@ export interface OperationEvent {
   message: string;
   targetObjectId?: string;
   reason?: string;
+  severity?: ScenarioEventSeverity;
+  source?: string;
 }
 
 export interface BaseDrawingObject {

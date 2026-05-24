@@ -85,6 +85,7 @@ export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinit
   const successRules = scenario.successRules ?? {};
   const failed =
     Boolean(failureRules.requireNoLiveEarthConflict && liveEarthConflict) ||
+    Boolean(failureRules.requireVoltageSegregation && (operation.voltageConflictNodeIds.size > 0 || operation.voltageConflictBranchIds.size > 0)) ||
     Boolean(failureRules.requireNoDamagedEquipment && damaged) ||
     (failureRules.maxWrongOperations !== undefined && wrongOperations > failureRules.maxWrongOperations) ||
     Boolean(failureRules.timeLimitMs && (scenario.elapsedMs ?? 0) > failureRules.timeLimitMs);
@@ -92,11 +93,14 @@ export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinit
     !failed &&
     objectives.length > 0 &&
     objectives.every((objective) => objective.completed) &&
-    (!successRules.requireNoLiveEarthConflict || !liveEarthConflict);
-  const activeHint = objectives.find((objective) => !objective.completed && !objective.failed)?.hint;
+    (!successRules.requireNoLiveEarthConflict || !liveEarthConflict) &&
+    (!successRules.requireVoltageSegregation || (operation.voltageConflictNodeIds.size === 0 && operation.voltageConflictBranchIds.size === 0));
+  const progressedScenario = progressTeachingStep({ ...scenario, objectives }, doc, operation, topology);
+  const scoring = scoreScenario(progressedScenario, success, failed);
+  const activeHint = progressedScenario.teachingSteps?.[progressedScenario.currentStepIndex ?? 0]?.body ?? objectives.find((objective) => !objective.completed && !objective.failed)?.hint;
   return {
-    doc: migrateDrawingDocument({ ...doc, scenarios: [{ ...scenario, objectives }], activeScenarioId: scenario.id })!,
-    scenario: { ...scenario, objectives },
+    doc: migrateDrawingDocument({ ...doc, scenarios: [{ ...progressedScenario, scoring }], activeScenarioId: scenario.id })!,
+    scenario: { ...progressedScenario, scoring },
     objectives,
     success,
     failed,
@@ -187,6 +191,45 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
   if (objective.type === 'identify-hot-joint') return { ...objective, completed: doc.hotJoints.some((joint) => joint.targetObjectId === targetId && joint.active) };
   if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
   return objective;
+}
+
+function progressTeachingStep(scenario: ScenarioDefinition, doc: DrawingDocument, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>): ScenarioDefinition {
+  const steps = scenario.teachingSteps ?? [];
+  const index = scenario.currentStepIndex ?? 0;
+  const step = steps[index];
+  if (!step || step.waitFor === 'manual') return scenario;
+  const targetId = step.expectedObjectId ?? step.targetObjectId;
+  const satisfied = (() => {
+    if (!step.waitFor) return false;
+    if (step.waitFor === 'operation') return Boolean(targetId && (scenario.replayLog ?? []).some((entry) => entry.action === 'operate' && entry.targetObjectId === targetId));
+    if (step.waitFor === 'correct-state') {
+      const symbol = doc.objects.symbols.find((item) => item.id === targetId);
+      return Boolean(symbol && step.expectedState && symbol.operation?.switchState === step.expectedState);
+    }
+    if (step.waitFor === 'fault-clearance') return !doc.faults.some((fault) => fault.active && (!targetId || fault.targetObjectId === targetId));
+    if (step.waitFor === 'target-energised') {
+      const branchLive = topology.branches.some((branch) => branch.objectId === targetId && operation.liveBranchIds.has(branch.id));
+      const terminalLive = topology.terminals
+        .filter((terminal) => terminal.parentObjectId === targetId)
+        .flatMap((terminal) => terminal.connectedNodeIds)
+        .some((nodeId) => operation.liveNodeIds.has(nodeId));
+      return branchLive || terminalLive;
+    }
+    return false;
+  })();
+  return satisfied ? { ...scenario, currentStepIndex: Math.min(index + 1, steps.length - 1) } : scenario;
+}
+
+function scoreScenario(scenario: ScenarioDefinition, success: boolean, failed: boolean) {
+  const operationCount = (scenario.replayLog ?? []).filter((step) => step.action === 'operate').length;
+  const penalties = (scenario.wrongOperationCount ?? 0) + (failed ? 2 : 0);
+  const noIncorrectOperationBonus = penalties === 0 ? 50 : 0;
+  const noTripBonus = failed ? 0 : 25;
+  const safetyBonus = penalties === 0 && success ? 100 : Math.max(0, 40 - penalties * 10);
+  const speedBonus = scenario.elapsedMs ? Math.max(0, 60 - Math.floor(scenario.elapsedMs / 1000)) : 0;
+  const score = Math.max(0, (success ? 500 : 0) + safetyBonus + speedBonus + noTripBonus + noIncorrectOperationBonus - penalties * 50);
+  const stars = success ? penalties === 0 ? 3 : penalties <= 2 ? 2 : 1 : 0;
+  return { ...(scenario.scoring ?? {}), stars, score, operationCount, penalties, speedBonus, safetyBonus, noTripBonus, noIncorrectOperationBonus };
 }
 
 function appendReplay(scenario: ScenarioDefinition, action: ScenarioReplayStep['action'], message: string, atMs: number, targetObjectId?: string): ScenarioDefinition {

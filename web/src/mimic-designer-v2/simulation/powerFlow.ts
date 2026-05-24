@@ -163,19 +163,34 @@ export function computePhaseMath(flow: PowerFlowMetadata): PowerFlowMetadata {
 function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, phase: Phase, doc: DrawingDocument, elapsedMs: number, loadShare = 1): DerivedPhaseFlow {
   const sourceValue = scalePhaseValue(valueForPhase(source.powerFlow, phase, source.voltageLevelKv), loadShare);
   const branchObject = findObjectPowerFlow(doc, branch.objectId);
+  const branchValue = valueForPhase(branchObject, phase);
   const impedance = impedanceForPhase(branchObject, phase) + hotJointResistance(doc.hotJoints, branch, phase);
   const voltageKv = sourceValue.voltageKv ?? source.voltageLevelKv ?? defaultVoltageKv;
   const mva = sourceValue.mva ?? (sourceValue.mw !== undefined && sourceValue.mvar !== undefined ? Math.sqrt(sourceValue.mw ** 2 + sourceValue.mvar ** 2) : undefined) ?? 0;
   const currentA = sourceValue.currentA ?? (voltageKv > 0 ? (mva * 1000) / (voltageKv / Math.sqrt(3)) : 0);
   const voltageDropKv = (currentA * impedance) / 1000;
-  const loadingPercent = sourceValue.loadingPercent ?? Math.min(999, Math.round((currentA / 1000) * 100));
+  const deliveredVoltageKv = Math.max(0, voltageKv - voltageDropKv);
+  const voltageFactor = voltageKv > 0 ? Math.max(0, deliveredVoltageKv / voltageKv) : 1;
+  const deliveredMw = sourceValue.mw !== undefined ? sourceValue.mw * voltageFactor : sourceValue.mw;
+  const deliveredMvar = sourceValue.mvar !== undefined ? sourceValue.mvar * voltageFactor : sourceValue.mvar;
+  const deliveredMva = mva * voltageFactor;
+  const baseLoadingPercent = Math.min(999, Math.round((currentA / 1000) * 100));
+  const ratingPercent = branchValue.loadingPercent;
+  const currentLimitA = branchValue.currentA;
+  const loadingPercent = currentLimitA && currentLimitA > 0
+    ? Math.min(999, Math.round((currentA / currentLimitA) * 100))
+    : ratingPercent && ratingPercent > 0
+      ? Math.min(999, Math.round((baseLoadingPercent / ratingPercent) * 100))
+      : sourceValue.loadingPercent ?? baseLoadingPercent;
   const temperatureC = estimateTemperature(currentA, impedance, elapsedMs, sourceValue.temperatureC);
   return {
     ...sourceValue,
     phase,
-    mva,
+    mw: deliveredMw,
+    mvar: deliveredMvar,
+    mva: deliveredMva,
     currentA,
-    voltageKv,
+    voltageKv: deliveredVoltageKv,
     voltageDropKv,
     impedanceOhms: impedance,
     loadingPercent,
@@ -306,6 +321,8 @@ function summarizeObjects(branchFlows: Map<string, BranchSimulationState>): Map<
       mvar: (sum.mvar ?? 0) + (value.mvar ?? 0),
       mva: (sum.mva ?? 0) + (value.mva ?? 0),
       currentA: (sum.currentA ?? 0) + (value.currentA ?? 0),
+      voltageDropKv: Math.max(sum.voltageDropKv ?? 0, value.voltageDropKv ?? 0),
+      voltageKv: Math.max(sum.voltageKv ?? 0, value.voltageKv ?? 0),
       loadingPercent: Math.max(sum.loadingPercent ?? 0, value.loadingPercent ?? 0),
       temperatureC: Math.max(sum.temperatureC ?? 20, value.temperatureC ?? 20)
     }), {});

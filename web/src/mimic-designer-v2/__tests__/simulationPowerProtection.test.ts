@@ -126,6 +126,26 @@ describe('phase-resolved simulation foundation', () => {
     expect(simulation.objectSummaries.get('cb-1')?.phases.A?.mw).toBeCloseTo(5);
   });
 
+  it('applies branch impedance and current limits to derived flow results', () => {
+    const base = feederDoc('closed');
+    const constrained = migrateDrawingDocument({
+      ...base,
+      objects: {
+        ...base.objects,
+        busbars: base.objects.busbars.map((busbar) => ({
+          ...busbar,
+          powerFlow: { resistanceOhms: 10, currentA: 50 }
+        }))
+      }
+    })!;
+    const normal = derive(base).objectSummaries.get('bus-1');
+    const limited = derive(constrained).objectSummaries.get('bus-1');
+
+    expect(limited?.aggregate.voltageDropKv).toBeGreaterThan(normal?.aggregate.voltageDropKv ?? 0);
+    expect(limited?.aggregate.mw).toBeLessThan(normal?.aggregate.mw ?? 999);
+    expect(limited?.aggregate.loadingPercent).toBeGreaterThan(100);
+  });
+
   it('stores phase-specific edits without changing the other phases', () => {
     const flow = mergePhaseValues({ mw: 9, mvar: 3 }, 'B', { resistanceOhms: 0.5, mw: 5 }, false);
     expect(flow.perPhase?.B?.resistanceOhms).toBe(0.5);

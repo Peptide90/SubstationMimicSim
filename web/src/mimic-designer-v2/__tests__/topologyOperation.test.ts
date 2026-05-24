@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DrawingDocument, ElectricalSymbol } from '../drawing/model';
 import { buildGraph } from '../topology/graph';
 import { deriveOperationState, operateDevice } from '../topology/operation';
+import { extractTopology } from '../topology/extractTopology';
 import { migrateDrawingDocument } from '../schema/documentSchema';
 
 const symbol = (patch: Partial<ElectricalSymbol> & Pick<ElectricalSymbol, 'id' | 'type' | 'position' | 'terminals'>): ElectricalSymbol => ({
@@ -159,5 +160,74 @@ describe('Mimic Designer V2 topology and operation', () => {
     expect(cb?.operation?.switchState).toBe('open');
     expect(cb?.operation?.tripped).toBe(true);
     expect(result.reason).toContain('tripped');
+  });
+
+  it('flags direct mixed-voltage energisation without a transformer boundary', () => {
+    const doc = baseDoc([{ ...source, voltageLevelKv: 400 }, breaker('closed'), load]);
+    doc.objects.busbars.push({
+      id: 'mixed-bus',
+      type: 'busbar-segment',
+      rotation: 0,
+      phaseApplicability: ['A', 'B', 'C'],
+      voltageLevelKv: 132,
+      width: 8,
+      vertices: [{ x: 40, y: 0 }, { x: 100, y: 0 }],
+      connectionPoints: [
+        { id: 'mixed-bus-cp-0', position: { x: 40, y: 0 } },
+        { id: 'mixed-bus-cp-1', position: { x: 100, y: 0 } }
+      ]
+    });
+    const graph = buildGraph(doc);
+    const state = deriveOperationState(doc, graph);
+    const topology = extractTopology(doc);
+
+    expect(state.voltageConflictBranchIds.size).toBeGreaterThan(0);
+    expect(topology.warnings.some((warning) => warning.code === 'VOLTAGE_MISMATCH_BRANCH')).toBe(true);
+  });
+
+  it('allows voltage segregation through a transformer internal boundary', () => {
+    const transformer = symbol({
+      id: 'tx-1',
+      type: 'transformer',
+      position: { x: 100, y: 0 },
+      voltageLevelKv: 400,
+      terminals: [
+        { id: 'hv', name: 'hv', offset: { x: -30, y: 0 }, phaseApplicability: ['A', 'B', 'C'] },
+        { id: 'lv', name: 'lv', offset: { x: 30, y: 0 }, phaseApplicability: ['A', 'B', 'C'] }
+      ]
+    });
+    const doc = baseDoc([{ ...source, voltageLevelKv: 400 }, transformer, { ...load, voltageLevelKv: 132, position: { x: 200, y: 0 } }]);
+    doc.objects.busbars.push(
+      {
+        id: 'hv-bus',
+        type: 'busbar-segment',
+        rotation: 0,
+        phaseApplicability: ['A', 'B', 'C'],
+        voltageLevelKv: 400,
+        width: 8,
+        vertices: [{ x: 40, y: 0 }, { x: 70, y: 0 }],
+        connectionPoints: [
+          { id: 'hv-bus-cp-0', position: { x: 40, y: 0 } },
+          { id: 'hv-bus-cp-1', position: { x: 70, y: 0 } }
+        ]
+      },
+      {
+        id: 'lv-bus',
+        type: 'busbar-segment',
+        rotation: 0,
+        phaseApplicability: ['A', 'B', 'C'],
+        voltageLevelKv: 132,
+        width: 8,
+        vertices: [{ x: 130, y: 0 }, { x: 160, y: 0 }],
+        connectionPoints: [
+          { id: 'lv-bus-cp-0', position: { x: 130, y: 0 } },
+          { id: 'lv-bus-cp-1', position: { x: 160, y: 0 } }
+        ]
+      }
+    );
+    const state = deriveOperationState(doc, buildGraph(doc));
+
+    expect(state.voltageConflictBranchIds.size).toBe(0);
+    expect([...state.branchVoltageKv.values()].some((voltages) => voltages.has(132))).toBe(true);
   });
 });

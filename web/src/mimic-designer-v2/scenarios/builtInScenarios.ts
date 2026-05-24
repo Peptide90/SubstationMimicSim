@@ -15,6 +15,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
   scenarioFromExample('template-simple-radial-feeder', {
     name: 'Do not open disconnector on load',
     description: 'Teach that load current should be interrupted by a breaker, not a disconnector.',
+    mode: 'challenge',
     difficulty: 'standard',
     tags: ['switching', 'disconnector'],
     objectives: [
@@ -45,6 +46,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
   scenarioFromExample('example-phase-earth-fault', {
     name: 'Phase-to-earth fault trip',
     description: 'Use the correct breaker/protection path to clear a phase-earth fault.',
+    mode: 'challenge',
     difficulty: 'standard',
     tags: ['fault', 'earth-fault'],
     objectives: [{ id: 'clear-pe-fault', text: 'Clear the phase-earth fault', type: 'clear-fault-using-breaker', targetObjectId: 'ex-a-e-bus', hint: 'Open the feeder breaker protecting the faulted section.' }]
@@ -60,6 +62,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
   scenarioFromExample('example-breaker-fail-backup', {
     name: 'Breaker fail with backup trip',
     description: 'Demonstrate backup trip metadata and breaker fail event sequencing.',
+    mode: 'challenge',
     difficulty: 'advanced',
     tags: ['breaker-fail', 'backup-trip'],
     events: [makeScenarioEvent('breaker-fail', 1000, { targetObjectId: 'ex-bf-cb', message: 'Primary breaker fail condition armed.' }), makeScenarioEvent('relay-pickup-trip', 1800, { message: 'Backup trip expected.' })],
@@ -68,6 +71,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
   scenarioFromExample('example-bus-coupler-operation', {
     name: 'Bus coupler restoration',
     description: 'Restore supply across the coupler after a source event.',
+    mode: 'challenge',
     difficulty: 'standard',
     tags: ['bus-coupler', 'restoration'],
     events: [makeScenarioEvent('source-trip', 1000, { targetObjectId: 'ex-bc-src', message: 'Incomer source tripped.' }), makeScenarioEvent('operator-prompt', 1300, { message: 'Restore through the bus coupler path.' })],
