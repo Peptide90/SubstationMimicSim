@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, LearningTier, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
 import { SYMBOL_LIBRARY } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels } from '../nomenclature/engine';
@@ -18,6 +18,7 @@ import { builtInScenarioPackages } from '../scenarios/builtInScenarios';
 import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage } from '../scenarios/packageScenario';
 import { deleteScenarioPackage, duplicateScenario, listScenarioPackages, saveScenarioPackage } from '../scenarios/scenarioStore';
 import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScenario, startScenario, tickScenario } from '../scenarios/runner';
+import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTier, isScenarioAvailableForTier, learnMore, learningTierOrder, learningTiers, tierBadgeForScenario } from '../learning';
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
@@ -79,6 +80,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [doc, setDoc] = useState<DrawingDocument>(() => loadDocument() ?? createEmpty());
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [mode, setMode] = useState<'edit' | 'operate'>(initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? 'operate' : 'edit');
+  const [learningTier, setLearningTier] = useState<LearningTier>('Apprentice');
   const [tool, setTool] = useState<Tool>('select');
   const [renderMode, setRenderMode] = useState<RenderMode>('symbols');
   const [selected, setSelected] = useState<string[]>([]);
@@ -326,11 +328,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
 
   const startActiveScenario = (pkg = activeScenarioPackage, practice = false) => {
     if (!pkg) return;
+    const tierScenario = adaptScenarioForTier(pkg.scenario, learningTier);
     const launchPackage = practice
       ? {
           ...pkg,
           scenario: {
-            ...pkg.scenario,
+            ...tierScenario,
             mode: 'lesson' as const,
             restrictions: {
               ...pkg.scenario.restrictions,
@@ -342,7 +345,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             }
           }
         }
-      : pkg;
+      : { ...pkg, scenario: tierScenario };
     const result = startScenario(launchPackage.drawing, launchPackage.scenario);
     replaceDocument(result.doc, { dirty: true });
     if (pkg.scenario.activeView === 'thermal') setOverlayMode('thermal');
@@ -535,13 +538,14 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const operateState = useMemo(() => deriveOperationState(doc, topology), [doc, topology]);
   const simulationState = useMemo(() => deriveSimulationState(doc, topology, operateState), [doc, topology, operateState]);
   const activeScenario = activeScenarioPackage?.scenario;
+  const learningVisibility = useMemo(() => featureVisibilityForTier(learningTier, activeScenario), [activeScenario, learningTier]);
   const scenarioRestrictions = activeScenario?.restrictions ?? {};
   const focusedOperateMode = mode === 'operate' && Boolean(activeScenarioPackage) && activeScenario?.mode !== 'sandbox';
-  const editingToolsDisabled = focusedOperateMode && scenarioRestrictions.disableDrawingTools;
-  const placementDisabled = focusedOperateMode && (scenarioRestrictions.disablePlacement || scenarioRestrictions.disableDrawingTools);
+  const editingToolsDisabled = !learningVisibility.allowDrawingTools || (focusedOperateMode && scenarioRestrictions.disableDrawingTools);
+  const placementDisabled = !learningVisibility.allowDrawingTools || (focusedOperateMode && (scenarioRestrictions.disablePlacement || scenarioRestrictions.disableDrawingTools));
   const deleteDisabled = focusedOperateMode && scenarioRestrictions.disableDelete;
   const inspectorEditingDisabled = focusedOperateMode && scenarioRestrictions.disableInspectorEditing;
-  const topologyOverlayDisabled = focusedOperateMode && scenarioRestrictions.disableTopologyOverlay;
+  const topologyOverlayDisabled = !learningVisibility.showTopologyOverlay || (focusedOperateMode && scenarioRestrictions.disableTopologyOverlay);
   const activeTeachingStep = activeScenario?.teachingSteps?.[activeScenario.currentStepIndex ?? 0];
   const focusObjectIds = useMemo(() => new Set([
     activeTeachingStep?.targetObjectId,
@@ -1237,6 +1241,14 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   }, [commit, deleteDisabled, doc, finishPath, redoStack, selected, selectedSymbols.length, tool, undoStack]);
 
   useEffect(() => {
+    if (!learningVisibility.showThreePhase && doc.activeView === 'three-phase') setDoc((prev) => ({ ...prev, activeView: 'single-line' }));
+    if (!learningVisibility.showThermalOverlay && overlayMode === 'thermal') setOverlayMode('none');
+    if (!learningVisibility.showProtectionManager && overlayMode === 'protection') setOverlayMode('none');
+    if (!learningVisibility.showTopologyOverlay && showTopologyOverlay) setShowTopologyOverlay(false);
+    if (!learningVisibility.allowFaultTools && tool === 'fault') setTool('select');
+  }, [doc.activeView, learningVisibility, overlayMode, showTopologyOverlay, tool]);
+
+  useEffect(() => {
     if (!doc.faults.some((fault) => fault.active && !fault.persistent && fault.durationMs)) return;
     const timer = window.setInterval(() => {
       setDoc((current) => expireTransientFaults(current));
@@ -1356,10 +1368,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const eventTime = (timestamp: string) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const scenarioSections = [
-    { title: 'Tutorials', packages: builtInScenarioPackages.filter((pkg) => (pkg.scenario.mode ?? 'lesson') === 'lesson') },
-    { title: 'Challenges', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'challenge') },
-    { title: 'Examples', packages: builtInScenarioPackages.filter((pkg) => pkg.tags.includes('example') || pkg.tags.includes('thermal') || pkg.tags.includes('phase-specific')) },
-    { title: 'Sandbox Templates', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'sandbox') }
+    { title: 'Tutorials', packages: builtInScenarioPackages.filter((pkg) => (pkg.scenario.mode ?? 'lesson') === 'lesson' && isScenarioAvailableForTier(pkg.scenario, learningTier)) },
+    { title: 'Challenges', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'challenge' && isScenarioAvailableForTier(pkg.scenario, learningTier)) },
+    { title: 'Examples', packages: builtInScenarioPackages.filter((pkg) => (pkg.tags.includes('example') || pkg.tags.includes('thermal') || pkg.tags.includes('phase-specific')) && isScenarioAvailableForTier(pkg.scenario, learningTier)) },
+    { title: 'Sandbox Templates', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'sandbox' && isScenarioAvailableForTier(pkg.scenario, learningTier)) }
   ];
 
   const operationLabel = (symbol: ElectricalSymbol) => {
@@ -1393,6 +1405,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
 
   const selectedBoxRect = selectionBox ? selectionBounds(selectionBox) : null;
   const ghostPath = draftPath.length > 0 ? [...draftPath, ...(cursorPoint ? [cursorPoint] : [])] : [];
+  const launchScenario = scenarioLaunchPackage ? adaptScenarioForTier(scenarioLaunchPackage.scenario, learningTier) : undefined;
 
   return <div className='mimic-v2-root' data-theme={theme}>
     {!placementDisabled && <aside className='mimic-v2-sidebar'>
@@ -1418,14 +1431,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     </aside>}
     <main className='mimic-v2-main'>
       <div className='mimic-v2-toolbar'>
+        <div className='mimic-v2-tool-group'><span>Tier</span><select value={learningTier} title={learningTiers[learningTier].explanationStyle} onChange={(event) => setLearningTier(event.target.value as LearningTier)}>{learningTierOrder.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></div>
         <div className='mimic-v2-tool-group'><span>Mode</span><button className={`mimic-v2-btn ${mode==='edit'?'active':''}`} onClick={() => setMode('edit')}>Edit</button><button className={`mimic-v2-btn ${mode==='operate'?'active':''}`} onClick={() => setMode('operate')}>Operate</button></div>
-        <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn ${tool==='select'?'active':''}`} title='Select and operate existing equipment' onClick={() => setTool('select')}>Select</button>{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='conductor'?'active':''}`} title='Draw conductor paths' onClick={() => setTool('conductor')}>Cable</button>}{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='busbar'?'active':''}`} title='Draw busbar sections' onClick={() => setTool('busbar')}>Busbar</button>}<button className={`mimic-v2-btn ${tool==='fault'?'active':''}`} title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>Fault</button><button className={`mimic-v2-btn ${tool==='pan'?'active':''}`} title='Pan the canvas' onClick={() => setTool('pan')}>Pan</button></div>
+        <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn ${tool==='select'?'active':''}`} title='Select and operate existing equipment' onClick={() => setTool('select')}>Select</button>{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='conductor'?'active':''}`} title='Draw conductor paths' onClick={() => setTool('conductor')}>Cable</button>}{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='busbar'?'active':''}`} title='Draw busbar sections' onClick={() => setTool('busbar')}>Busbar</button>}{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn ${tool==='fault'?'active':''}`} title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>Fault</button>}<button className={`mimic-v2-btn ${tool==='pan'?'active':''}`} title='Pan the canvas' onClick={() => setTool('pan')}>Pan</button></div>
         {tool === 'fault' && <div className='mimic-v2-tool-group'><span>Fault</span><select value={faultType} onChange={(event) => setFaultType(event.target.value as FaultType)}><option value='A-E'>A-E</option><option value='B-E'>B-E</option><option value='C-E'>C-E</option><option value='A-B'>A-B</option><option value='B-C'>B-C</option><option value='C-A'>C-A</option><option value='A-B-C'>A-B-C</option><option value='A-B-C-E'>A-B-C-E</option><option value='open-circuit'>open circuit</option><option value='high-impedance'>high Z</option><option value='hot-joint'>hot joint</option><option value='transient'>transient</option><option value='persistent'>persistent</option></select></div>}
-        <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button><button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button></div>
+        <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button>{learningVisibility.showThreePhase && <button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button>}</div>
         <div className='mimic-v2-tool-group'><span>Display</span><button className={`mimic-v2-btn ${renderMode==='symbols'?'active':''}`} title='Use schematic symbols' onClick={() => setRenderMode('symbols')}>Symbols</button></div>
-        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button><button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button><button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button></div>
-        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button><button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button><button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button><button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
-        <div className='mimic-v2-tool-group'><span>Debug</span><button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button><button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button></div>
+        <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}</div>
+        <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button>{learningVisibility.showPowerFlow && <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button>}<button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
+        <div className='mimic-v2-tool-group'><span>Display</span><button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
       <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
@@ -1528,7 +1542,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <span>{eventTime(event.timestamp)}</span>
             <b>{severity}</b>
             <em>{event.source ?? event.targetObjectId ?? 'system'}</em>
-            <span>{event.message}</span>
+            <span>{learningVisibility.showEventLogDetails ? event.message : eventExplanation(event.message, severity, learningTier)}</span>
           </button>) : <p>No events yet.</p>}
         </div>
       </section>}
@@ -1546,10 +1560,19 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </div>
       <div className='mimic-v2-voltage-row inspector'>
         <button className={`mimic-v2-chip ${managerView === 'inspector' ? 'active' : ''}`} onClick={() => setManagerView('inspector')}>Inspector</button>
-        <button className='mimic-v2-chip' onClick={openPowerFlowModal}>Power flow...</button>
-        <button className='mimic-v2-chip' onClick={openProtectionModal}>Protection...</button>
+        {learningVisibility.showPowerFlow && <button className='mimic-v2-chip' onClick={openPowerFlowModal}>Power flow...</button>}
+        {learningVisibility.showProtectionManager && <button className='mimic-v2-chip' onClick={openProtectionModal}>Protection...</button>}
         <button className={`mimic-v2-chip ${managerView === 'scenario' ? 'active' : ''}`} onClick={() => setManagerView('scenario')}>Scenarios</button>
       </div>
+      <section className='mimic-v2-manager-panel'>
+        <h4>{learningTier} Mode</h4>
+        <p>{learningTiers[learningTier].explanationStyle}</p>
+        <p>{explain('power-flow', learningTier)}</p>
+        <details className='mimic-v2-guidance-box'>
+          <summary>Learn more</summary>
+          {learnMore('power-flow', learningTier).map((item) => <p key={item.tier}><strong>{item.tier}:</strong> {item.text}</p>)}
+        </details>
+      </section>
       {false && <section className='mimic-v2-manager-panel'>
         <h4>Inputs</h4>
         {doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((source) => {
@@ -1636,7 +1659,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <h4>{section.title}</h4>
           {section.packages.map((pkg) => <div key={`${section.title}-${pkg.id}`} className='mimic-v2-manager-card'>
             <strong>{pkg.title}</strong>
-            <p>{pkg.description} / {pkg.difficulty} / {pkg.scenario.briefing?.estimatedMinutes ? `${pkg.scenario.briefing.estimatedMinutes} min / ` : ''}{pkg.tags.join(', ')}</p>
+            <p>{pkg.description} / {pkg.difficulty} / {tierBadgeForScenario(pkg.scenario)} / {pkg.scenario.briefing?.estimatedMinutes ? `${pkg.scenario.briefing.estimatedMinutes} min / ` : ''}{pkg.tags.join(', ')}</p>
             <button className='mimic-v2-chip' onClick={() => loadScenarioPackageIntoEditor(pkg)}>Load copy</button>
             <button className='mimic-v2-chip' onClick={() => openScenarioLaunch(pkg)}>Launch</button>
             <button className='mimic-v2-chip' onClick={() => duplicateScenarioPackageById(pkg.id)}>Duplicate editable</button>
@@ -1690,9 +1713,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </div>
       <p>{simulationState.approximationLabel}</p>
       {overlayMode === 'thermal' && <p>Thermal legend: green normal, amber warm, red hot, dark red critical.</p>}
-      <h4>Protection</h4>
-      <p>{doc.relays.length} relays / {doc.protectionZones.length} zones. {doc.relays.filter((relay) => relay.state === 'picked-up' || relay.state === 'tripped').length} active.</p>
-      <button className='mimic-v2-btn' onClick={openProtectionModal}>Edit Protection...</button>
+      {learningVisibility.showProtectionManager && <>
+        <h4>Protection</h4>
+        <p>{doc.relays.length} relays / {doc.protectionZones.length} zones. {doc.relays.filter((relay) => relay.state === 'picked-up' || relay.state === 'tripped').length} active.</p>
+        <button className='mimic-v2-btn' onClick={openProtectionModal}>Edit Protection...</button>
+      </>}
       <h4>Faults</h4>
       <button className='mimic-v2-btn' onClick={() => setTool('fault')}>View Faults...</button>
       {doc.scenarios.length > 0 && <>
@@ -1703,27 +1728,29 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <h4>Faults</h4>
         {doc.faults.filter((fault) => fault.active).map((fault) => <p key={fault.id}>{fault.label ?? fault.type} on {fault.targetObjectId ?? fault.targetTopologyBranchId ?? fault.targetTopologyNodeId} <button className='mimic-v2-chip' onClick={() => setDoc(clearFault(doc, fault.id))}>clear</button></p>)}
       </>}
-      <h4>Debug</h4>
-      <p>Selected IDs: {selected.join(', ') || 'none'}</p>
-      <p>Warnings: {topology.warnings.length}</p>
-      {topology.warnings.slice(0, 5).map((warning)=><p key={warning.id}>[{warning.code}] {warning.message}</p>)}
-      <p>Schema: {doc.schemaVersion}</p>
-      <p>Mode: {mode}</p><p>View: {doc.activeView}</p><p>Tool: {tool}</p><p>Display: {renderMode}</p>
-      <p>Objects: {doc.objects.symbols.length + doc.objects.conductors.length + doc.objects.busbars.length}</p>
-      <p>Topology: {topology.nodes.length} nodes / {topology.branches.length} branches / {topology.devices.length} devices</p>
-      <p>Live branches: {[...operateState.liveBranchIds].join(', ') || 'none'}</p>
-      <p>Earthed branches: {[...operateState.earthedBranchIds].join(', ') || 'none'}</p>
-      <p>Fault branches: {[...operateState.faultBranchIds].join(', ') || 'none'}</p>
+      {learningVisibility.showDebug && <>
+        <h4>Debug</h4>
+        <p>Selected IDs: {selected.join(', ') || 'none'}</p>
+        <p>Warnings: {topology.warnings.length}</p>
+        {topology.warnings.slice(0, 5).map((warning)=><p key={warning.id}>[{warning.code}] {warning.message}</p>)}
+        <p>Schema: {doc.schemaVersion}</p>
+        <p>Mode: {mode}</p><p>View: {doc.activeView}</p><p>Tool: {tool}</p><p>Display: {renderMode}</p>
+        <p>Objects: {doc.objects.symbols.length + doc.objects.conductors.length + doc.objects.busbars.length}</p>
+        <p>Topology: {topology.nodes.length} nodes / {topology.branches.length} branches / {topology.devices.length} devices</p>
+        <p>Live branches: {[...operateState.liveBranchIds].join(', ') || 'none'}</p>
+        <p>Earthed branches: {[...operateState.earthedBranchIds].join(', ') || 'none'}</p>
+        <p>Fault branches: {[...operateState.faultBranchIds].join(', ') || 'none'}</p>
+      </>}
       <p>Last operation: {lastOperationReason}</p>
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>
-    {scenarioLaunchPackage && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setScenarioLaunchPackage(null)}>
+    {scenarioLaunchPackage && launchScenario && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setScenarioLaunchPackage(null)}>
       <div className='mimic-v2-launch-modal' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>
           <div>
             <h2>{scenarioLaunchPackage.title}</h2>
-            <p>{scenarioLaunchPackage.scenario.mode ?? 'lesson'} / {scenarioLaunchPackage.difficulty} / {scenarioLaunchPackage.scenario.briefing?.estimatedMinutes ? `${scenarioLaunchPackage.scenario.briefing.estimatedMinutes} min` : 'untimed'}</p>
+            <p>{launchScenario.mode ?? 'lesson'} / {scenarioLaunchPackage.difficulty} / {launchScenario.briefing?.estimatedMinutes ? `${launchScenario.briefing.estimatedMinutes} min` : 'untimed'} / {learningTier}</p>
           </div>
           <button className='mimic-v2-btn' onClick={() => setScenarioLaunchPackage(null)}>Exit to scenario list</button>
         </header>
@@ -1732,24 +1759,24 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <h3>Description</h3>
             <p>{scenarioLaunchPackage.description || 'No description provided.'}</p>
             <h3>Learning Objectives</h3>
-            {(scenarioLaunchPackage.scenario.learningObjectives?.length ? scenarioLaunchPackage.scenario.learningObjectives : scenarioLaunchPackage.scenario.objectives.map((objective) => objective.text)).map((objective, index) => <p key={`${objective}-${index}`}>{objective}</p>)}
+            {(launchScenario.learningObjectives?.length ? launchScenario.learningObjectives : launchScenario.objectives.map((objective) => objective.text)).map((objective, index) => <p key={`${objective}-${index}`}>{objective}</p>)}
           </section>
           <section>
             <h3>Initial Network Condition</h3>
-            <p>{scenarioLaunchPackage.scenario.briefing?.initialCondition ?? 'Scenario initial source, switch, fault, protection, and power-flow states are restored at start.'}</p>
+            <p>{launchScenario.briefing?.initialCondition ?? 'Scenario initial source, switch, fault, protection, and power-flow states are restored at start.'}</p>
             <h3>Operator Role</h3>
-            <p>{scenarioLaunchPackage.scenario.briefing?.expectedOperatorRole ?? 'Control engineer / learner'}</p>
+            <p>{launchScenario.briefing?.expectedOperatorRole ?? 'Control engineer / learner'}</p>
             <h3>Restrictions & Warnings</h3>
-            {(scenarioLaunchPackage.scenario.briefing?.restrictions ?? ['Editing tools may be hidden during operational mode.']).map((item) => <p key={item}>{item}</p>)}
-            {(scenarioLaunchPackage.scenario.briefing?.warnings ?? []).map((item) => <p key={item} className='mimic-v2-warning-text'>{item}</p>)}
+            {(launchScenario.briefing?.restrictions ?? ['Editing tools may be hidden during operational mode.']).map((item) => <p key={item}>{item}</p>)}
+            {(launchScenario.briefing?.warnings ?? []).map((item) => <p key={item} className='mimic-v2-warning-text'>{item}</p>)}
           </section>
           <section>
             <h3>Win Conditions</h3>
-            {(scenarioLaunchPackage.scenario.briefing?.winConditions ?? scenarioLaunchPackage.scenario.objectives.map((objective) => objective.text)).map((item) => <p key={item}>{item}</p>)}
+            {(launchScenario.briefing?.winConditions ?? launchScenario.objectives.map((objective) => objective.text)).map((item) => <p key={item}>{item}</p>)}
           </section>
           <section>
             <h3>Lose Conditions</h3>
-            {(scenarioLaunchPackage.scenario.briefing?.loseConditions ?? ['Live-earth conflict', 'Voltage segregation breach', 'Excessive incorrect operations']).map((item) => <p key={item}>{item}</p>)}
+            {(launchScenario.briefing?.loseConditions ?? ['Live-earth conflict', 'Voltage segregation breach', 'Excessive incorrect operations']).map((item) => <p key={item}>{item}</p>)}
           </section>
         </div>
         <footer className='mimic-v2-launch-actions'>

@@ -279,6 +279,8 @@ export interface ScenarioObjective {
   targetTopologyBranchId?: string;
   targetState?: 'open' | 'closed' | 'live' | 'dead' | 'isolated' | 'cleared' | 'identified';
   hint?: string;
+  tierText?: Partial<Record<LearningTier, string>>;
+  tierHints?: Partial<Record<LearningTier, string>>;
   completed?: boolean;
   failed?: boolean;
 }
@@ -287,6 +289,7 @@ export type ScenarioDifficulty = 'intro' | 'standard' | 'advanced';
 export type ScenarioEventType = 'scheduled-fault' | 'transient-fault' | 'load-increase' | 'source-trip' | 'breaker-fail' | 'relay-pickup-trip' | 'operator-prompt' | 'hint-popup';
 export type ScenarioMode = 'lesson' | 'challenge' | 'sandbox';
 export type ScenarioEventSeverity = 'info' | 'operation' | 'warning' | 'protection' | 'alarm' | 'fault' | 'scenario';
+export type LearningTier = 'Junior' | 'Student' | 'Apprentice' | 'Engineer' | 'Commissioning Engineer';
 
 export interface ScenarioEvent {
   id: string;
@@ -374,6 +377,11 @@ export interface ScenarioDefinition {
   name: string;
   description?: string;
   learningObjectives?: string[];
+  minTier?: LearningTier;
+  maxTier?: LearningTier;
+  recommendedTier?: LearningTier;
+  supportedTiers?: LearningTier[];
+  explanationVariants?: Partial<Record<LearningTier, string>>;
   mode?: ScenarioMode;
   difficulty?: ScenarioDifficulty;
   tags?: string[];
@@ -391,6 +399,7 @@ export interface ScenarioDefinition {
   powerFlows?: Record<string, PowerFlowMetadata>;
   activeView?: ViewMode | 'thermal' | 'topology';
   objectives: ScenarioObjective[];
+  tierObjectives?: Partial<Record<LearningTier, ScenarioObjective[]>>;
   events?: ScenarioEvent[];
   successRules?: ScenarioSuccessRules;
   failureRules?: ScenarioSuccessRules;
