@@ -30,7 +30,7 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
     create: () => {
       const symbols = [
         symbol('sb-src', 'source', 80, 120, '132kV INCOMER', 132),
-        symbol('sb-vt', 'vt', 260, 100, 'VT1', 132),
+        symbol('sb-vt', 'vt', 260, 140, 'VT1', 132),
         ...[0, 1, 2].flatMap((index) => {
           const x = 180 + index * 150;
           return [
@@ -41,13 +41,11 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
           ];
         })
       ];
-      const conductors = [
-        conductor('sb-incomer', [{ x: 120, y: 120 }, { x: 560, y: 120 }], 132),
-        conductor('sb-vt-tap', [{ x: 260, y: 120 }, { x: 260, y: 120 }], 132),
+      const bayBusbars = [
         ...[0, 1, 2].flatMap((index) => {
           const x = 180 + index * 150;
           return [
-            conductor(`sb-bay-${index + 1}-drop`, [{ x, y: 120 }, { x, y: 160 }, { x, y: 220 }, { x, y: 285 }, { x, y: 340 }], 132)
+            busbar(`sb-bay-${index + 1}-drop`, [{ x, y: 120 }, { x, y: 160 }, { x, y: 220 }, { x, y: 285 }, { x, y: 340 }], 132)
           ];
         })
       ];
@@ -55,7 +53,7 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
         description: 'One main busbar with three outgoing breaker/CT/load bays and an incomer.',
         tags: ['single-busbar', 'feeders', 'distribution'],
         voltageLevels: [132],
-        objects: { symbols, busbars: [busbar('sb-main-bus', [{ x: 120, y: 120 }, { x: 560, y: 120 }], 132)], conductors, labels: [], annotations: [] }
+        objects: { symbols, busbars: [busbar('sb-main-bus', [{ x: 120, y: 120 }, { x: 560, y: 120 }], 132), ...bayBusbars], conductors: [], labels: [], annotations: [] }
       });
     }
   },

@@ -26,8 +26,12 @@ export const teachingExamples: DrawingTemplate[] = [
       voltageLevels: [132],
       objects: {
         symbols: [symbol('ex-sb-src', 'source', 80, 120, 'SRC', 132), symbol('ex-sb-load1', 'load', 280, 220, 'LOAD 1', 132, 90), symbol('ex-sb-load2', 'load', 420, 220, 'LOAD 2', 132, 90)],
-        busbars: [busbar('ex-sb-bus', [{ x: 120, y: 120 }, { x: 500, y: 120 }], 132)],
-        conductors: [conductor('ex-sb-l1', [{ x: 280, y: 120 }, { x: 280, y: 180 }], 132), conductor('ex-sb-l2', [{ x: 420, y: 120 }, { x: 420, y: 180 }], 132)],
+        busbars: [
+          busbar('ex-sb-bus', [{ x: 120, y: 120 }, { x: 500, y: 120 }], 132),
+          busbar('ex-sb-l1', [{ x: 280, y: 120 }, { x: 280, y: 180 }], 132),
+          busbar('ex-sb-l2', [{ x: 420, y: 120 }, { x: 420, y: 180 }], 132)
+        ],
+        conductors: [],
         labels: [],
         annotations: []
       }
@@ -45,9 +49,19 @@ export const teachingExamples: DrawingTemplate[] = [
       tags: ['bus-coupler', 'operation'],
       voltageLevels: [275],
       objects: {
-        symbols: [symbol('ex-bc-src', 'source', 80, 110, 'SRC', 275), symbol('ex-bc-ds1', 'disconnector', 300, 160, 'BC DS1', 275, 90, { operation: { switchState: 'closed' } }), symbol('ex-bc-cb', 'circuit-breaker', 300, 230, 'BC CB', 275, 90, { operation: { switchState: 'closed' } }), symbol('ex-bc-ds2', 'disconnector', 300, 300, 'BC DS2', 275, 90, { operation: { switchState: 'closed' } })],
-        busbars: [busbar('ex-bc-main', [{ x: 120, y: 110 }, { x: 500, y: 110 }], 275), busbar('ex-bc-reserve', [{ x: 120, y: 330 }, { x: 500, y: 330 }], 275)],
-        conductors: [conductor('ex-bc-link', [{ x: 300, y: 110 }, { x: 300, y: 130 }, { x: 300, y: 200 }, { x: 300, y: 270 }, { x: 300, y: 330 }], 275)],
+        symbols: [
+          symbol('ex-bc-src', 'source', 80, 110, 'SRC', 275),
+          symbol('ex-bc-ds1', 'disconnector', 340, 140, 'BC DS1', 275, 90, { operation: { switchState: 'closed' } }),
+          symbol('ex-bc-cb', 'circuit-breaker', 340, 240, 'BC CB', 275, 90, { operation: { switchState: 'closed' } }),
+          symbol('ex-bc-ds2', 'disconnector', 340, 340, 'BC DS2', 275, 90, { operation: { switchState: 'closed' } })
+        ],
+        busbars: [
+          busbar('ex-bc-main', [{ x: 120, y: 110 }, { x: 560, y: 110 }], 275),
+          busbar('ex-bc-reserve', [{ x: 120, y: 370 }, { x: 560, y: 370 }], 275),
+          busbar('ex-bc-ds1-to-cb', [{ x: 340, y: 170 }, { x: 340, y: 210 }], 275),
+          busbar('ex-bc-cb-to-ds2', [{ x: 340, y: 270 }, { x: 340, y: 310 }], 275)
+        ],
+        conductors: [],
         labels: [],
         annotations: []
       }
@@ -82,7 +96,7 @@ export const teachingExamples: DrawingTemplate[] = [
     voltageLevels: [132],
     create: () => {
       const chain = feederChain('ex-phase', 180, 80, 'PH', 132, true);
-      chain.symbols.push(symbol('ex-phase-vt-b', 'vt', 260, 160, 'VT-B', 132, 0, { phaseApplicability: ['B'] }));
+      chain.symbols.push(symbol('ex-phase-vt-b', 'vt', 260, 200, 'VT-B', 132, 0, { phaseApplicability: ['B'] }));
       return createBaseDocument('example-phase-specific-vt-ct', 'Example: phase-specific VT/CT', { drawingType: 'example', activeView: 'three-phase', tags: ['phase-specific', 'measurement'], voltageLevels: [132], objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: [], labels: [], annotations: [] } });
     }
   },

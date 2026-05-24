@@ -133,6 +133,7 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
     phaseMode: conductor.phaseMode ?? (hasAllPhases(conductor.phaseApplicability ?? phasesAll) ? 'three-phase' : 'single-phase'),
     renderExpansion: conductor.renderExpansion ?? 'per-phase-symbols',
     phaseSpacingPx: conductor.phaseSpacingPx ?? 24,
+    conductorStyle: conductor.conductorStyle ?? 'cable',
     powerFlow: computePowerFlow(conductor.powerFlow),
     connectionPoints: conductor.connectionPoints?.length
       ? conductor.connectionPoints

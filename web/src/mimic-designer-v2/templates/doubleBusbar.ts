@@ -30,8 +30,7 @@ function bay(prefix: string, x: number, side: 'main-1' | 'main-2', ordinal: numb
       symbol(`${prefix}-ct`, 'ct', x, 384, `${number} CT`, 275, 90),
       symbol(`${prefix}-line-ds`, 'disconnector', x, 448, `${number} LINE DS`, 275, 90, { operation: { switchState: 'closed' } }),
       symbol(`${prefix}-line-es`, 'earth-switch', x, 512, `${number} ES`, 275, 90),
-      symbol(`${prefix}-vt`, 'vt', x + 42, 494, `${number} VT`, 275),
-      symbol(`${prefix}-vt-earth`, 'earth-switch', x + 42, 542, `${number} VT E`, 275),
+      symbol(`${prefix}-vt`, 'vt', x + 42, 534, `${number} VT`, 275),
       symbol(`${prefix}-end`, loadType, x, 604, `${loadLabel}`, kind === 'line' ? 275 : 132, 90)
     ],
     conductors: [
@@ -44,8 +43,7 @@ function bay(prefix: string, x: number, side: 'main-1' | 'main-2', ordinal: numb
       conductor(`${prefix}-ct-to-line-ds`, [{ x, y: 404 }, { x, y: 418 }], 275),
       conductor(`${prefix}-line-ds-to-es`, [{ x, y: 478 }, { x, y: 512 }], 275),
       conductor(`${prefix}-es-to-line`, [{ x, y: 512 }, { x, y: 564 }], 275),
-      conductor(`${prefix}-vt-tap`, [{ x, y: 514 }, { x: x + 42, y: 514 }], 275),
-      conductor(`${prefix}-vt-earth`, [{ x: x + 42, y: 514 }, { x: x + 42, y: 542 }], 275)
+      conductor(`${prefix}-vt-tap`, [{ x, y: 514 }, { x: x + 42, y: 514 }], 275)
     ],
     labels: [label(`${prefix}-circuit-label`, x - 22, 640, `${number} ${name}`)]
   };

@@ -478,6 +478,7 @@ export interface ElectricalSymbol extends BaseDrawingObject {
 
 export interface ConductorPath extends BaseDrawingObject {
   type: 'conductor-path';
+  conductorStyle?: 'cable' | 'overhead-line';
   vertices: Point[];
   orthogonal: boolean;
   connectionPoints: ConnectionPoint[];

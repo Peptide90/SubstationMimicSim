@@ -87,10 +87,11 @@ export function busbar(id: string, vertices: Point[], voltageLevelKv = 132): Bus
   } as BusbarSegment;
 }
 
-export function conductor(id: string, vertices: Point[], voltageLevelKv = 132): ConductorPath {
+export function conductor(id: string, vertices: Point[], voltageLevelKv = 132, conductorStyle: ConductorPath['conductorStyle'] = 'cable'): ConductorPath {
   return {
     id,
     type: 'conductor-path',
+    conductorStyle,
     rotation: 0,
     phaseApplicability: phases,
     voltageLevelKv,
@@ -111,7 +112,7 @@ export function feederChain(prefix: string, y: number, startX: number, labelPref
   const ct = symbol(`${prefix}-ct`, 'ct', startX + 230, y, `${labelPrefix} CT`, voltage);
   const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 285, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
   const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 340, y, `${labelPrefix} ES2`, voltage);
-  const vt = symbol(`${prefix}-vt`, 'vt', startX + 390, y - 20, `${labelPrefix} VT`, voltage);
+  const vt = symbol(`${prefix}-vt`, 'vt', startX + 390, y + 20, `${labelPrefix} VT`, voltage);
   const load = symbol(`${prefix}-load`, 'load', startX + 470, y, `${labelPrefix} LINE`, voltage);
   return {
     symbols: [source, es1, ds1, cb, ct, ds2, es2, vt, load],
@@ -145,7 +146,7 @@ function terminalsFor(type: ElectricalSymbol['type']) {
   if (type === 'load') return [{ name: 'in', x: -40, y: 0 }];
   if (type === 'earth-switch') return [{ name: 'in', x: 0, y: 0 }, { name: 'earth', x: 0, y: 30 }];
   if (type === 'transformer') return [{ id: 'hv', name: 'hv', x: -40, y: 0 }, { id: 'lv', name: 'lv', x: 40, y: 0 }];
-  if (type === 'vt') return [{ name: 'tap', x: 0, y: 20 }];
+  if (type === 'vt') return [{ name: 'tap', x: 0, y: -20 }];
   if (type === 'ct') return [{ name: 'in', x: -20, y: 0 }, { name: 'out', x: 20, y: 0 }];
   return [{ name: 'in', x: -30, y: 0 }, { name: 'out', x: 30, y: 0 }];
 }

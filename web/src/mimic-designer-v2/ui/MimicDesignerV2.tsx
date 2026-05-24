@@ -22,7 +22,8 @@ import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTi
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
-type Tool = 'select' | 'conductor' | 'busbar' | 'fault' | 'pan';
+type Tool = 'select' | 'conductor' | 'fault' | 'pan';
+type ConductorToolKind = 'busbar' | 'cable' | 'overhead-line';
 type RenderMode = 'symbols' | 'nodes';
 type OverlayMode = 'none' | 'power' | 'topology' | 'thermal' | 'protection';
 type ManagerView = 'inspector' | 'scenario';
@@ -82,7 +83,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [mode, setMode] = useState<'edit' | 'operate'>(initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? 'operate' : 'edit');
   const [learningTier, setLearningTier] = useState<LearningTier>('Apprentice');
   const [tool, setTool] = useState<Tool>('select');
-  const [renderMode, setRenderMode] = useState<RenderMode>('symbols');
+  const [conductorToolKind, setConductorToolKind] = useState<ConductorToolKind>('busbar');
+  const renderMode = 'symbols' as RenderMode;
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedPhase, setSelectedPhase] = useState<Phase | undefined>();
   const [selectedVoltage, setSelectedVoltage] = useState<number>(132);
@@ -599,9 +601,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     const cleanPoints = points.filter((point, index) => index === 0 || pointKey(point) !== pointKey(points[index - 1]));
     if (cleanPoints.length < 2) return;
 
+    const drawingBusbar = conductorToolKind === 'busbar';
     const pathObj = {
       id,
-      type: tool === 'conductor' ? 'conductor-path' : 'busbar-segment',
+      type: drawingBusbar ? 'busbar-segment' : 'conductor-path',
+      conductorStyle: drawingBusbar ? undefined : conductorToolKind,
       rotation: 0,
       phaseApplicability: phasesAll,
       phaseMode: 'three-phase',
@@ -613,11 +617,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       connectionPoints: cleanPoints.map((pt, i) => ({ id: `${id}-cp-${i}`, position: pt }))
     } as ConductorPath | BusbarSegment;
 
-    let next = tool === 'conductor'
-      ? { ...doc, objects: { ...doc.objects, conductors: [...doc.objects.conductors, pathObj as ConductorPath] } }
-      : { ...doc, objects: { ...doc.objects, busbars: [...doc.objects.busbars, { ...(pathObj as BusbarSegment), width: 8 }] } };
+    let next = drawingBusbar
+      ? { ...doc, objects: { ...doc.objects, busbars: [...doc.objects.busbars, { ...(pathObj as BusbarSegment), width: 8 }] } }
+      : { ...doc, objects: { ...doc.objects, conductors: [...doc.objects.conductors, pathObj as ConductorPath] } };
 
-    if (tool === 'conductor') {
+    if (!drawingBusbar) {
       const sealingEnds = [cleanPoints[0], cleanPoints[cleanPoints.length - 1]]
         .filter((point): point is Point => Boolean(point))
         .filter((point) => pointTouchesBusbar(point))
@@ -629,7 +633,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     commit(next);
     setDraftPath([]);
     setCursorPoint(null);
-  }, [commit, createSymbol, doc, draftPath, pointTouchesBusbar, tool]);
+  }, [commit, conductorToolKind, createSymbol, doc, draftPath, pointTouchesBusbar, tool]);
 
   const addPathPoint = useCallback((point: Point, finish = false) => {
     const nextPoint = snappedPoint(point);
@@ -723,8 +727,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       panRef.current = { x: event.clientX - pan.x, y: event.clientY - pan.y };
       return;
     }
-    if (editingToolsDisabled && (tool === 'conductor' || tool === 'busbar')) return;
-    if (tool === 'conductor' || tool === 'busbar') {
+    if (editingToolsDisabled && tool === 'conductor') return;
+    if (tool === 'conductor') {
       addPathPoint(point);
       return;
     }
@@ -738,7 +742,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const onMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
     const point = eventPoint(event);
     if (panRef.current) setPan({ x: event.clientX - panRef.current.x, y: event.clientY - panRef.current.y });
-    if (tool === 'conductor' || tool === 'busbar') setCursorPoint(snappedPoint(point));
+    if (tool === 'conductor') setCursorPoint(snappedPoint(point));
     if (selectionBox) setSelectionBox({ ...selectionBox, current: snappedPoint(point) });
     if (dragRef.current) moveSelection(point);
   };
@@ -771,8 +775,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       operateSymbol(symbol);
       return;
     }
-    if (editingToolsDisabled && (tool === 'conductor' || tool === 'busbar')) return;
-    if (tool === 'conductor' || tool === 'busbar') {
+    if (editingToolsDisabled && tool === 'conductor') return;
+    if (tool === 'conductor') {
       addPathPoint(nearestTerminalPoint(symbol, point), draftPath.length > 0);
       return;
     }
@@ -1234,7 +1238,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       if (event.key.toLowerCase() === 'r' && selectedSymbols.length) {
         commit({ ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.map((s) => selected.includes(s.id) ? { ...s, rotation: (s.rotation + 90) % 360 } : s) } });
       }
-      if (event.key === 'Enter' && (tool === 'conductor' || tool === 'busbar')) finishPath();
+      if (event.key === 'Enter' && tool === 'conductor') finishPath();
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
@@ -1403,6 +1407,13 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     return <svg viewBox='0 0 40 28' aria-hidden='true'><rect x='8' y='7' width='24' height='14'/></svg>;
   };
 
+  const toolIcon = (name: Tool) => {
+    if (name === 'select') return <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3 L17 14 L11 15 L8 21 L5 3 Z' fill='none' stroke='currentColor' strokeWidth='2' strokeLinejoin='round'/></svg>;
+    if (name === 'conductor') return <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 17 L9 17 L9 7 L15 7 L15 17 L20 17' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'/></svg>;
+    if (name === 'fault') return <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M13 2 L5 14 H11 L9 22 L19 9 H13 L13 2 Z' fill='none' stroke='currentColor' strokeWidth='2' strokeLinejoin='round'/></svg>;
+    return <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M8 12 V6 A2 2 0 0 1 12 6 V11 V5 A2 2 0 0 1 16 5 V12 L18 10 A2 2 0 0 1 21 12 L18 18 A6 6 0 0 1 13 21 H10 A6 6 0 0 1 4 15 V11 A2 2 0 0 1 8 11 V12 Z' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round'/></svg>;
+  };
+
   const selectedBoxRect = selectionBox ? selectionBounds(selectionBox) : null;
   const ghostPath = draftPath.length > 0 ? [...draftPath, ...(cursorPoint ? [cursorPoint] : [])] : [];
   const launchScenario = scenarioLaunchPackage ? adaptScenarioForTier(scenarioLaunchPackage.scenario, learningTier) : undefined;
@@ -1427,19 +1438,17 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
       <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
       {onRequestMenu && <button className='mimic-v2-btn' onClick={onRequestMenu}>Main menu</button>}
-      <button className='mimic-v2-btn' onClick={() => { const d = createEmpty(); d.objects.symbols.push({ id:'vt-demo', type:'vt', position:{x:300,y:200}, rotation:0, terminals:[{id:'t0',name:'tap',offset:{x:0,y:20},phaseApplicability:['B']}], phaseApplicability:['B'], voltageLevelKv: selectedVoltage, label:{text:'VT101*',autoGenerated:true,manualOverride:false,marker:'* phase-specific device: Phase B only'}, simulation:{} }); setDoc(d); }}>Load sample</button>
     </aside>}
     <main className='mimic-v2-main'>
       <div className='mimic-v2-toolbar'>
         <div className='mimic-v2-tool-group'><span>Tier</span><select value={learningTier} title={learningTiers[learningTier].explanationStyle} onChange={(event) => setLearningTier(event.target.value as LearningTier)}>{learningTierOrder.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></div>
         <div className='mimic-v2-tool-group'><span>Mode</span><button className={`mimic-v2-btn ${mode==='edit'?'active':''}`} onClick={() => setMode('edit')}>Edit</button><button className={`mimic-v2-btn ${mode==='operate'?'active':''}`} onClick={() => setMode('operate')}>Operate</button></div>
-        <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn ${tool==='select'?'active':''}`} title='Select and operate existing equipment' onClick={() => setTool('select')}>Select</button>{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='conductor'?'active':''}`} title='Draw conductor paths' onClick={() => setTool('conductor')}>Cable</button>}{!editingToolsDisabled && <button className={`mimic-v2-btn ${tool==='busbar'?'active':''}`} title='Draw busbar sections' onClick={() => setTool('busbar')}>Busbar</button>}{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn ${tool==='fault'?'active':''}`} title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>Fault</button>}<button className={`mimic-v2-btn ${tool==='pan'?'active':''}`} title='Pan the canvas' onClick={() => setTool('pan')}>Pan</button></div>
+        <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='select'?'active':''}`} aria-label='Select' title='Select and operate existing equipment' onClick={() => setTool('select')}>{toolIcon('select')}</button>{!editingToolsDisabled && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='conductor'?'active':''}`} aria-label='Conductor' title='Draw conductor, busbar, cable, or overhead line' onClick={() => setTool('conductor')}>{toolIcon('conductor')}</button>}{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='fault'?'active':''}`} aria-label='Fault' title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>{toolIcon('fault')}</button>}<button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='pan'?'active':''}`} aria-label='Pan' title='Pan the canvas' onClick={() => setTool('pan')}>{toolIcon('pan')}</button>{tool === 'conductor' && !editingToolsDisabled && <select value={conductorToolKind} title='Conductor type' onChange={(event) => setConductorToolKind(event.target.value as ConductorToolKind)}><option value='busbar'>Busbar</option><option value='cable'>Cable</option><option value='overhead-line'>Overhead line</option></select>}</div>
         {tool === 'fault' && <div className='mimic-v2-tool-group'><span>Fault</span><select value={faultType} onChange={(event) => setFaultType(event.target.value as FaultType)}><option value='A-E'>A-E</option><option value='B-E'>B-E</option><option value='C-E'>C-E</option><option value='A-B'>A-B</option><option value='B-C'>B-C</option><option value='C-A'>C-A</option><option value='A-B-C'>A-B-C</option><option value='A-B-C-E'>A-B-C-E</option><option value='open-circuit'>open circuit</option><option value='high-impedance'>high Z</option><option value='hot-joint'>hot joint</option><option value='transient'>transient</option><option value='persistent'>persistent</option></select></div>}
         <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button>{learningVisibility.showThreePhase && <button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button>}</div>
-        <div className='mimic-v2-tool-group'><span>Display</span><button className={`mimic-v2-btn ${renderMode==='symbols'?'active':''}`} title='Use schematic symbols' onClick={() => setRenderMode('symbols')}>Symbols</button></div>
         <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}</div>
         <div className='mimic-v2-tool-group'><span>Managers</span><button className={`mimic-v2-btn ${managerView==='inspector'?'active':''}`} onClick={() => setManagerView('inspector')}>Inspector</button>{learningVisibility.showPowerFlow && <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button>}<button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
-        <div className='mimic-v2-tool-group'><span>Display</span><button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
+        <div className='mimic-v2-tool-group'><span>UI</span><button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
       <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
@@ -1463,7 +1472,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {renderedConductors.map((instance) => <g key={instance.id}>
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={16} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
             {focusObjectIds.has(instance.canonicalId) && <polyline className='mimic-v2-focus-stroke' points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='var(--md2-selected)' strokeWidth={12} strokeLinecap='round' pointerEvents='none' />}
-            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-cable)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 5 : 3} strokeDasharray='18 10' strokeLinecap='round' pointerEvents='none' />
+            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-cable)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 5 : 3} strokeDasharray={instance.path.conductorStyle === 'overhead-line' ? undefined : '18 10'} strokeLinecap='round' pointerEvents='none' />
             {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize='9'>{instance.phase}</text>}
             {flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
@@ -1505,7 +1514,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {showTopologyOverlay && topology.branches.map((branch) => { const from = topology.nodes.find((node)=>node.id===branch.fromNodeId); const to = topology.nodes.find((node)=>node.id===branch.toNodeId); if(!from||!to) return null; const symbol = branch.objectId ? doc.objects.symbols.find((item) => item.id === branch.objectId) : undefined; const open = branch.kind === 'device-internal' && isSwitchingDevice(symbol?.type as ElectricalSymbol['type']) && symbol?.operation?.switchState !== 'closed'; return <line key={`dbg-${branch.id}`} x1={from.position.x} y1={from.position.y} x2={to.position.x} y2={to.position.y} stroke={topologyBranchStroke(branch.id)} strokeWidth={branch.kind === 'device-internal' ? 2 : 1} opacity={open ? 0.35 : 0.9} strokeDasharray={open ? '2 5' : branch.kind === 'device-internal' ? '5 3' : '3 3'} />; })}
           {showTopologyOverlay && topology.nodes.map((node) => <g key={`node-${node.id}`}><circle cx={node.position.x} cy={node.position.y} r={4} fill={operateState.faultNodeIds.has(node.id) ? 'var(--md2-warning)' : operateState.earthedNodeIds.has(node.id) ? 'var(--md2-earth)' : operateState.liveNodeIds.has(node.id) ? 'var(--md2-live)' : node.junction ? 'var(--md2-warning)' : 'var(--md2-selected)'} /><text x={node.position.x+6} y={node.position.y-6} fontSize='7'>{node.id}</text></g>)}
           {showTopologyOverlay && topology.terminals.filter((terminal)=>!terminal.connectedNodeIds.length).map((terminal)=> <circle key={`floating-${terminal.id}`} cx={terminal.worldPosition.x} cy={terminal.worldPosition.y} r={5} fill='none' stroke='var(--md2-warning)' strokeWidth={2} />)}
-          {ghostPath.length > 0 && <polyline points={ghostPath.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={tool === 'busbar' ? 'var(--md2-busbar)' : 'var(--md2-cable)'} strokeDasharray={tool === 'busbar' ? undefined : '18 10'} strokeWidth={tool === 'busbar' ? 7 : 3} opacity={0.58} strokeLinecap={tool === 'busbar' ? 'square' : 'round'} />}
+          {ghostPath.length > 0 && <polyline points={ghostPath.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={conductorToolKind === 'busbar' ? 'var(--md2-busbar)' : 'var(--md2-cable)'} strokeDasharray={conductorToolKind === 'busbar' || conductorToolKind === 'overhead-line' ? undefined : '18 10'} strokeWidth={conductorToolKind === 'busbar' ? 7 : 3} opacity={0.58} strokeLinecap={conductorToolKind === 'busbar' ? 'square' : 'round'} />}
           {selectedBoxRect && <rect x={selectedBoxRect.x1} y={selectedBoxRect.y1} width={selectedBoxRect.x2 - selectedBoxRect.x1} height={selectedBoxRect.y2 - selectedBoxRect.y1} fill='var(--md2-selected-fill)' stroke='var(--md2-selected)' strokeDasharray='4 3' />}
         </g>
       </svg>

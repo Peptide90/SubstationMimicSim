@@ -60,7 +60,7 @@ const ctVtTeachingTemplate: DrawingTemplate = {
         symbol('meter-src', 'source', 80, 160, 'SRC', 132),
         symbol('meter-cb', 'circuit-breaker', 190, 160, 'CB', 132, 0, { operation: { switchState: 'closed' } }),
         symbol('meter-ct', 'ct', 250, 160, 'CT', 132),
-        symbol('meter-vt', 'vt', 310, 140, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
+        symbol('meter-vt', 'vt', 310, 180, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
         symbol('meter-load', 'load', 410, 160, 'FEEDER', 132)
       ],
       busbars: [busbar('meter-bus', [{ x: 120, y: 160 }, { x: 160, y: 160 }, { x: 220, y: 160 }, { x: 270, y: 160 }, { x: 370, y: 160 }], 132)],

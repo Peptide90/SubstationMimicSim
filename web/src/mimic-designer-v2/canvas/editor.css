@@ -12,6 +12,8 @@
 .mimic-v2-btn { border:1px solid var(--md2-border); background:var(--md2-button-bg); color:var(--md2-text); padding:6px 8px; cursor:pointer; border-radius:6px; }
 .mimic-v2-btn:hover { border-color:var(--md2-selected); }
 .mimic-v2-btn.active { background:var(--md2-selected); border-color:var(--md2-selected); color:var(--md2-active-text); }
+.mimic-v2-icon-btn { display:inline-grid; place-items:center; width:34px; height:32px; padding:0; }
+.mimic-v2-icon-btn svg { width:18px; height:18px; display:block; }
 .mimic-v2-item { border:1px solid var(--md2-border); margin:4px 0; padding:6px; color:var(--md2-text); }
 .mimic-v2-inspector input { user-select:text; width:100%; box-sizing:border-box; margin:4px 0 10px; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
 .mimic-v2-inspector select, .mimic-v2-tool-group select { background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
