@@ -60,6 +60,13 @@
 .mimic-v2-launch-grid h3 { margin:0 0 8px; font-size:14px; }
 .mimic-v2-launch-grid p { margin:6px 0; color:var(--md2-muted-text); font-size:12px; }
 .mimic-v2-launch-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); }
+.mimic-v2-scenario-catalogue { width:min(1180px, calc(100vw - 28px)); height:min(820px, calc(100vh - 28px)); }
+.mimic-v2-catalogue-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; padding:8px; border:1px solid var(--md2-border); border-radius:6px; background:var(--md2-button-bg); }
+.mimic-v2-catalogue-toolbar label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--md2-muted-text); }
+.mimic-v2-catalogue-toolbar select { background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:6px; }
+.mimic-v2-catalogue-section { margin:12px 0 18px; }
+.mimic-v2-catalogue-section h3 { margin:0 0 8px; }
+.mimic-v2-score-line { color:#f59e0b !important; font-weight:800; letter-spacing:.04em; }
 .mimic-v2-library-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; border-bottom:1px solid var(--md2-border); padding-bottom:10px; margin-bottom:10px; }
 .mimic-v2-library-header h2 { margin:0; font-size:20px; }
 .mimic-v2-library-header p { margin:4px 0 0; color:var(--md2-muted-text); }

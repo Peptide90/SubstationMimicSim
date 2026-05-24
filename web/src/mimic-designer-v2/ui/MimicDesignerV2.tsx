@@ -19,6 +19,7 @@ import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage 
 import { deleteScenarioPackage, duplicateScenario, listScenarioPackages, saveScenarioPackage } from '../scenarios/scenarioStore';
 import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScenario, startScenario, tickScenario } from '../scenarios/runner';
 import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTier, isScenarioAvailableForTier, learnMore, learningTierOrder, learningTiers, tierBadgeForScenario } from '../learning';
+import { loadChallengeProgress } from '../../app/challenges/storage';
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
@@ -117,7 +118,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
   const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
   const [scenarioLaunchPackage, setScenarioLaunchPackage] = useState<ScenarioPackage | null>(() => initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? builtInScenarioPackages.find((pkg) => pkg.scenario.mode === initialPlatformView) ?? builtInScenarioPackages[0] ?? null : null);
+  const [scenarioCatalogueOpen, setScenarioCatalogueOpen] = useState(initialPlatformView === 'scenarios' || initialPlatformView === 'challenge' || initialPlatformView === 'lesson');
   const [eventLogFilter, setEventLogFilter] = useState<ScenarioEventSeverity | 'all'>('all');
+  const [challengeProgress, setChallengeProgress] = useState(() => loadChallengeProgress());
   const svgRef = useRef<SVGSVGElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -325,6 +328,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const openScenarioLaunch = (pkg: ScenarioPackage) => {
     setActiveScenarioPackage(pkg);
     setScenarioLaunchPackage(pkg);
+    setScenarioCatalogueOpen(false);
     setManagerView('scenario');
   };
 
@@ -1377,6 +1381,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     { title: 'Examples', packages: builtInScenarioPackages.filter((pkg) => (pkg.tags.includes('example') || pkg.tags.includes('thermal') || pkg.tags.includes('phase-specific')) && isScenarioAvailableForTier(pkg.scenario, learningTier)) },
     { title: 'Sandbox Templates', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'sandbox' && isScenarioAvailableForTier(pkg.scenario, learningTier)) }
   ];
+  const allVisibleScenarioPackages = scenarioSections.flatMap((section) => section.packages);
 
   const operationLabel = (symbol: ElectricalSymbol) => {
     if (symbol.type === 'source') return symbol.operation?.sourceOn === false ? 'OFF' : 'ON';
@@ -1573,7 +1578,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         {learningVisibility.showProtectionManager && <button className='mimic-v2-chip' onClick={openProtectionModal}>Protection...</button>}
         <button className={`mimic-v2-chip ${managerView === 'scenario' ? 'active' : ''}`} onClick={() => setManagerView('scenario')}>Scenarios</button>
       </div>
-      <section className='mimic-v2-manager-panel'>
+      {managerView === 'scenario' && <section className='mimic-v2-manager-panel'>
         <h4>{learningTier} Mode</h4>
         <p>{learningTiers[learningTier].explanationStyle}</p>
         <p>{explain('power-flow', learningTier)}</p>
@@ -1581,7 +1586,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <summary>Learn more</summary>
           {learnMore('power-flow', learningTier).map((item) => <p key={item.tier}><strong>{item.tier}:</strong> {item.text}</p>)}
         </details>
-      </section>
+      </section>}
       {false && <section className='mimic-v2-manager-panel'>
         <h4>Inputs</h4>
         {doc.objects.symbols.filter((symbol) => symbol.type === 'source').map((source) => {
@@ -1635,6 +1640,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <button className='mimic-v2-chip' onClick={tickActiveScenario}>Step event</button>
           <button className='mimic-v2-chip' onClick={showNextScenarioHint}>Hint</button>
           <button className='mimic-v2-chip' onClick={evaluateActiveScenario}>Check</button>
+          <button className='mimic-v2-chip' onClick={() => { setChallengeProgress(loadChallengeProgress()); setScenarioCatalogueOpen(true); }}>Scenario list</button>
           <button className='mimic-v2-chip' onClick={renameActiveScenario}>Rename</button>
           <button className='mimic-v2-chip' onClick={editActiveScenarioMetadata}>Edit metadata</button>
           <button className='mimic-v2-chip' onClick={addScenarioObjective}>Add objective</button>
@@ -1754,6 +1760,43 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>
+    {scenarioCatalogueOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setScenarioCatalogueOpen(false)}>
+      <div className='mimic-v2-library-modal mimic-v2-scenario-catalogue' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Lessons & Challenges</h2>
+            <p>Select a learner level to show suitable operational exercises.</p>
+          </div>
+          <button className='mimic-v2-btn' onClick={() => onRequestMenu ? onRequestMenu() : setScenarioCatalogueOpen(false)}>Exit</button>
+        </header>
+        <div className='mimic-v2-catalogue-toolbar'>
+          <label>Level <select value={learningTier} onChange={(event) => setLearningTier(event.target.value as LearningTier)}>{learningTierOrder.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></label>
+          <button className='mimic-v2-chip' onClick={() => setChallengeProgress(loadChallengeProgress())}>Refresh scores</button>
+          <span>{allVisibleScenarioPackages.length} available</span>
+        </div>
+        {scenarioSections.filter((section) => section.packages.length).map((section) => <section key={section.title} className='mimic-v2-catalogue-section'>
+          <h3>{section.title}</h3>
+          <div className='mimic-v2-library-grid'>
+            {section.packages.map((pkg) => {
+              const progress = challengeProgress[pkg.id];
+              const adapted = adaptScenarioForTier(pkg.scenario, learningTier);
+              return <article key={`${section.title}-${pkg.id}`} className='mimic-v2-library-card'>
+                <h3>{pkg.title}</h3>
+                <p>{pkg.description}</p>
+                <p>{pkg.scenario.mode ?? 'lesson'} / {pkg.difficulty} / {tierBadgeForScenario(pkg.scenario)}</p>
+                {pkg.scenario.mode === 'challenge' && <p className='mimic-v2-score-line'>{progress?.completed ? 'Completed' : 'Not complete'} {progress?.stars ? `${'★'.repeat(progress.stars)}${'☆'.repeat(Math.max(0, 3 - progress.stars))}` : '☆☆☆'}</p>}
+                <p>{adapted.objectives[0]?.text ?? adapted.learningObjectives?.[0] ?? 'Operational exercise'}</p>
+                <div className='mimic-v2-library-actions'>
+                  <button className='mimic-v2-chip' onClick={() => openScenarioLaunch(pkg)}>Open</button>
+                  <button className='mimic-v2-chip' onClick={() => duplicateScenarioPackageById(pkg.id)}>Duplicate editable</button>
+                </div>
+              </article>;
+            })}
+          </div>
+        </section>)}
+        {!allVisibleScenarioPackages.length && <p>No scenarios are available at this level yet. Try the level above or below.</p>}
+      </div>
+    </div>}
     {scenarioLaunchPackage && launchScenario && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setScenarioLaunchPackage(null)}>
       <div className='mimic-v2-launch-modal' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>

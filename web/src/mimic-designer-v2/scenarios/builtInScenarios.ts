@@ -108,6 +108,69 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     recommendedTier: 'Engineer',
     events: [makeScenarioEvent('source-trip', 1000, { targetObjectId: 'ex-bc-src', message: 'Incomer source tripped.' }), makeScenarioEvent('operator-prompt', 1300, { message: 'Restore through the bus coupler path.' })],
     objectives: [{ id: 'restore-coupler', text: 'Restore supply through bus coupler', type: 'energise-target-busbar', targetObjectId: 'ex-bc-reserve', targetState: 'live', hint: 'Use the closed coupler path to re-energise the reserve busbar.' }]
+  }),
+  scenarioFromExample('template-single-busbar-3-feeders', {
+    name: 'Build an accurate feeder bay',
+    description: 'Study a correctly spaced single-busbar feeder bay with busbar drops, breaker, CT, line disconnector, earth switch, VT and line end.',
+    mode: 'challenge',
+    difficulty: 'standard',
+    tags: ['build', 'feeder-bay', 'switchgear'],
+    minTier: 'Apprentice',
+    recommendedTier: 'Apprentice',
+    objectives: [
+      { id: 'inspect-bay-order', text: 'Identify the bay order from busbar to line end', type: 'operate-switchgear', targetObjectId: 'sb-bay-1-cb', targetState: 'closed', hint: 'A line bay should give enough space for DS, CB, CT, line DS, ES, VT reference, and line end.' },
+      { id: 'energise-feeder', text: 'Keep feeder bay 1 energised through the correct switchgear path', type: 'restore-supply-to-load', targetObjectId: 'sb-bay-1-load', targetState: 'live', hint: 'Use the bay switchgear, not a bypass around it.' }
+    ]
+  }),
+  scenarioFromExample('template-single-busbar-transformer-bay', {
+    name: 'Build a transformer feeder',
+    description: 'Transformer feeder arrangement with HV switchgear, CTs and LV side supply.',
+    mode: 'challenge',
+    difficulty: 'standard',
+    tags: ['build', 'transformer', 'feeder'],
+    minTier: 'Apprentice',
+    recommendedTier: 'Engineer',
+    objectives: [
+      { id: 'tx-feed', text: 'Energise the transformer feeder through HV switchgear', type: 'restore-supply-to-load', targetObjectId: 'sbt-lv-load', targetState: 'live', hint: 'Trace from the HV busbar through DS, CB, CT and transformer to the LV side.' }
+    ]
+  }),
+  scenarioFromExample('template-double-busbar-bus-section', {
+    name: 'On-load main/reserve bar changeover',
+    description: 'Practice selector disconnector logic and load transfer between main and reserve busbars without creating an unsafe bypass.',
+    mode: 'challenge',
+    difficulty: 'advanced',
+    tags: ['switching', 'double-busbar', 'changeover'],
+    minTier: 'Engineer',
+    recommendedTier: 'Engineer',
+    objectives: [
+      { id: 'avoid-ds-load-changeover', text: 'Avoid opening a disconnector under load during bar changeover', type: 'avoid-disconnector-under-load', targetObjectId: 'template-double-busbar-bus-section-bay-m1-1-main-ds', hint: 'Establish the alternate path before removing the original selector.' },
+      { id: 'maintain-segregation', text: 'Maintain voltage segregation and no live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'template-double-busbar-bus-section-main-bus-1', hint: 'Check live and earth indications before every selector operation.' }
+    ],
+    failureRules: { maxWrongOperations: 1, requireNoLiveEarthConflict: true, requireVoltageSegregation: true }
+  }),
+  scenarioFromExample('template-ct-vt-metering-protection', {
+    name: 'CT and VT roles',
+    description: 'Learn why CTs measure current, VTs measure voltage, and protection needs measuring inputs.',
+    mode: 'lesson',
+    difficulty: 'standard',
+    tags: ['ct', 'vt', 'measurement', 'protection'],
+    minTier: 'Apprentice',
+    recommendedTier: 'Engineer',
+    objectives: [
+      { id: 'explain-ct-vt', text: 'Inspect CT and VT measuring points', type: 'explain-protection-trip', targetObjectId: 'meter-ct', hint: 'CTs feed current information. VTs feed voltage information.' }
+    ]
+  }),
+  scenarioFromExample('template-basic-fault-protection-teaching', {
+    name: 'Protection basics: relay tells breaker',
+    description: 'A first protection lesson showing that breakers need relay instructions from measured current/voltage information.',
+    mode: 'lesson',
+    difficulty: 'standard',
+    tags: ['protection', 'relay', 'ct', 'vt'],
+    minTier: 'Engineer',
+    recommendedTier: 'Engineer',
+    objectives: [
+      { id: 'relay-trip', text: 'Inspect how protection trips the breaker', type: 'explain-protection-trip', targetObjectId: 'fault-prot-relay', hint: 'The relay watches inputs and sends the trip action to the breaker.' }
+    ]
   })
 ].filter(Boolean) as ScenarioPackage[];
 
