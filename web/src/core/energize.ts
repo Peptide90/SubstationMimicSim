@@ -15,13 +15,18 @@ function isConducting(kind: NodeKind, nodeState?: string, sourceOn?: boolean): b
 
 export function computeEnergized(nodes: MimicNode[], edges: MimicEdge[]): EnergizeResult {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const edgeById = new Map(edges.map((e) => [e.id, e]));
 
   const adj = new Map<string, Array<{ other: string; edgeId: string }>>();
+  const busbarEdges = new Map<string, MimicEdge[]>();
   for (const e of edges) {
     if (!adj.has(e.source)) adj.set(e.source, []);
     if (!adj.has(e.target)) adj.set(e.target, []);
     adj.get(e.source)!.push({ other: e.target, edgeId: e.id });
     adj.get(e.target)!.push({ other: e.source, edgeId: e.id });
+    if (e.kind === 'busbar' && e.busbarId) {
+      busbarEdges.set(e.busbarId, [...(busbarEdges.get(e.busbarId) ?? []), e]);
+    }
   }
 
   const energizedNodeIds = new Set<string>();
@@ -51,6 +56,19 @@ export function computeEnergized(nodes: MimicNode[], edges: MimicEdge[]): Energi
       if (isConducting(otherNode.kind, otherNode.state, otherNode.sourceOn)) {
         queue.push(other);
       }
+
+      const edge = edgeById.get(edgeId);
+      const groupedBusbarEdges = edge?.kind === 'busbar' && edge.busbarId ? busbarEdges.get(edge.busbarId) ?? [] : [];
+      groupedBusbarEdges.forEach((busbarEdge) => {
+        energizedEdgeIds.add(busbarEdge.id);
+        const endpoints = [busbarEdge.source, busbarEdge.target];
+        endpoints.forEach((endpointId) => {
+          const endpoint = nodeById.get(endpointId);
+          if (endpoint && isConducting(endpoint.kind, endpoint.state, endpoint.sourceOn) && !energizedNodeIds.has(endpointId)) {
+            queue.push(endpointId);
+          }
+        });
+      });
     }
   }
 

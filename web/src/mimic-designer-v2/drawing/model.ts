@@ -61,8 +61,28 @@ export type FaultType =
 
 export type ThermalState = 'normal' | 'warm' | 'hot' | 'critical';
 export type ProtectionElementType = 'overcurrent' | 'earth-fault' | 'thermal-overload' | 'breaker-fail' | 'differential';
-export type ProtectionRuntimeState = 'idle' | 'picked-up' | 'tripped';
+export type ProtectionRuntimeState = 'idle' | 'picked-up' | 'tripped' | 'blocked' | 'disabled' | 'failed';
 export type RelayLogicType = 'overcurrent' | 'earth-fault';
+export type RelayRole = 'first-main' | 'second-main' | 'backup' | 'busbar-protection' | 'transformer-protection' | 'feeder-protection' | 'motor-load-protection';
+export type RelayInputSourceType = 'ct' | 'vt' | 'transformer-winding' | 'busbar' | 'conductor' | 'feeder-load-source' | 'topology-node' | 'zone';
+export type RelayMeasuredQuantity = 'current' | 'voltage' | 'power' | 'earth-residual-current' | 'differential-current' | 'temperature' | 'frequency';
+export type RelayFunctionType =
+  | 'overcurrent'
+  | 'earth-fault'
+  | 'directional-overcurrent'
+  | 'directional-earth-fault'
+  | 'overvoltage'
+  | 'undervoltage'
+  | 'thermal-overload'
+  | 'differential'
+  | 'restricted-earth-fault'
+  | 'breaker-fail'
+  | 'intertrip'
+  | 'trip-circuit-supervision';
+export type RelayFunctionState = 'inactive' | 'picked-up' | 'timing' | 'tripped' | 'reset';
+export type RelayLogicCondition = 'any-phase' | 'all-phases' | 'selected-phase' | 'residual-earth' | 'differential-between-inputs';
+export type RelayOutputTargetType = 'circuit-breaker' | 'disconnector' | 'source' | 'alarm' | 'lockout' | 'intertrip-target' | 'event-log';
+export type RelayOutputActionType = 'trip-open-breaker' | 'block-close' | 'alarm' | 'apply-lockout' | 'clear-auto-reset' | 'trigger-backup-relay';
 
 export interface PhaseElectricalValues {
   mw?: number;
@@ -167,10 +187,59 @@ export interface ProtectionZone {
   visible: boolean;
 }
 
+export interface RelayInput {
+  id: string;
+  sourceType: RelayInputSourceType;
+  sourceObjectId?: string;
+  sourceTopologyNodeId?: string;
+  sourceZoneId?: string;
+  sourceLabel?: string;
+  phases: Phase[];
+  quantity: RelayMeasuredQuantity;
+  polarity?: 'forward' | 'reverse' | 'none';
+  ctRatio?: string;
+  vtRatio?: string;
+}
+
+export interface RelayFunction {
+  id: string;
+  type: RelayFunctionType;
+  enabled: boolean;
+  pickupThreshold?: number;
+  resetThreshold?: number;
+  timeDelayMs: number;
+  instantaneous: boolean;
+  phases: Phase[];
+  requiredInputType?: RelayMeasuredQuantity;
+  logic: RelayLogicCondition;
+  state: RelayFunctionState;
+  pickedUpAt?: string;
+  trippedAt?: string;
+}
+
+export interface RelayOutputAction {
+  id: string;
+  targetType: RelayOutputTargetType;
+  targetObjectId?: string;
+  action: RelayOutputActionType;
+  delayMs?: number;
+  warning?: string;
+}
+
+export interface RelayEvent {
+  id: string;
+  timestamp: string;
+  message: string;
+  functionId?: string;
+  targetObjectId?: string;
+}
+
 export interface RelaySettings {
   id: string;
   name: string;
   zoneId?: string;
+  role?: RelayRole;
+  protectedAssetId?: string;
   type: RelayLogicType;
   enabled: boolean;
   phases: Phase[];
@@ -186,24 +255,160 @@ export interface RelaySettings {
   pickedUpAt?: string;
   trippedAt?: string;
   resetAt?: string;
+  inputs?: RelayInput[];
+  functions?: RelayFunction[];
+  outputActions?: RelayOutputAction[];
+  eventHistory?: RelayEvent[];
 }
 
 export interface ScenarioObjective {
   id: string;
   text: string;
+  type?:
+    | 'energise-target-busbar'
+    | 'isolate-faulted-section'
+    | 'restore-supply-to-load'
+    | 'operate-switchgear'
+    | 'avoid-disconnector-under-load'
+    | 'clear-fault-using-breaker'
+    | 'identify-hot-joint'
+    | 'explain-protection-trip'
+    | 'maintain-no-live-earth-conflict';
   targetObjectId?: string;
+  targetTopologyNodeId?: string;
+  targetTopologyBranchId?: string;
+  targetState?: 'open' | 'closed' | 'live' | 'dead' | 'isolated' | 'cleared' | 'identified';
+  hint?: string;
+  tierText?: Partial<Record<LearningTier, string>>;
+  tierHints?: Partial<Record<LearningTier, string>>;
   completed?: boolean;
+  failed?: boolean;
+}
+
+export type ScenarioDifficulty = 'intro' | 'standard' | 'advanced';
+export type ScenarioEventType = 'scheduled-fault' | 'transient-fault' | 'load-increase' | 'source-trip' | 'breaker-fail' | 'relay-pickup-trip' | 'operator-prompt' | 'hint-popup';
+export type ScenarioMode = 'lesson' | 'challenge' | 'sandbox';
+export type ScenarioEventSeverity = 'info' | 'operation' | 'warning' | 'protection' | 'alarm' | 'fault' | 'scenario';
+export type LearningTier = 'Junior' | 'Student' | 'Apprentice' | 'Engineer' | 'Commissioning Engineer';
+
+export interface ScenarioEvent {
+  id: string;
+  type: ScenarioEventType;
+  atMs: number;
+  targetObjectId?: string;
+  fault?: FaultMetadata;
+  loadMw?: number;
+  sourceOn?: boolean;
+  message?: string;
+  hint?: string;
+  fired?: boolean;
+}
+
+export interface ScenarioSuccessRules {
+  targetEnergisedObjectIds?: string[];
+  isolatedFaultObjectIds?: string[];
+  restoredLoadObjectIds?: string[];
+  requiredSwitchStates?: Record<string, 'open' | 'closed'>;
+  maxWrongOperations?: number;
+  requireNoLiveEarthConflict?: boolean;
+  requireVoltageSegregation?: boolean;
+  requiredSequence?: string[];
+  requireAlarmsCleared?: boolean;
+  keepSuppliedObjectIds?: string[];
+  requireNoDamagedEquipment?: boolean;
+  timeLimitMs?: number;
+}
+
+export interface ScenarioRestrictions {
+  disableDrawingTools?: boolean;
+  disablePlacement?: boolean;
+  disableDelete?: boolean;
+  disableTopologyOverlay?: boolean;
+  disableInspectorEditing?: boolean;
+  allowedTools?: string[];
+  allowedComponentTypes?: ElectricalSymbol['type'][];
+  allowedOperationObjectIds?: string[];
+}
+
+export interface ScenarioTeachingStep {
+  id: string;
+  title: string;
+  body: string;
+  targetObjectId?: string;
+  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'manual';
+  expectedObjectId?: string;
+  expectedState?: 'open' | 'closed' | 'live' | 'dead' | 'cleared';
+  pauseSimulation?: boolean;
+  unlockTool?: string;
+  eventIdToTrigger?: string;
+}
+
+export interface ScenarioScoring {
+  stars?: number;
+  score?: number;
+  operationCount?: number;
+  penalties?: number;
+  speedBonus?: number;
+  safetyBonus?: number;
+  noTripBonus?: number;
+  noIncorrectOperationBonus?: number;
+}
+
+export interface ScenarioBriefing {
+  expectedOperatorRole?: string;
+  initialCondition?: string;
+  restrictions?: string[];
+  warnings?: string[];
+  winConditions?: string[];
+  loseConditions?: string[];
+  estimatedMinutes?: number;
+}
+
+export interface ScenarioReplayStep {
+  id: string;
+  atMs: number;
+  action: 'operate' | 'hint' | 'prompt' | 'reset' | 'event';
+  targetObjectId?: string;
+  message: string;
 }
 
 export interface ScenarioDefinition {
   id: string;
   name: string;
   description?: string;
+  learningObjectives?: string[];
+  minTier?: LearningTier;
+  maxTier?: LearningTier;
+  recommendedTier?: LearningTier;
+  supportedTiers?: LearningTier[];
+  explanationVariants?: Partial<Record<LearningTier, string>>;
+  mode?: ScenarioMode;
+  difficulty?: ScenarioDifficulty;
+  tags?: string[];
+  briefing?: ScenarioBriefing;
+  restrictions?: ScenarioRestrictions;
+  teachingSteps?: ScenarioTeachingStep[];
+  currentStepIndex?: number;
+  scoring?: ScenarioScoring;
+  completionRating?: number;
   initialSwitchStates: Record<string, 'open' | 'closed'>;
   initialSourceStates: Record<string, boolean>;
   faults: FaultMetadata[];
   relays: RelaySettings[];
+  protection?: ProtectionElement[];
+  powerFlows?: Record<string, PowerFlowMetadata>;
+  activeView?: ViewMode | 'thermal' | 'topology';
   objectives: ScenarioObjective[];
+  tierObjectives?: Partial<Record<LearningTier, ScenarioObjective[]>>;
+  events?: ScenarioEvent[];
+  successRules?: ScenarioSuccessRules;
+  failureRules?: ScenarioSuccessRules;
+  expectedSolution?: ScenarioReplayStep[];
+  replayLog?: ScenarioReplayStep[];
+  startedAt?: string;
+  elapsedMs?: number;
+  wrongOperationCount?: number;
+  currentHintIndex?: number;
 }
 
 export interface SimulationControlState {
@@ -219,6 +424,8 @@ export interface OperationEvent {
   message: string;
   targetObjectId?: string;
   reason?: string;
+  severity?: ScenarioEventSeverity;
+  source?: string;
 }
 
 export interface BaseDrawingObject {
@@ -271,6 +478,7 @@ export interface ElectricalSymbol extends BaseDrawingObject {
 
 export interface ConductorPath extends BaseDrawingObject {
   type: 'conductor-path';
+  conductorStyle?: 'cable' | 'overhead-line';
   vertices: Point[];
   orthogonal: boolean;
   connectionPoints: ConnectionPoint[];
@@ -303,6 +511,15 @@ export interface DrawingDocument {
   version: 2;
   schemaVersion: number;
   name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  drawingType: 'user' | 'template' | 'example';
+  tags: string[];
+  voltageLevels: number[];
+  thumbnail?: string;
+  lastOpenedAt?: string;
+  templateNotes?: string;
   activeView: ViewMode;
   objects: {
     symbols: ElectricalSymbol[];

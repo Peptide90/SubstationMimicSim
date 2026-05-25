@@ -45,6 +45,8 @@ export function flowToMimic(nodes: RFNode[], edges: RFEdge[]): { nodes: MimicNod
       id: e.id,
       source: e.source,
       target: e.target,
+      kind: (e.data as any)?.kind,
+      busbarId: (e.data as any)?.busbarId,
     }));
 
   return { nodes: mimicNodes, edges: mimicEdges };

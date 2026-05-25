@@ -60,6 +60,7 @@ export function deriveSimulationState(doc: DrawingDocument, graph: TopologyGraph
   sourceSymbols.forEach((source) => {
     const sourceRoots = rootsForSymbol(graph, source.id);
     const reached = traceFromRoots(graph, symbolById, sourceRoots);
+    const loadShare = loadShareForReach(source.id, doc, graph, reached.nodes);
     graph.branches
       .filter((branch) => reached.branches.has(branch.id) && operation.liveBranchIds.has(branch.id))
       .forEach((branch) => {
@@ -67,7 +68,7 @@ export function deriveSimulationState(doc: DrawingDocument, graph: TopologyGraph
         branch.phases
           .filter((phase) => phaseOrder.includes(phase))
           .forEach((phase) => {
-            state.phases[phase] = calculatePhaseFlow(source, branch, phase, doc, elapsedMs);
+            state.phases[phase] = calculatePhaseFlow(source, branch, phase, doc, elapsedMs, loadShare);
           });
         branchFlows.set(branch.id, state);
       });
@@ -159,22 +160,37 @@ export function computePhaseMath(flow: PowerFlowMetadata): PowerFlowMetadata {
   };
 }
 
-function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, phase: Phase, doc: DrawingDocument, elapsedMs: number): DerivedPhaseFlow {
-  const sourceValue = valueForPhase(source.powerFlow, phase, source.voltageLevelKv);
+function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, phase: Phase, doc: DrawingDocument, elapsedMs: number, loadShare = 1): DerivedPhaseFlow {
+  const sourceValue = scalePhaseValue(valueForPhase(source.powerFlow, phase, source.voltageLevelKv), loadShare);
   const branchObject = findObjectPowerFlow(doc, branch.objectId);
+  const branchValue = valueForPhase(branchObject, phase);
   const impedance = impedanceForPhase(branchObject, phase) + hotJointResistance(doc.hotJoints, branch, phase);
   const voltageKv = sourceValue.voltageKv ?? source.voltageLevelKv ?? defaultVoltageKv;
   const mva = sourceValue.mva ?? (sourceValue.mw !== undefined && sourceValue.mvar !== undefined ? Math.sqrt(sourceValue.mw ** 2 + sourceValue.mvar ** 2) : undefined) ?? 0;
   const currentA = sourceValue.currentA ?? (voltageKv > 0 ? (mva * 1000) / (voltageKv / Math.sqrt(3)) : 0);
   const voltageDropKv = (currentA * impedance) / 1000;
-  const loadingPercent = sourceValue.loadingPercent ?? Math.min(999, Math.round((currentA / 1000) * 100));
+  const deliveredVoltageKv = Math.max(0, voltageKv - voltageDropKv);
+  const voltageFactor = voltageKv > 0 ? Math.max(0, deliveredVoltageKv / voltageKv) : 1;
+  const deliveredMw = sourceValue.mw !== undefined ? sourceValue.mw * voltageFactor : sourceValue.mw;
+  const deliveredMvar = sourceValue.mvar !== undefined ? sourceValue.mvar * voltageFactor : sourceValue.mvar;
+  const deliveredMva = mva * voltageFactor;
+  const baseLoadingPercent = Math.min(999, Math.round((currentA / 1000) * 100));
+  const ratingPercent = branchValue.loadingPercent;
+  const currentLimitA = branchValue.currentA;
+  const loadingPercent = currentLimitA && currentLimitA > 0
+    ? Math.min(999, Math.round((currentA / currentLimitA) * 100))
+    : ratingPercent && ratingPercent > 0
+      ? Math.min(999, Math.round((baseLoadingPercent / ratingPercent) * 100))
+      : sourceValue.loadingPercent ?? baseLoadingPercent;
   const temperatureC = estimateTemperature(currentA, impedance, elapsedMs, sourceValue.temperatureC);
   return {
     ...sourceValue,
     phase,
-    mva,
+    mw: deliveredMw,
+    mvar: deliveredMvar,
+    mva: deliveredMva,
     currentA,
-    voltageKv,
+    voltageKv: deliveredVoltageKv,
     voltageDropKv,
     impedanceOhms: impedance,
     loadingPercent,
@@ -183,6 +199,29 @@ function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, 
     direction: source.powerFlow?.direction ?? 'forward',
     sourceId: source.id,
     teachingApproximation: true
+  };
+}
+
+function loadShareForReach(sourceId: string, doc: DrawingDocument, graph: TopologyGraph, liveNodeIds: Set<string>): number {
+  const reachableLoads = doc.objects.symbols.filter((symbol) => {
+    if (symbol.id === sourceId || symbol.type !== 'load') return false;
+    const terminalIds = graph.devices.find((device) => device.symbolId === symbol.id)?.terminalIds ?? [];
+    return terminalIds.some((terminalId) => {
+      const terminal = graph.terminals.find((item) => item.id === terminalId);
+      return terminal ? terminal.connectedNodeIds.some((nodeId) => liveNodeIds.has(nodeId)) : false;
+    });
+  });
+  return reachableLoads.length > 1 ? 1 / reachableLoads.length : 1;
+}
+
+function scalePhaseValue(value: PhaseElectricalValues, factor: number): PhaseElectricalValues {
+  if (factor === 1) return value;
+  return {
+    ...value,
+    mw: value.mw !== undefined ? value.mw * factor : value.mw,
+    mvar: value.mvar !== undefined ? value.mvar * factor : value.mvar,
+    mva: value.mva !== undefined ? value.mva * factor : value.mva,
+    currentA: value.currentA !== undefined ? value.currentA * factor : value.currentA
   };
 }
 
@@ -282,6 +321,8 @@ function summarizeObjects(branchFlows: Map<string, BranchSimulationState>): Map<
       mvar: (sum.mvar ?? 0) + (value.mvar ?? 0),
       mva: (sum.mva ?? 0) + (value.mva ?? 0),
       currentA: (sum.currentA ?? 0) + (value.currentA ?? 0),
+      voltageDropKv: Math.max(sum.voltageDropKv ?? 0, value.voltageDropKv ?? 0),
+      voltageKv: Math.max(sum.voltageKv ?? 0, value.voltageKv ?? 0),
       loadingPercent: Math.max(sum.loadingPercent ?? 0, value.loadingPercent ?? 0),
       temperatureC: Math.max(sum.temperatureC ?? 20, value.temperatureC ?? 20)
     }), {});

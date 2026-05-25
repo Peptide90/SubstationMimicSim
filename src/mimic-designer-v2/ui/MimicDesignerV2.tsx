@@ -87,7 +87,7 @@ export function MimicDesignerV2(): JSX.Element {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setSelected([]); setDraftPath([]); }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selected.length) {
+      if (e.key === 'Delete' && selected.length) {
         const next = { ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.filter((s) => !selected.includes(s.id)) } };
         commit(next); setSelected([]);
       }

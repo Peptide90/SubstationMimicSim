@@ -140,6 +140,28 @@ describe('protection zones, relays, trip sequencing, and scenarios', () => {
     expect(migrated.protectionZones[0].vtInputIds).toEqual(['vt-1']);
   });
 
+  it('migrates relay manager inputs, functions, and output actions', () => {
+    const migrated = doc({
+      relays: [relay({
+        role: 'backup',
+        inputs: [
+          { id: 'input-ct', sourceType: 'ct', sourceObjectId: 'ct-1', sourceLabel: 'CT1', phases, quantity: 'current', ctRatio: '800/1' },
+          { id: 'input-vt', sourceType: 'vt', sourceObjectId: 'vt-1', sourceLabel: 'VT1', phases, quantity: 'voltage', vtRatio: '132000/110' }
+        ],
+        functions: [
+          { id: 'fn-oc', type: 'overcurrent', enabled: true, pickupThreshold: 1, timeDelayMs: 100, instantaneous: false, phases, requiredInputType: 'current', logic: 'any-phase', state: 'inactive' },
+          { id: 'fn-diff', type: 'differential', enabled: true, pickupThreshold: 1, timeDelayMs: 100, instantaneous: false, phases, requiredInputType: 'differential-current', logic: 'differential-between-inputs', state: 'inactive' }
+        ],
+        outputActions: [{ id: 'out-trip', targetType: 'circuit-breaker', targetObjectId: 'cb-1', action: 'trip-open-breaker' }]
+      })]
+    });
+
+    expect(migrated.relays[0].role).toBe('backup');
+    expect(migrated.relays[0].inputs?.map((input) => input.quantity)).toEqual(['current', 'voltage']);
+    expect(migrated.relays[0].functions?.map((fn) => fn.type)).toEqual(['overcurrent', 'differential']);
+    expect(migrated.relays[0].outputActions?.[0].targetObjectId).toBe('cb-1');
+  });
+
   it('picks up and trips the target breaker for overcurrent after delay', () => {
     const base = doc({ relays: [relay({ pickedUpAt: new Date(0).toISOString() })] });
     const simulation = derive(base);
