@@ -22,7 +22,7 @@ export function featureVisibilityForTier(tier: LearningTier, scenario?: Scenario
   const scenarioProtection = Boolean(scenario?.relays?.length || scenario?.protection?.length || scenario?.tags?.some((tag) => tag.includes('protection') || tag.includes('relay')));
   return {
     showProtectionManager: isTierAtLeast(tier, 'Apprentice') && config.protectionDepth !== 'hidden',
-    showPowerFlow: true,
+    showPowerFlow: isTierAtLeast(tier, 'Apprentice'),
     showTopologyOverlay: isTierAtLeast(tier, 'Engineer'),
     showThermalOverlay: isTierAtLeast(tier, 'Apprentice'),
     showThreePhase: isTierAtLeast(tier, 'Student') && (tier !== 'Student' || Boolean(scenarioAllowsThreePhase)),

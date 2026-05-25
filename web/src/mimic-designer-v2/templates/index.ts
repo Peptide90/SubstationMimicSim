@@ -58,13 +58,13 @@ const ctVtTeachingTemplate: DrawingTemplate = {
     objects: {
       symbols: [
         symbol('meter-src', 'source', 80, 160, 'SRC', 132),
-        symbol('meter-cb', 'circuit-breaker', 190, 160, 'CB', 132, 0, { operation: { switchState: 'closed' } }),
-        symbol('meter-ct', 'ct', 250, 160, 'CT', 132),
-        symbol('meter-vt', 'vt', 310, 180, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
-        symbol('meter-load', 'load', 410, 160, 'FEEDER', 132)
+        symbol('meter-cb', 'circuit-breaker', 230, 160, 'CB', 132, 0, { operation: { switchState: 'closed' } }),
+        symbol('meter-ct', 'ct', 350, 160, 'CT', 132),
+        symbol('meter-vt', 'vt', 470, 320, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
+        symbol('meter-load', 'load', 620, 160, 'FEEDER', 132)
       ],
-      busbars: [busbar('meter-bus', [{ x: 120, y: 160 }, { x: 160, y: 160 }, { x: 220, y: 160 }, { x: 270, y: 160 }, { x: 370, y: 160 }], 132)],
-      conductors: [],
+      busbars: [busbar('meter-bus', [{ x: 120, y: 160 }, { x: 200, y: 160 }, { x: 290, y: 160 }, { x: 410, y: 160 }, { x: 470, y: 160 }, { x: 580, y: 160 }], 132)],
+      conductors: [conductor('meter-vt-tap', [{ x: 470, y: 160 }, { x: 470, y: 260 }, { x: 470, y: 320 }], 132, 'overhead-line')],
       labels: [],
       annotations: []
     }

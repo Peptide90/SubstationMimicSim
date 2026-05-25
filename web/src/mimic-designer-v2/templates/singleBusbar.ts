@@ -16,7 +16,7 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
         tags: ['radial', 'feeder', 'starter'],
         voltageLevels: [132],
         templateNotes: 'Operate the circuit breaker or disconnectors to see live colour stop and restart.',
-        objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: [], labels: [], annotations: [] }
+        objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] }
       });
     }
   },

@@ -22,11 +22,13 @@ export interface RenderedPathInstance<T extends ConductorPath | BusbarSegment> {
 
 const phaseOrder = ['A', 'B', 'C'] as Phase[];
 
-export function phaseOffset(phase: Phase | undefined, spacing = 36): Point {
+const minimumPhaseSpacingPx = 72;
+
+export function phaseOffset(phase: Phase | undefined, spacing = minimumPhaseSpacingPx): Point {
   if (!phase) return { x: 0, y: 0 };
   const index = phaseOrder.indexOf(phase);
   if (index < 0) return { x: 0, y: 0 };
-  return { x: 0, y: (index - 1) * spacing };
+  return { x: 0, y: (index - 1) * Math.max(spacing, minimumPhaseSpacingPx) };
 }
 
 export function visiblePhases(phases: Phase[]): Phase[] {
