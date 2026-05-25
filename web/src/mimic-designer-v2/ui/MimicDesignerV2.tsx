@@ -29,6 +29,12 @@ type DragState = {
 
 const phasesAll = ['A', 'B', 'C'] as Phase[];
 const standardVoltages = [11, 33, 66, 132, 275, 400, 525];
+const phaseColour = (phase?: Phase) => {
+  if (phase === 'A') return 'var(--md2-phase-a)';
+  if (phase === 'B') return 'var(--md2-phase-b)';
+  if (phase === 'C') return 'var(--md2-phase-c)';
+  return 'var(--md2-text)';
+};
 const snap = (value: number, grid: number) => Math.round(value / grid) * grid;
 const hasAllPhases = (p: Phase[]) => ['A', 'B', 'C'].every((ph) => p.includes(ph as Phase));
 const pointKey = (p: Point) => `${p.x}:${p.y}`;
@@ -176,7 +182,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       voltageLevelKv: selectedVoltage,
       phaseMode: phases.length > 1 ? 'three-phase' : 'single-phase',
       renderExpansion: 'per-phase-symbols',
-      phaseSpacingPx: 24,
+      phaseSpacingPx: 36,
       powerFlow: { direction: 'unknown' },
       engineering: type === 'ct' ? { ctPolarity: 'P1-left' } : type === 'transformer' ? { transformerPolarity: 'hv-left', hasTertiary: false, transformerExpansion: 'single-symbol' } : undefined,
       simulation: {},
@@ -234,7 +240,7 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
       phaseApplicability: phasesAll,
       phaseMode: 'three-phase',
       renderExpansion: 'per-phase-symbols',
-      phaseSpacingPx: 24,
+      phaseSpacingPx: 36,
       powerFlow: { direction: 'unknown' },
       vertices: cleanPoints,
       orthogonal: true,
@@ -807,18 +813,21 @@ export function MimicDesignerV2({ onRequestMenu }: Props): React.ReactElement {
           </g>)}
           {renderedBusbars.map((instance) => <g key={instance.id}>
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={18} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
-            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-busbar)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 10 : 7} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />
+            {instance.phase && <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={phaseColour(instance.phase)} strokeWidth={selected.includes(instance.canonicalId) ? 12 : 10} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />}
+            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-busbar)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 8 : instance.phase ? 5 : 7} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />
             {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize='9'>{instance.phase}</text>}
             {flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
           {renderedConductors.map((instance) => <g key={instance.id}>
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={16} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
-            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-cable)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 5 : 3} strokeDasharray='18 10' strokeLinecap='round' pointerEvents='none' />
+            {instance.phase && <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={phaseColour(instance.phase)} strokeWidth={selected.includes(instance.canonicalId) ? 7 : 6} strokeDasharray='18 10' strokeLinecap='round' pointerEvents='none' />}
+            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-cable)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 5 : instance.phase ? 3 : 3} strokeDasharray='18 10' strokeLinecap='round' pointerEvents='none' />
             {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize='9'>{instance.phase}</text>}
             {flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
           {renderedSymbols.map((instance) => <g key={instance.id} transform={`translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})`} onMouseDown={(event) => onSymbolMouseDown(event, instance.symbol, instance.phase)}>
             {instance.phase && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
+            {instance.phase && <circle cx={0} cy={0} r={27} fill={lineStroke('var(--md2-symbol-bg)', lineStateForPath(instance.canonicalId))} stroke={phaseColour(instance.phase)} strokeWidth={3} opacity={0.9} />}
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize='10' fill='var(--md2-selected)'>3P</text>}
             {renderSymbolGlyph(instance.symbol)}
             <text x={0} y={4} textAnchor='middle' fontSize='8'>{renderMode === 'nodes' ? instance.symbol.type.slice(0, 4) : instance.symbol.type}</text>

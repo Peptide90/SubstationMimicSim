@@ -25,6 +25,7 @@ import { InterfaceNode } from "../../ui/nodes/InterfaceNode";
 import { FaultNode } from "../../ui/nodes/FaultNode";
 
 const GRID = 20;
+const MIN_NODE_GAP = 34;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 
 type ChallengeView = "levels" | "runner";
@@ -34,6 +35,7 @@ type TutorialState = {
 };
 
 type SwitchingPenalty = { label: string; value: number };
+type ChallengeTheme = "cyan" | "amber" | "green";
 
 type ArcEffect = {
   id: string;
@@ -73,6 +75,22 @@ function getNodeDimensions(kind: NodeKind) {
   if (kind === "tx") return { w: 100, h: 80 };
   if (kind === "iface") return { w: 60, h: 60 };
   return { w: 120, h: 48 };
+}
+
+function nodesOverlap(a: Node, b: Node, gap = MIN_NODE_GAP) {
+  const aKind = getMimicData(a)?.kind ?? "junction";
+  const bKind = getMimicData(b)?.kind ?? "junction";
+  const da = getNodeDimensions(aKind);
+  const db = getNodeDimensions(bKind);
+  return (
+    Math.abs(a.position.x - b.position.x) < (da.w + db.w) / 2 + gap &&
+    Math.abs(a.position.y - b.position.y) < (da.h + db.h) / 2 + gap
+  );
+}
+
+function hasEnoughClearance(kind: NodeKind, pos: { x: number; y: number }, nodes: Node[]) {
+  const candidate = makeNode(kind, "__candidate__", pos.x, pos.y);
+  return nodes.every((node) => !nodesOverlap(candidate, node));
 }
 
 function isConducting(kind: NodeKind, state?: SwitchState, sourceOn?: boolean): boolean {
@@ -201,6 +219,14 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
   const [switchingReports, setSwitchingReports] = useState<Array<{ id: string; lineId?: string; type: "LINE_END_COLOURS"; value: any; timestamp: number; correct: boolean }>>([]);
   const [switchingPenalties, setSwitchingPenalties] = useState<SwitchingPenalty[]>([]);
   const [lineEndColoursBySegmentId, setLineEndColoursBySegmentId] = useState<Record<string, Record<string, LineEndColour[]>>>({});
+  const [runnerMenuOpen, setRunnerMenuOpen] = useState(false);
+  const [challengeTheme, setChallengeTheme] = useState<ChallengeTheme>("cyan");
+  const [completionResult, setCompletionResult] = useState<{
+    score: number;
+    stars: number;
+    completed: boolean;
+    title: string;
+  } | null>(null);
   const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo(
@@ -232,6 +258,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     () => (powerSimEnabled ? computePowerSim(nodes, edges) : EMPTY_POWER_SIM),
     [edges, nodes, powerSimEnabled, EMPTY_POWER_SIM]
   );
+  const themeAccent = challengeTheme === "amber" ? "#fbbf24" : challengeTheme === "green" ? "#34d399" : "#38bdf8";
+  const themeAccentText = challengeTheme === "amber" ? "#1f1300" : challengeTheme === "green" ? "#062016" : "#0f172a";
   const overloadSinceRef = useRef<Record<string, number>>({});
   const trippedOverloadEdgesRef = useRef<Set<string>>(new Set());
   const styledEdges = useMemo(
@@ -384,6 +412,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       setSwitchingReports([]);
       setSwitchingPenalties([]);
       setLineEndColoursBySegmentId(resolveScenarioLineEndColours(nextScenario));
+      setRunnerMenuOpen(false);
+      setCompletionResult(null);
       tutorialActionLog.current = createTutorialActionLog();
     },
     [setEdges, setInterlockOverrides, setNodes]
@@ -410,6 +440,8 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     setSwitchingReports([]);
     setSwitchingPenalties([]);
     setLineEndColoursBySegmentId(resolveScenarioLineEndColours(scenario));
+    setRunnerMenuOpen(false);
+    setCompletionResult(null);
     tutorialActionLog.current = createTutorialActionLog();
   }, [scenario, setEdges, setInterlockOverrides, setNodes]);
 
@@ -422,6 +454,27 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     },
     [resetScenario]
   );
+
+  const returnToScenarioSelector = useCallback(() => {
+    setView("levels");
+    setActiveScenarioId(null);
+    setBriefingOpen(false);
+    setRunnerMenuOpen(false);
+    setCompletionResult(null);
+    setNodes([]);
+    setEdges([]);
+  }, [setEdges, setNodes]);
+
+  useEffect(() => {
+    if (view !== "runner") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setRunnerMenuOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [view]);
 
   const scenarioConfig = useMemo<import("../mimic/EditorModeConfig").EditorModeConfig>(() => {
     if (!scenario) return makeSandboxConfig();
@@ -576,6 +629,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
       const max = scenario.buildRules.maxCounts?.[kind];
       if (max && (counts[kind] ?? 0) >= max) return false;
       if (!canPlaceInZones(pos, scenario.buildRules.buildZones)) return false;
+      if (!hasEnoughClearance(kind, pos, nodes)) return false;
       return true;
     },
     [nodes, scenario]
@@ -835,6 +889,12 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     const completed = scenario.type === "tutorial" ? evaluationResult.objectives.every((o) => o.passed) : evaluationResult.stars > 0;
     const nextProgress = updateChallengeProgress(scenario.id, evaluationResult.stars, completed);
     setProgress(nextProgress);
+    setCompletionResult({
+      score: evaluationResult.score,
+      stars: evaluationResult.stars,
+      completed,
+      title: scenario.title,
+    });
     tutorialActionLog.current.checks += 1;
   }, [edges, nodes, scenario, switchingPenalties, tutorialViolations]);
 
@@ -986,7 +1046,7 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
     <div style={{ width: "100vw", height: "100vh", background: "#060b12", overflow: "hidden" }}>
       <TopToolbar
         buildTag={buildTag}
-        onOpenMenu={onExit}
+        onOpenMenu={() => setRunnerMenuOpen(true)}
         onOpenHelp={() => null}
         disableInterlocking
         disableLabelling
@@ -1077,6 +1137,99 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
         </div>
       )}
 
+      {runnerMenuOpen && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(2,6,23,0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 70,
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: "min(420px, 100%)",
+              background: "#0b1220",
+              border: "1px solid #1f2937",
+              borderRadius: 12,
+              padding: 20,
+              color: "#e2e8f0",
+              boxShadow: "0 16px 32px rgba(0,0,0,0.5)",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 800 }}>Scenario menu</div>
+            <button onClick={returnToScenarioSelector} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #334155", background: themeAccent, color: themeAccentText, fontWeight: 800, cursor: "pointer" }}>
+              Return to scenario selector
+            </button>
+            <button
+              onClick={() => setChallengeTheme((current) => (current === "cyan" ? "amber" : current === "amber" ? "green" : "cyan"))}
+              style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0", cursor: "pointer" }}
+            >
+              Change theme colours
+            </button>
+            <button onClick={() => setRunnerMenuOpen(false)} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0", cursor: "pointer" }}>
+              Return to scenario
+            </button>
+          </div>
+        </div>
+      )}
+
+      {completionResult && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(2,6,23,0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 65,
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "#0b1220",
+              border: "1px solid #1f2937",
+              borderRadius: 12,
+              padding: 22,
+              color: "#e2e8f0",
+              boxShadow: "0 16px 32px rgba(0,0,0,0.5)",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 20, fontWeight: 900 }}>{completionResult.completed ? "Scenario objectives complete" : "Keep working"}</div>
+            <div style={{ color: "#94a3b8", fontSize: 13 }}>{completionResult.title}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ padding: 12, borderRadius: 8, background: "#0f172a", border: "1px solid #334155" }}>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Score</div>
+                <div style={{ fontSize: 24, fontWeight: 900 }}>{completionResult.score}</div>
+              </div>
+              <div style={{ padding: 12, borderRadius: 8, background: "#0f172a", border: "1px solid #334155" }}>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Stars</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: "#fcd34d" }}>{completionResult.stars > 0 ? "*".repeat(completionResult.stars) : "None"}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button onClick={returnToScenarioSelector} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #334155", background: themeAccent, color: themeAccentText, fontWeight: 800, cursor: "pointer" }}>
+                Scenario selector
+              </button>
+              <button onClick={() => setCompletionResult(null)} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e2e8f0", cursor: "pointer" }}>
+                View completed scenario
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", height: "100vh", paddingTop: 52, position: "relative" }}>
         <EditorCanvas
           nodes={nodes}
@@ -1107,6 +1260,9 @@ export function ChallengeApp({ buildTag, onExit }: Props) {
           onPaneContextMenu={() => setContextMenu(null)}
           onPaneClick={() => setContextMenu(null)}
           modeConfig={scenarioConfig}
+          showBackground
+          showMinimap={scenario.buildRules.allowedPalette.length > 0}
+          showControls={scenario.buildRules.allowedPalette.length > 0}
         />
 
         {powerSimEnabled && <PowerOverlay sim={powerSim} />}

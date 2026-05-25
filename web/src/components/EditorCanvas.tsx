@@ -137,6 +137,9 @@ export function EditorCanvas(props: {
   onPaneContextMenu: (pos: { x: number; y: number }) => void;
   onPaneClick: () => void;
   modeConfig?: EditorModeConfig;
+  showBackground?: boolean;
+  showMinimap?: boolean;
+  showControls?: boolean;
 
 }) {
   const {
@@ -168,6 +171,9 @@ export function EditorCanvas(props: {
 	onPaneContextMenu,
 	onPaneClick,
   modeConfig,
+  showBackground = true,
+  showMinimap = true,
+  showControls = true,
   } = props;
 
   const { screenToFlowPosition } = useReactFlow();
@@ -613,10 +619,10 @@ export function EditorCanvas(props: {
 		  }}
               onPaneClick={onPaneClickWrapped}
         >
-          <Background variant={BackgroundVariant.Lines} gap={24} />
-          <MiniMap />
+          {showBackground && <Background variant={BackgroundVariant.Lines} gap={24} />}
+          {showMinimap && <MiniMap />}
 
-          <Controls showInteractive={false} position="bottom-left">
+          {showControls && <Controls showInteractive={false} position="bottom-left">
             <ControlButton onClick={onToggleSnap} title={`Snap: ${snapEnabled ? "ON" : "OFF"}`}>
               <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                 <rect x="2" y="2" width="4" height="4" fill={snapEnabled ? "currentColor" : "none"} stroke="currentColor" />
@@ -655,7 +661,7 @@ export function EditorCanvas(props: {
             >
               ═
             </ControlButton>
-          </Controls>
+          </Controls>}
         </ReactFlow>
 
         {busbarMode && draftScreenPoints.length > 0 && overlaySize.width > 0 && overlaySize.height > 0 && (
