@@ -864,11 +864,20 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         return;
       }
       if (tool !== 'operate') return;
+      if (!isSwitchingDevice(symbol.type) && symbol.type !== 'source') {
+        setSelected([symbol.id]);
+        return;
+      }
+      if (selected.includes(symbol.id) && selectedPhase === phase) {
+        setSelected([symbol.id]);
+        return;
+      }
       if (scenarioRestrictions.allowedOperationObjectIds?.length && !scenarioRestrictions.allowedOperationObjectIds.includes(symbol.id)) {
         setScenarioMessage(`Operation blocked by scenario restrictions: ${symbol.label?.text ?? symbol.id}`);
         return;
       }
       operateSymbol(symbol);
+      setSelected([symbol.id]);
       return;
     }
     if (editingToolsDisabled && tool === 'conductor') return;
@@ -1500,6 +1509,18 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     .slice(-80);
 
   const eventTime = (timestamp: string) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const formatPowerStatistic = (flow?: PowerFlowMetadata) => {
+    const mw = flow?.mw ?? 0;
+    if (learningTier === 'Junior') {
+      const watts = mw * 1_000_000;
+      return Math.abs(mw) < 1 ? `${watts.toFixed(0)} W` : `${mw.toFixed(1)} MW`;
+    }
+    const mvar = flow?.mvar ?? 0;
+    const mva = flow?.mva ?? Math.hypot(mw, mvar);
+    return `${mva.toFixed(1)} MVA / ${mvar.toFixed(1)} MVAR`;
+  };
+
+  const vtRatioText = (symbol: ElectricalSymbol) => `${Math.round(((symbol.voltageLevelKv ?? 132) * 1000) / 110)}/1`;
 
   const scenarioSections = [
     { title: 'Tutorials', packages: builtInScenarioPackages.filter((pkg) => (pkg.scenario.mode ?? 'lesson') === 'lesson' && isScenarioAvailableForTier(pkg.scenario, learningTier)) },
@@ -1508,12 +1529,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     { title: 'Sandbox Templates', packages: builtInScenarioPackages.filter((pkg) => pkg.scenario.mode === 'sandbox' && isScenarioAvailableForTier(pkg.scenario, learningTier)) }
   ];
   const allVisibleScenarioPackages = scenarioSections.flatMap((section) => section.packages);
+  const orderedAvailableScenarioPackages = builtInScenarioPackages.filter((pkg) => isScenarioAvailableForTier(pkg.scenario, learningTier));
+  const nextScenarioPackage = activeScenarioPackage
+    ? orderedAvailableScenarioPackages[(orderedAvailableScenarioPackages.findIndex((pkg) => pkg.id === activeScenarioPackage.id) + 1) % Math.max(orderedAvailableScenarioPackages.length, 1)]
+    : undefined;
 
   const operationLabel = (symbol: ElectricalSymbol) => {
-    if (symbol.type === 'source') return symbol.operation?.sourceOn === false ? 'OFF' : 'ON';
+    if (symbol.type === 'source') return symbol.operation?.sourceOn === false ? 'Off' : 'On';
     if (!isSwitchingDevice(symbol.type) || symbol.type === 'circuit-breaker') return null;
-    if (symbol.operation?.tripped) return 'TRIP';
-    return symbol.operation?.switchState === 'closed' ? 'CLOSED' : 'OPEN';
+    if (symbol.operation?.tripped) return 'Trip';
+    return symbol.operation?.switchState === 'closed' ? 'Closed' : 'Open';
   };
 
   const switchVisual = (symbol: ElectricalSymbol) => {
@@ -1582,6 +1607,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <div className='mimic-v2-tool-group'><span>{activeScenarioPackage?.title ?? 'Scenario'}</span></div>
           <div className='mimic-v2-tool-group'><span>Mode</span><button className='mimic-v2-btn active'>Operate</button></div>
           <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='select'?'active':''}`} aria-label='Select' title='Select and inspect equipment' onClick={() => setTool('select')}>{toolIcon('select')}</button><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='operate'?'active':''}`} aria-label='Operate' title='Operate switchgear' onClick={() => setTool('operate')}>{toolIcon('operate')}</button>{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='fault'?'active':''}`} aria-label='Fault' title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>{toolIcon('fault')}</button>}<button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='pan'?'active':''}`} aria-label='Pan' title='Pan the canvas' onClick={() => setTool('pan')}>{toolIcon('pan')}</button></div>
+          {(learningVisibility.showThermalOverlay || learningVisibility.showProtectionManager) && <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection...</button>}</div>}
         </> : <>
           <div className='mimic-v2-tool-group'><span>Tier</span><select value={learningTier} title={learningTiers[learningTier].explanationStyle} onChange={(event) => setLearningTier(event.target.value as LearningTier)}>{learningTierOrder.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></div>
           <div className='mimic-v2-tool-group'><span>Mode</span><button className={`mimic-v2-btn ${mode==='edit'?'active':''}`} onClick={() => setMode('edit')}>Edit</button><button className={`mimic-v2-btn ${mode==='operate'?'active':''}`} onClick={() => setMode('operate')}>Operate</button></div>
@@ -1624,15 +1650,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {renderedSymbols.map((instance) => <g key={instance.id} transform={`translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})`} onMouseDown={(event) => onSymbolMouseDown(event, instance.symbol, instance.phase)}>
             {focusObjectIds.has(instance.symbol.id) && <circle className='mimic-v2-focus-ring' cx={0} cy={0} r={34} fill='none' stroke='var(--md2-selected)' strokeWidth={3} />}
             {instance.symbol.simulation?.arced && <circle className='mimic-v2-arc-flash' cx={0} cy={0} r={36} fill='none' stroke='var(--md2-warning)' strokeWidth={4} />}
-            {instance.phase && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
+            {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize='10' fill='var(--md2-selected)'>3P</text>}
             {renderSymbolGlyph(instance.symbol)}
             {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize='8'>{instance.symbol.type.slice(0, 4)}</text>}
             <text x={0} y={symbolLabelY(instance.symbol)} textAnchor='middle' fontSize='8' transform={`rotate(${-instance.symbol.rotation} 0 ${symbolLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
+            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={symbolLabelY(instance.symbol) + 11} textAnchor='middle' fontSize='8' transform={`rotate(${-instance.symbol.rotation} 0 ${symbolLabelY(instance.symbol) + 11})`}>{operationLabel(instance.symbol)}</text>}
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
-            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={-32} textAnchor='middle' fontSize='8'>{operationLabel(instance.symbol)}</text>}
             {instance.symbol.terminals.filter((terminal) => !instance.phase || terminal.phaseApplicability.includes(instance.phase)).map((terminal) => {
               const world = terminalWorldPosition(instance.symbol, terminal.id);
               const connected = world ? (terminalByPosition.get(pointKey({ x: Math.round(world.x), y: Math.round(world.y) })) ?? []).length > 1 : false;
@@ -1681,8 +1707,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <strong>{selectedObject?.label?.text ?? selectedPath?.label?.text ?? selectedPath?.id}</strong>
           {selectedObject && <p>{selectedObject.type.toUpperCase()} / phases {selectedObject.phaseApplicability.join(', ')} / {selectedVoltageEstimate ?? 'n/a'}kV</p>}
           {selectedPath && <p>{selectedPath.type === 'busbar-segment' ? 'BUSBAR' : 'CONDUCTOR'} / phases {selectedPath.phaseApplicability.join(', ')} / {selectedPath.voltageLevelKv ?? 'n/a'}kV</p>}
+          {selectedObject?.type === 'source' && <p>Source output: {formatPowerStatistic(selectedObject.powerFlow)}.</p>}
           {selectedObject?.type === 'ct' && <p>CT indication: primary {selectedDiagnostic?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedDiagnostic?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A / ratio 1000/1 / construction zero-flux core.</p>}
-          {selectedObject?.type === 'vt' && <p>VT indication: {selectedFault ? '0.0kV primary, abnormal reference detected' : `${selectedObject.voltageLevelKv ?? selectedDiagnostic?.aggregate.voltageKv ?? 'n/a'}kV primary, 110V secondary`} / ratio {selectedObject.voltageLevelKv ?? 132}kV/110V / construction capacitive VT.</p>}
+          {selectedObject?.type === 'vt' && <p>VT indication: {selectedFault ? '0.0kV primary, abnormal reference detected' : `${selectedObject.voltageLevelKv ?? selectedDiagnostic?.aggregate.voltageKv ?? 'n/a'}kV primary, 110V secondary`} / ratio {vtRatioText(selectedObject)} / construction capacitive VT.</p>}
           {selectedObject?.operation?.switchState && <p>Switch state: {selectedObject.operation.switchState}{selectedObject.operation.tripped ? ' / tripped' : ''}{selectedObject.operation.lockout ? ' / lockout' : ''}</p>}
           {selectedObject?.type === 'circuit-breaker' && selectedObject.operation?.lockout && <button className='mimic-v2-chip' onClick={resetSelectedBreakerTrip}>Reset trip lockout</button>}
           {selectedObject?.simulation?.arced && <p className='mimic-v2-warning-text'>Arc damage detected on this device.</p>}
@@ -1843,8 +1870,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {standardVoltages.map((voltage) => <button key={voltage} disabled={inspectorEditingDisabled} className={`mimic-v2-chip ${selectedObject.voltageLevelKv === voltage ? 'active' : ''}`} onClick={() => setSelectedVoltageOnObject(voltage)}>{voltage}</button>)}
         </div>
         {selectedObject.type === 'ct' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleCtPolarity}>Swap CT P1/P2</button>}
+        {selectedObject.type === 'source' && <p>Source output: {formatPowerStatistic(selectedObject.powerFlow)}.</p>}
         {selectedObject.type === 'ct' && <p>CT construction: zero-flux core. Ratio: 1000/1. Primary {selectedSummary?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedSummary?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A.</p>}
-        {selectedObject.type === 'vt' && <p>VT construction: capacitive VT. Ratio: {selectedObject.voltageLevelKv ?? 132}kV/110V. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
+        {selectedObject.type === 'vt' && <p>VT construction: capacitive VT. Ratio: {vtRatioText(selectedObject)}. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerPolarity}>Swap TX HV/LV</button>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerTertiary}>{selectedObject.engineering?.hasTertiary ? 'Remove tertiary' : 'Add tertiary'}</button>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerExpansion}>{selectedObject.engineering?.transformerExpansion === 'three-phase-expanded' ? 'Single schematic symbol' : 'Three-phase expanded'}</button>}
@@ -1947,6 +1975,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </div>
         <footer className='mimic-v2-launch-actions'>
           {scenarioOutcome.status === 'failed' && <button className='mimic-v2-btn' onClick={() => { setScenarioOutcome(null); activeScenarioPackage && startActiveScenario(activeScenarioPackage); }}>Restart</button>}
+          {scenarioOutcome.status === 'success' && nextScenarioPackage && nextScenarioPackage.id !== activeScenarioPackage?.id && <button className='mimic-v2-btn active' onClick={() => { setScenarioOutcome(null); startActiveScenario(nextScenarioPackage); }}>Next scenario</button>}
           <button className='mimic-v2-btn active' onClick={returnToScenarioSelector}>Return to scenario selector</button>
           <button className='mimic-v2-btn' onClick={() => setScenarioOutcome(null)}>{scenarioOutcome.status === 'success' ? 'View completed scenario' : 'Return to scenario'}</button>
         </footer>

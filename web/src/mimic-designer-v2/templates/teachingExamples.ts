@@ -1,4 +1,12 @@
 import { busbar, conductor, createBaseDocument, fault, feederChain, hotJoint, protection, relay, symbol, type DrawingTemplate } from './factory';
+import type { ConductorPath, Phase } from '../drawing/model';
+
+const phaseConductor = (path: ConductorPath, phase: Phase): ConductorPath => ({
+  ...path,
+  phaseApplicability: [phase],
+  phaseMode: 'single-phase',
+  connectionPoints: path.connectionPoints.map((point) => ({ ...point }))
+});
 
 export const teachingExamples: DrawingTemplate[] = [
   {
@@ -9,9 +17,48 @@ export const teachingExamples: DrawingTemplate[] = [
     tags: ['energisation', 'normal'],
     voltageLevels: [132],
     create: () => {
-      const normal = feederChain('ex-normal', 180, 80, 'F1', 132, true);
-      const standby = feederChain('ex-standby', 460, 80, 'F2', 132, false);
-      return createBaseDocument('example-normal-energisation', 'Example: normal energisation', { drawingType: 'example', tags: ['energisation'], voltageLevels: [132], objects: { symbols: [...normal.symbols, ...standby.symbols], busbars: [...normal.busbars, ...standby.busbars], conductors: [...normal.conductors, ...standby.conductors], labels: [], annotations: [] } });
+      const feederSymbols = (prefix: string, y: number, label: string, closed: boolean) => [
+        symbol(`${prefix}-source`, 'source', 80, y, `${label} SRC`, 132),
+        symbol(`${prefix}-vt`, 'vt', 180, y + 95, `${label} VT`, 132),
+        symbol(`${prefix}-es1`, 'earth-switch', 280, y + 90, `${label} ES1`, 132),
+        symbol(`${prefix}-ds1`, 'disconnector', 380, y, `${label} DS1`, 132, 0, { operation: { switchState: 'closed' } }),
+        symbol(`${prefix}-cb`, 'circuit-breaker', 540, y, `${label} CB`, 132, 0, { operation: { switchState: closed ? 'closed' : 'open' } }),
+        symbol(`${prefix}-ct`, 'ct', 680, y, `${label} CT`, 132),
+        symbol(`${prefix}-ds2`, 'disconnector', 820, y, `${label} DS2`, 132, 0, { operation: { switchState: 'closed' } }),
+        symbol(`${prefix}-es2`, 'earth-switch', 920, y + 90, `${label} ES2`, 132)
+      ];
+      const feederConductors = (prefix: string, y: number) => [
+        conductor(`${prefix}-source-vt`, [{ x: 120, y }, { x: 180, y }, { x: 280, y }, { x: 350, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-vt-tap`, [{ x: 180, y }, { x: 180, y: y + 75 }], 132, 'overhead-line'),
+        conductor(`${prefix}-es1-tap`, [{ x: 280, y }, { x: 280, y: y + 90 }], 132, 'overhead-line'),
+        conductor(`${prefix}-ds1-cb`, [{ x: 410, y }, { x: 510, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-cb-ct`, [{ x: 570, y }, { x: 660, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-ct-ds2`, [{ x: 700, y }, { x: 790, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-to-main-bus`, [{ x: 850, y }, { x: 980, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-es2-tap`, [{ x: 920, y }, { x: 920, y: y + 90 }], 132, 'overhead-line')
+      ];
+      return createBaseDocument('example-normal-energisation', 'Example: normal energisation', {
+        drawingType: 'example',
+        tags: ['energisation'],
+        voltageLevels: [132],
+        objects: {
+          symbols: [
+            ...feederSymbols('ex-normal', 180, 'F1', true),
+            ...feederSymbols('ex-standby', 460, 'F2', false),
+            symbol('ex-load', 'load', 1250, 320, 'LOAD LINE', 132)
+          ],
+          busbars: [
+            busbar('ex-main-bus', [{ x: 980, y: 160 }, { x: 980, y: 180 }, { x: 980, y: 320 }, { x: 980, y: 460 }, { x: 980, y: 480 }], 132)
+          ],
+          conductors: [
+            ...feederConductors('ex-normal', 180),
+            ...feederConductors('ex-standby', 460),
+            conductor('ex-main-bus-load', [{ x: 980, y: 320 }, { x: 1210, y: 320 }], 132, 'overhead-line')
+          ],
+          labels: [],
+          annotations: []
+        }
+      });
     }
   },
   {
@@ -105,9 +152,9 @@ export const teachingExamples: DrawingTemplate[] = [
         symbol('ex-phase-vt-c', 'vt', 1060, 420, 'VT-C', 132, 0, { phaseApplicability: ['C'] })
       );
       chain.conductors.push(
-        conductor('ex-phase-vt-a-tap', [{ x: 1060, y: 30 }, { x: 1060, y: 100 }], 132, 'overhead-line'),
-        conductor('ex-phase-vt-b-tap', [{ x: 1060, y: 180 }, { x: 1060, y: 250 }], 132, 'overhead-line'),
-        conductor('ex-phase-vt-c-tap', [{ x: 1060, y: 330 }, { x: 1060, y: 400 }], 132, 'overhead-line')
+        phaseConductor(conductor('ex-phase-vt-a-tap', [{ x: 1060, y: 30 }, { x: 1060, y: 100 }], 132, 'overhead-line'), 'A'),
+        phaseConductor(conductor('ex-phase-vt-b-tap', [{ x: 1060, y: 180 }, { x: 1060, y: 250 }], 132, 'overhead-line'), 'B'),
+        phaseConductor(conductor('ex-phase-vt-c-tap', [{ x: 1060, y: 330 }, { x: 1060, y: 400 }], 132, 'overhead-line'), 'C')
       );
       return createBaseDocument('example-phase-specific-vt-ct', 'Example: phase-specific VT/CT', { drawingType: 'example', activeView: 'three-phase', tags: ['phase-specific', 'measurement'], voltageLevels: [132], objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] } });
     }

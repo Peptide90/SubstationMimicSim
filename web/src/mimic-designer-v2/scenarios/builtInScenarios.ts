@@ -38,7 +38,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     objectives: [
       { id: 'open-f1', text: 'Open feeder 1 circuit breaker', type: 'operate-switchgear', targetObjectId: 'ex-normal-cb', targetState: 'open', hint: 'Use the F1 CB to interrupt the first path.' },
       { id: 'close-f2', text: 'Close feeder 2 circuit breaker', type: 'operate-switchgear', targetObjectId: 'ex-standby-cb', targetState: 'closed', hint: 'The F2 disconnectors are already ready, close the F2 CB.' },
-      { id: 'energise-f2', text: 'Energise feeder 2 line', type: 'restore-supply-to-load', targetObjectId: 'ex-standby-load', targetState: 'live', hint: 'Trace the source through F2 DS1, CB and DS2.' }
+      { id: 'energise-f2', text: 'Supply the load from feeder 2', type: 'restore-supply-to-load', targetObjectId: 'ex-load', targetState: 'live', hint: 'Trace the source through F2 DS1, CB and DS2 onto the main bar.' }
     ]
   }),
   scenarioFromExample('template-simple-radial-feeder', {

@@ -19,12 +19,13 @@ export interface LearningFeatureVisibility {
 export function featureVisibilityForTier(tier: LearningTier, scenario?: ScenarioDefinition): LearningFeatureVisibility {
   const config = learningTiers[tier];
   const scenarioAllowsThreePhase = scenario?.activeView === 'three-phase' || scenario?.tags?.includes('three-phase');
+  const scenarioThermal = Boolean(scenario?.activeView === 'thermal' || scenario?.tags?.some((tag) => tag.includes('thermal') || tag.includes('hot-joint')));
   const scenarioProtection = Boolean(scenario?.relays?.length || scenario?.protection?.length || scenario?.tags?.some((tag) => tag.includes('protection') || tag.includes('relay')));
   return {
-    showProtectionManager: isTierAtLeast(tier, 'Apprentice') && config.protectionDepth !== 'hidden',
+    showProtectionManager: scenarioProtection || (isTierAtLeast(tier, 'Apprentice') && config.protectionDepth !== 'hidden'),
     showPowerFlow: isTierAtLeast(tier, 'Apprentice'),
     showTopologyOverlay: isTierAtLeast(tier, 'Engineer'),
-    showThermalOverlay: isTierAtLeast(tier, 'Apprentice'),
+    showThermalOverlay: scenarioThermal || isTierAtLeast(tier, 'Apprentice'),
     showThreePhase: isTierAtLeast(tier, 'Student') && (tier !== 'Student' || Boolean(scenarioAllowsThreePhase)),
     showDebug: isTierAtLeast(tier, 'Engineer'),
     showAdvancedMetadata: isTierAtLeast(tier, 'Engineer'),
