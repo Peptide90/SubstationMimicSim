@@ -74,7 +74,7 @@ function migrateSymbol(symbol: ElectricalSymbol): ElectricalSymbol {
     simulation: symbol.simulation ?? {},
     phaseMode: symbol.phaseMode ?? (hasAllPhases(phaseApplicability) ? 'three-phase' : 'single-phase'),
     renderExpansion: symbol.renderExpansion ?? 'per-phase-symbols',
-    phaseSpacingPx: Math.max(symbol.phaseSpacingPx ?? 72, 72),
+    phaseSpacingPx: Math.max(symbol.phaseSpacingPx ?? 150, 150),
     powerFlow: computePowerFlow(symbol.powerFlow),
     operation: defaultOperation(symbol.type, symbol.operation),
     engineering: defaultEngineering({ ...symbol, phaseApplicability, terminals }),
@@ -132,7 +132,7 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
     phaseApplicability: conductor.phaseApplicability?.length ? conductor.phaseApplicability : phasesAll,
     phaseMode: conductor.phaseMode ?? (hasAllPhases(conductor.phaseApplicability ?? phasesAll) ? 'three-phase' : 'single-phase'),
     renderExpansion: conductor.renderExpansion ?? 'per-phase-symbols',
-    phaseSpacingPx: Math.max(conductor.phaseSpacingPx ?? 72, 72),
+    phaseSpacingPx: Math.max(conductor.phaseSpacingPx ?? 150, 150),
     conductorStyle: conductor.conductorStyle ?? 'cable',
     powerFlow: computePowerFlow(conductor.powerFlow),
     connectionPoints: conductor.connectionPoints?.length
@@ -146,7 +146,7 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
     phaseApplicability: busbar.phaseApplicability?.length ? busbar.phaseApplicability : phasesAll,
     phaseMode: busbar.phaseMode ?? (hasAllPhases(busbar.phaseApplicability ?? phasesAll) ? 'three-phase' : 'single-phase'),
     renderExpansion: busbar.renderExpansion ?? 'per-phase-symbols',
-    phaseSpacingPx: Math.max(busbar.phaseSpacingPx ?? 72, 72),
+    phaseSpacingPx: Math.max(busbar.phaseSpacingPx ?? 150, 150),
     powerFlow: computePowerFlow(busbar.powerFlow),
     width: busbar.width ?? 8,
     connectionPoints: busbar.connectionPoints?.length

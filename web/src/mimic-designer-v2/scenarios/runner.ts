@@ -30,6 +30,7 @@ export function startScenario(doc: DrawingDocument, scenario: ScenarioDefinition
 }
 
 export function resetScenario(doc: DrawingDocument, scenario: ScenarioDefinition, now = Date.now()): DrawingDocument {
+  const activeFaultTargetIds = new Set((scenario.faults ?? []).filter((fault) => fault.active && fault.targetObjectId).map((fault) => fault.targetObjectId!));
   return migrateDrawingDocument({
     ...doc,
     activeScenarioId: scenario.id,
@@ -41,6 +42,12 @@ export function resetScenario(doc: DrawingDocument, scenario: ScenarioDefinition
       ...doc.objects,
       symbols: doc.objects.symbols.map((symbol) => ({
         ...symbol,
+        simulation: {
+          ...symbol.simulation,
+          faulted: activeFaultTargetIds.has(symbol.id),
+          identified: false,
+          arced: false
+        },
         powerFlow: scenario.powerFlows?.[symbol.id] ?? symbol.powerFlow,
         operation: {
           ...symbol.operation,
@@ -126,7 +133,13 @@ export function nextScenarioHint(scenario: ScenarioDefinition): { scenario: Scen
 
 function applyScenarioEvent(doc: DrawingDocument, event: ScenarioEvent, now: number): { doc: DrawingDocument; message: string } {
   if ((event.type === 'scheduled-fault' || event.type === 'transient-fault') && event.fault) {
-    return { doc: addFault(doc, { ...event.fault, active: true, persistent: event.type !== 'transient-fault' }), message: event.message ?? `Fault applied: ${event.fault.type}` };
+    const faulted = addFault(doc, { ...event.fault, active: true, persistent: event.type !== 'transient-fault' });
+    return {
+      doc: event.fault.targetObjectId
+        ? updateSymbol(faulted, event.fault.targetObjectId, (symbol) => ({ ...symbol, simulation: { ...symbol.simulation, faulted: true } }), now, event.message ?? `Fault applied: ${event.fault.type}`)
+        : faulted,
+      message: event.message ?? `Fault applied: ${event.fault.type}`
+    };
   }
   if (event.type === 'source-trip' && event.targetObjectId) {
     return {
@@ -187,6 +200,10 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
   }
   if (objective.type === 'isolate-faulted-section' || objective.type === 'clear-fault-using-breaker') {
     return { ...objective, completed: !doc.faults.some((fault) => fault.active && fault.targetObjectId === targetId) };
+  }
+  if (objective.type === 'identify-faulted-component') {
+    const symbol = doc.objects.symbols.find((item) => item.id === targetId);
+    return { ...objective, completed: Boolean(symbol?.simulation?.identified && symbol.simulation.faulted) };
   }
   if (objective.type === 'identify-hot-joint') return { ...objective, completed: doc.hotJoints.some((joint) => joint.targetObjectId === targetId && joint.active) };
   if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };

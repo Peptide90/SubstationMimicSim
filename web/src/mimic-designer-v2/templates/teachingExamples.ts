@@ -96,8 +96,18 @@ export const teachingExamples: DrawingTemplate[] = [
     voltageLevels: [132],
     create: () => {
       const chain = feederChain('ex-phase', 180, 80, 'PH', 132, true);
-      chain.symbols.push(symbol('ex-phase-vt-b', 'vt', 400, 360, 'VT-B', 132, 0, { phaseApplicability: ['B'] }));
-      chain.conductors.push(conductor('ex-phase-vt-b-tap', [{ x: 400, y: 180 }, { x: 400, y: 300 }, { x: 400, y: 360 }], 132, 'overhead-line'));
+      chain.symbols = chain.symbols.filter((item) => item.id !== 'ex-phase-vt');
+      chain.conductors = chain.conductors.filter((item) => item.id !== 'ex-phase-vt-tap');
+      chain.symbols.push(
+        symbol('ex-phase-vt-a', 'vt', 1060, 120, 'VT-A', 132, 0, { phaseApplicability: ['A'] }),
+        symbol('ex-phase-vt-b', 'vt', 1060, 270, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
+        symbol('ex-phase-vt-c', 'vt', 1060, 420, 'VT-C', 132, 0, { phaseApplicability: ['C'] })
+      );
+      chain.conductors.push(
+        conductor('ex-phase-vt-a-tap', [{ x: 1060, y: 30 }, { x: 1060, y: 100 }], 132, 'overhead-line'),
+        conductor('ex-phase-vt-b-tap', [{ x: 1060, y: 180 }, { x: 1060, y: 250 }], 132, 'overhead-line'),
+        conductor('ex-phase-vt-c-tap', [{ x: 1060, y: 330 }, { x: 1060, y: 400 }], 132, 'overhead-line')
+      );
       return createBaseDocument('example-phase-specific-vt-ct', 'Example: phase-specific VT/CT', { drawingType: 'example', activeView: 'three-phase', tags: ['phase-specific', 'measurement'], voltageLevels: [132], objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] } });
     }
   },
@@ -141,7 +151,7 @@ export const teachingExamples: DrawingTemplate[] = [
         tags: ['protection'],
         voltageLevels: [132],
         objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] },
-        protectionZones: [{ id: zoneId, name: 'Feeder protection zone', assignedObjectIds: assigned, ctInputIds: [`ex-${relayType}-ct`], vtInputIds: [], vertices: [{ x: 110, y: 70 }, { x: 940, y: 70 }, { x: 940, y: 360 }, { x: 110, y: 360 }], color: '#22c55e', visible: true }],
+        protectionZones: [{ id: zoneId, name: 'Feeder protection zone', assignedObjectIds: assigned, ctInputIds: [`ex-${relayType}-ct`], vtInputIds: [], vertices: [{ x: 110, y: 70 }, { x: 1220, y: 70 }, { x: 1220, y: 430 }, { x: 110, y: 430 }], color: '#22c55e', visible: true }],
         relays: [relay(`ex-${relayType}-relay`, relayType === 'overcurrent' ? 'OC Relay' : 'EF Relay', relayType, zoneId, `ex-${relayType}-cb`)],
         protection: [protection(`ex-${relayType}-element`, relayType, chain.busbars[0].id, `ex-${relayType}-cb`)]
       });
@@ -163,7 +173,7 @@ export const teachingExamples: DrawingTemplate[] = [
         tags: ['protection', 'breaker-fail'],
         voltageLevels: [132],
         objects: { symbols: [backup, ...chain.symbols], busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] },
-        protectionZones: [{ id: zoneId, name: 'Breaker fail zone', assignedObjectIds: chain.symbols.map((item) => item.id), ctInputIds: ['ex-bf-ct'], vtInputIds: [], vertices: [{ x: 70, y: 70 }, { x: 940, y: 70 }, { x: 940, y: 360 }, { x: 70, y: 360 }], color: '#ef4444', visible: true }],
+        protectionZones: [{ id: zoneId, name: 'Breaker fail zone', assignedObjectIds: chain.symbols.map((item) => item.id), ctInputIds: ['ex-bf-ct'], vtInputIds: [], vertices: [{ x: 70, y: 70 }, { x: 1220, y: 70 }, { x: 1220, y: 430 }, { x: 70, y: 430 }], color: '#ef4444', visible: true }],
         relays: [{ ...relay('ex-bf-relay', 'BF Relay', 'overcurrent', zoneId, 'ex-bf-cb'), backupTripTargetBreakerIds: ['ex-bf-backup-cb'], breakerFailEnabled: true }]
       });
     }

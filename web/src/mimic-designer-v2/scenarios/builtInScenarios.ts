@@ -18,6 +18,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     explanationVariants: {
       Junior: 'Electricity flows when there is a complete safe path from the supply to the load.'
     },
+    initialSwitchStates: { 'radial-ds1': 'closed', 'radial-cb': 'open', 'radial-ds2': 'closed', 'radial-es1': 'open', 'radial-es2': 'open' },
     objectives: [{ id: 'junior-flow', text: 'Make electricity flow safely to the load', type: 'restore-supply-to-load', targetObjectId: 'radial-load', targetState: 'live', hint: 'Try closing the breaker so the electricity has a safe path.' }]
   }),
   scenarioFromExample('example-normal-energisation', {
@@ -28,6 +29,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     minTier: 'Student',
     recommendedTier: 'Student',
     supportedTiers: ['Student', 'Apprentice', 'Engineer', 'Commissioning Engineer'],
+    initialSwitchStates: { 'ex-normal-ds1': 'closed', 'ex-normal-cb': 'open', 'ex-normal-ds2': 'closed', 'ex-normal-es1': 'open', 'ex-normal-es2': 'open' },
     objectives: [{ id: 'energise-bus', text: 'Energise the feeder busbar', type: 'energise-target-busbar', targetObjectId: 'ex-normal-bus', targetState: 'live', hint: 'Confirm the source is on and close the breaker path.' }]
   }),
   scenarioFromExample('template-simple-radial-feeder', {
@@ -55,7 +57,8 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
       { id: 'open-cb', text: 'Open the circuit breaker', type: 'operate-switchgear', targetObjectId: 'radial-cb', targetState: 'open' },
       { id: 'no-live-earth', text: 'Maintain no live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es2', hint: 'Do not close the earth switch onto a live busbar.' }
     ],
-    successRules: { requireNoLiveEarthConflict: true }
+    successRules: { requireNoLiveEarthConflict: true },
+    failureRules: { requireNoLiveEarthConflict: true, requireNoDamagedEquipment: true }
   }),
   scenarioFromExample('example-phase-specific-vt-ct', {
     name: 'Single-phase VT fault',
@@ -64,8 +67,10 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     tags: ['vt', 'phase-specific'],
     minTier: 'Student',
     recommendedTier: 'Student',
-    events: [makeScenarioEvent('scheduled-fault', 1000, { fault: fault('scenario-vt-fault', 'ex-phase-vt-b', 'B-E'), message: 'Phase B VT fault applied.' })],
-    objectives: [{ id: 'inspect-vt', text: 'Identify the phase-specific VT fault', type: 'clear-fault-using-breaker', targetObjectId: 'ex-phase-vt-b', hint: 'The VT is marked as phase B only.' }]
+    faults: [{ ...fault('scenario-vt-fault', 'ex-phase-vt-b', 'B-E'), active: true }],
+    objectives: [{ id: 'inspect-vt', text: 'Identify the phase-specific VT fault', type: 'identify-faulted-component', targetObjectId: 'ex-phase-vt-b', targetState: 'identified', hint: 'Inspect the three VTs and mark the one whose voltage has collapsed.' }],
+    successRules: {},
+    failureRules: { maxWrongOperations: 3 }
   }),
   scenarioFromExample('example-phase-earth-fault', {
     name: 'Phase-to-earth fault trip',

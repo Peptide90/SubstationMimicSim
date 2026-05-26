@@ -112,6 +112,19 @@ describe('Mimic Designer V2 scenario packaging', () => {
     ]));
   });
 
+  it('built-in feeder and VT lessons require learner action before completion', () => {
+    const feeder = builtInScenarioPackages.find((pkg) => pkg.title === 'Basic feeder energisation')!;
+    const feederStart = startScenario(feeder.drawing, feeder.scenario);
+    expect(feederStart.success).toBe(false);
+    expect(feederStart.objectives[0].completed).toBe(false);
+
+    const vt = builtInScenarioPackages.find((pkg) => pkg.title === 'Single-phase VT fault')!;
+    const vtStart = startScenario(vt.drawing, vt.scenario);
+    expect(vtStart.success).toBe(false);
+    expect(vtStart.objectives[0].completed).toBe(false);
+    expect(vtStart.doc.faults.some((fault) => fault.targetObjectId === 'ex-phase-vt-b' && fault.active)).toBe(true);
+  });
+
   it('packages scenarios with briefing, restrictions, and scoring defaults', () => {
     const pkg = createScenarioFromDrawing(createDrawingFromTemplate(builtInTemplates[0]), { name: 'Training package', mode: 'challenge' });
 

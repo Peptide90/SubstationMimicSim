@@ -36,6 +36,8 @@ export interface SimulationMetadata {
   interlockGroupIds?: string[];
   damaged?: boolean;
   faulted?: boolean;
+  identified?: boolean;
+  arced?: boolean;
 }
 
 export type PhaseMode = 'single-phase' | 'three-phase';
@@ -271,6 +273,7 @@ export interface ScenarioObjective {
     | 'operate-switchgear'
     | 'avoid-disconnector-under-load'
     | 'clear-fault-using-breaker'
+    | 'identify-faulted-component'
     | 'identify-hot-joint'
     | 'explain-protection-trip'
     | 'maintain-no-live-earth-conflict';

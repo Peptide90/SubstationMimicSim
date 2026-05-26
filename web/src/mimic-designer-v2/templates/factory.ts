@@ -13,7 +13,7 @@ export interface DrawingTemplate {
 }
 
 const phases = ['A', 'B', 'C'] as Phase[];
-const phaseSpacingPx = 72;
+const phaseSpacingPx = 150;
 
 export function createBaseDocument(id: string, name: string, patch: Partial<DrawingDocument> = {}): DrawingDocument {
   const now = new Date().toISOString();
@@ -107,21 +107,25 @@ export function conductor(id: string, vertices: Point[], voltageLevelKv = 132, c
 
 export function feederChain(prefix: string, y: number, startX: number, labelPrefix: string, voltage = 132, closed = true) {
   const source = symbol(`${prefix}-source`, 'source', startX, y, `${labelPrefix} SRC`, voltage);
-  const es1 = symbol(`${prefix}-es1`, 'earth-switch', startX + 100, y + 92, `${labelPrefix} ES1`, voltage);
-  const ds1 = symbol(`${prefix}-ds1`, 'disconnector', startX + 170, y, `${labelPrefix} DS1`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const cb = symbol(`${prefix}-cb`, 'circuit-breaker', startX + 290, y, `${labelPrefix} CB`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const ct = symbol(`${prefix}-ct`, 'ct', startX + 400, y, `${labelPrefix} CT`, voltage);
-  const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 520, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 640, y + 92, `${labelPrefix} ES2`, voltage);
-  const vt = symbol(`${prefix}-vt`, 'vt', startX + 760, y + 112, `${labelPrefix} VT`, voltage);
-  const load = symbol(`${prefix}-load`, 'load', startX + 900, y, `${labelPrefix} LINE`, voltage);
+  const es1 = symbol(`${prefix}-es1`, 'earth-switch', startX + 120, y + 180, `${labelPrefix} ES1`, voltage);
+  const ds1 = symbol(`${prefix}-ds1`, 'disconnector', startX + 220, y, `${labelPrefix} DS1`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const cb = symbol(`${prefix}-cb`, 'circuit-breaker', startX + 380, y, `${labelPrefix} CB`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const ct = symbol(`${prefix}-ct`, 'ct', startX + 530, y, `${labelPrefix} CT`, voltage);
+  const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 690, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
+  const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 830, y + 180, `${labelPrefix} ES2`, voltage);
+  const vt = symbol(`${prefix}-vt`, 'vt', startX + 980, y + 210, `${labelPrefix} VT`, voltage);
+  const load = symbol(`${prefix}-load`, 'load', startX + 1110, y, `${labelPrefix} LINE`, voltage);
   return {
     symbols: [source, es1, ds1, cb, ct, ds2, es2, vt, load],
-    busbars: [busbar(`${prefix}-bus`, [{ x: startX + 40, y }, { x: startX + 100, y }, { x: startX + 170, y }, { x: startX + 290, y }, { x: startX + 400, y }, { x: startX + 520, y }, { x: startX + 640, y }, { x: startX + 760, y }, { x: startX + 840, y }], voltage)],
+    busbars: [busbar(`${prefix}-bus`, [{ x: startX + 720, y }, { x: startX + 830, y }, { x: startX + 980, y }, { x: startX + 1070, y }], voltage)],
     conductors: [
-      conductor(`${prefix}-es1-tap`, [{ x: startX + 100, y }, { x: startX + 100, y: y + 92 }], voltage, 'overhead-line'),
-      conductor(`${prefix}-es2-tap`, [{ x: startX + 640, y }, { x: startX + 640, y: y + 92 }], voltage, 'overhead-line'),
-      conductor(`${prefix}-vt-tap`, [{ x: startX + 760, y }, { x: startX + 760, y: y + 72 }, { x: startX + 760, y: y + 112 }], voltage, 'overhead-line')
+      conductor(`${prefix}-source-ds1`, [{ x: startX + 40, y }, { x: startX + 120, y }, { x: startX + 190, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-ds1-cb`, [{ x: startX + 250, y }, { x: startX + 350, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-cb-ct`, [{ x: startX + 410, y }, { x: startX + 510, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-ct-ds2`, [{ x: startX + 550, y }, { x: startX + 660, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-es1-tap`, [{ x: startX + 120, y }, { x: startX + 120, y: y + 180 }], voltage, 'overhead-line'),
+      conductor(`${prefix}-es2-tap`, [{ x: startX + 830, y }, { x: startX + 830, y: y + 180 }], voltage, 'overhead-line'),
+      conductor(`${prefix}-vt-tap`, [{ x: startX + 980, y }, { x: startX + 980, y: y + 140 }, { x: startX + 980, y: y + 210 }], voltage, 'overhead-line')
     ]
   };
 }

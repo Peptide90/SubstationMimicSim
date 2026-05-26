@@ -1,4 +1,4 @@
-import type { DrawingDocument, ElectricalSymbol } from '../drawing/model';
+import type { DrawingDocument, ElectricalSymbol, OperationEvent } from '../drawing/model';
 import type { TopologyGraph } from './types';
 
 export interface OperationOverride {
@@ -215,6 +215,14 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
       return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason), state: deriveOperationState(nextDoc, graph), reason };
     }
   }
+  if (symbol.type === 'earth-switch' && nextState === 'closed') {
+    const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
+    if (trial.faultNodeIds.size > 0 || trial.faultBranchIds.size > 0) {
+      const nextDoc = markArced(updateOperation(doc, symbol.id, { switchState: 'closed', tripped: false }), symbol.id);
+      const reason = `Earth switch ${symbol.id} arced: attempted to earth live equipment`;
+      return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(nextDoc, graph), reason };
+    }
+  }
 
   const nextDoc = updateOperation(doc, symbol.id, { switchState: nextState, tripped: false });
   const reason = `${symbol.type} ${symbol.id} ${nextState}`;
@@ -233,12 +241,24 @@ function updateOperation(doc: DrawingDocument, symbolId: string, patch: Electric
   };
 }
 
-function addOperationEvent(doc: DrawingDocument, message: string, targetObjectId?: string, reason?: string): DrawingDocument {
+function markArced(doc: DrawingDocument, symbolId: string): DrawingDocument {
+  return {
+    ...doc,
+    objects: {
+      ...doc.objects,
+      symbols: doc.objects.symbols.map((symbol) =>
+        symbol.id === symbolId ? { ...symbol, simulation: { ...symbol.simulation, arced: true, damaged: true } } : symbol
+      )
+    }
+  };
+}
+
+function addOperationEvent(doc: DrawingDocument, message: string, targetObjectId?: string, reason?: string, severity?: OperationEvent['severity']): DrawingDocument {
   return {
     ...doc,
     operationEvents: [
       ...doc.operationEvents,
-      { id: `event-${Date.now()}-${Math.floor(Math.random() * 9999)}`, timestamp: new Date().toISOString(), message, targetObjectId, reason }
+      { id: `event-${Date.now()}-${Math.floor(Math.random() * 9999)}`, timestamp: new Date().toISOString(), message, targetObjectId, reason, severity }
     ]
   };
 }
