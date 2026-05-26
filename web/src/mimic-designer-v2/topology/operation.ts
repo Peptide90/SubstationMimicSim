@@ -53,7 +53,7 @@ export function branchAllowsTraversal(symbolById: Map<string, ElectricalSymbol>,
   if (!symbol) return true;
   const phaseState = phase ? symbol.operation?.perPhaseSwitchState?.[phase as keyof typeof symbol.operation.perPhaseSwitchState] : undefined;
   const switchState = phaseState ?? symbol.operation?.switchState;
-  if (symbol.type === 'earth-switch') return switchState === 'closed';
+  if (symbol.type === 'earth-switch') return false;
   if (symbol.type === 'circuit-breaker' || symbol.type === 'disconnector') return switchState === 'closed' && !symbol.operation?.tripped;
   return true;
 }
@@ -205,12 +205,16 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
     return { doc: addOperationEvent(nextDoc, `Source ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Source ${symbol.id} toggled` };
   }
   if (!isSwitchingDevice(symbol.type)) return { doc, state: deriveOperationState(doc, graph), reason: `${symbol.type} has no operate action` };
+  if (symbol.type === 'circuit-breaker' && symbol.operation?.lockout) {
+    const reason = `Breaker ${symbol.id} lockout active: reset trip before operating`;
+    return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
+  }
 
   const nextState = symbol.operation?.switchState === 'closed' ? 'open' : 'closed';
   if (symbol.type === 'circuit-breaker' && nextState === 'closed') {
     const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
     if (trial.faultNodeIds.size > 0) {
-      const nextDoc = updateOperation(doc, symbol.id, { switchState: 'open', tripped: true });
+      const nextDoc = updateOperation(doc, symbol.id, { switchState: 'open', tripped: true, lockout: true, protectionState: 'tripped' });
       const reason = trial.voltageConflictNodeIds.size || trial.voltageConflictBranchIds.size ? `Breaker ${symbol.id} tripped: voltage mismatch` : `Breaker ${symbol.id} tripped: live/earthed conflict`;
       return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason), state: deriveOperationState(nextDoc, graph), reason };
     }
@@ -221,6 +225,13 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
       const nextDoc = markArced(updateOperation(doc, symbol.id, { switchState: 'closed', tripped: false }), symbol.id);
       const reason = `Earth switch ${symbol.id} arced: attempted to earth live equipment`;
       return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(nextDoc, graph), reason };
+    }
+  }
+  if (symbol.type === 'disconnector' && nextState === 'closed') {
+    const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
+    if (trial.faultNodeIds.size > 0 || trial.faultBranchIds.size > 0) {
+      const reason = `Disconnector ${symbol.id} interlocked: cannot close onto earthed equipment`;
+      return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
     }
   }
 

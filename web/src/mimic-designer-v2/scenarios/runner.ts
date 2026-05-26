@@ -54,6 +54,7 @@ export function resetScenario(doc: DrawingDocument, scenario: ScenarioDefinition
           switchState: scenario.initialSwitchStates[symbol.id] ?? symbol.operation?.switchState,
           sourceOn: scenario.initialSourceStates[symbol.id] ?? symbol.operation?.sourceOn,
           tripped: false,
+          lockout: false,
           protectionState: 'idle'
         }
       })),
@@ -205,7 +206,12 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
     const symbol = doc.objects.symbols.find((item) => item.id === targetId);
     return { ...objective, completed: Boolean(symbol?.simulation?.identified && symbol.simulation.faulted) };
   }
-  if (objective.type === 'identify-hot-joint') return { ...objective, completed: doc.hotJoints.some((joint) => joint.targetObjectId === targetId && joint.active) };
+  if (objective.type === 'identify-hot-joint') {
+    const targetIds = [targetId, ...(objective.targetTopologyBranchId ? [objective.targetTopologyBranchId] : [])].filter(Boolean) as string[];
+    const hot = doc.hotJoints.some((joint) => targetIds.includes(joint.targetObjectId ?? '') && joint.active);
+    const marked = doc.operationEvents.some((event) => targetIds.includes(event.targetObjectId ?? '') && event.message.toLowerCase().includes('marked') && event.message.toLowerCase().includes('fault'));
+    return { ...objective, completed: hot && marked };
+  }
   if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
   return objective;
 }

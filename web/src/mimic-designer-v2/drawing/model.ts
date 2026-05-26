@@ -450,6 +450,7 @@ export interface BaseDrawingObject {
     perPhaseSwitchState?: Partial<Record<Phase, 'open' | 'closed'>>;
     sourceOn?: boolean;
     tripped?: boolean;
+    lockout?: boolean;
     protectionState?: ProtectionRuntimeState;
   };
 }

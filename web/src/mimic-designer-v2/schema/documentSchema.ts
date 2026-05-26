@@ -15,6 +15,7 @@ function defaultOperation(type: ElectricalSymbol['type'], existing: ElectricalSy
     switchState: switchingTypes.has(type) ? existing.switchState ?? 'open' : existing.switchState,
     perPhaseSwitchState: existing.perPhaseSwitchState ?? {},
     tripped: existing.tripped ?? false,
+    lockout: existing.lockout ?? existing.tripped ?? false,
     protectionState: existing.protectionState ?? 'idle'
   };
 }

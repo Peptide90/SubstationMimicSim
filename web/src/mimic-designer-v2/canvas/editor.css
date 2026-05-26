@@ -28,6 +28,7 @@
 .mimic-v2-chip { border:1px solid var(--md2-border); border-radius:999px; background:var(--md2-button-bg); color:var(--md2-text); padding:4px 7px; font-size:12px; cursor:pointer; }
 .mimic-v2-chip.active { background:var(--md2-selected); border-color:var(--md2-selected); color:var(--md2-active-text); }
 .mimic-v2-chip.danger { border-color:var(--md2-warning); color:var(--md2-warning); }
+.mimic-v2-chip:disabled { opacity:.45; cursor:not-allowed; }
 .mimic-v2-manager-panel { border-bottom:1px solid var(--md2-border); margin-bottom:10px; padding-bottom:10px; }
 .mimic-v2-manager-card { border:1px solid var(--md2-border); border-radius:6px; padding:8px; margin:6px 0; background:var(--md2-button-bg); }
 .mimic-v2-manager-card strong { display:block; margin-bottom:6px; }

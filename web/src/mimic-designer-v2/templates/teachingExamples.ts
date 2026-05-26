@@ -9,8 +9,9 @@ export const teachingExamples: DrawingTemplate[] = [
     tags: ['energisation', 'normal'],
     voltageLevels: [132],
     create: () => {
-      const chain = feederChain('ex-normal', 180, 80, 'NORM', 132, true);
-      return createBaseDocument('example-normal-energisation', 'Example: normal energisation', { drawingType: 'example', tags: ['energisation'], voltageLevels: [132], objects: { symbols: chain.symbols, busbars: chain.busbars, conductors: chain.conductors, labels: [], annotations: [] } });
+      const normal = feederChain('ex-normal', 180, 80, 'F1', 132, true);
+      const standby = feederChain('ex-standby', 460, 80, 'F2', 132, false);
+      return createBaseDocument('example-normal-energisation', 'Example: normal energisation', { drawingType: 'example', tags: ['energisation'], voltageLevels: [132], objects: { symbols: [...normal.symbols, ...standby.symbols], busbars: [...normal.busbars, ...standby.busbars], conductors: [...normal.conductors, ...standby.conductors], labels: [], annotations: [] } });
     }
   },
   {

@@ -19,18 +19,27 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
       Junior: 'Electricity flows when there is a complete safe path from the supply to the load.'
     },
     initialSwitchStates: { 'radial-ds1': 'closed', 'radial-cb': 'open', 'radial-ds2': 'closed', 'radial-es1': 'open', 'radial-es2': 'open' },
+    teachingSteps: [{ id: 'close-cb', title: 'Close the breaker', body: 'Close F1 CB to complete the safe path from source to line.', targetObjectId: 'radial-cb', waitFor: 'correct-state', expectedState: 'closed' }],
     objectives: [{ id: 'junior-flow', text: 'Make electricity flow safely to the load', type: 'restore-supply-to-load', targetObjectId: 'radial-load', targetState: 'live', hint: 'Try closing the breaker so the electricity has a safe path.' }]
   }),
   scenarioFromExample('example-normal-energisation', {
     name: 'Basic feeder energisation',
-    description: 'Close the normal feeder path and energise the target busbar.',
+    description: 'Transfer supply from feeder 1 to feeder 2 by opening one circuit and closing the other.',
     difficulty: 'intro',
     tags: ['energisation', 'basic'],
     minTier: 'Student',
     recommendedTier: 'Student',
     supportedTiers: ['Student', 'Apprentice', 'Engineer', 'Commissioning Engineer'],
-    initialSwitchStates: { 'ex-normal-ds1': 'closed', 'ex-normal-cb': 'open', 'ex-normal-ds2': 'closed', 'ex-normal-es1': 'open', 'ex-normal-es2': 'open' },
-    objectives: [{ id: 'energise-bus', text: 'Energise the feeder busbar', type: 'energise-target-busbar', targetObjectId: 'ex-normal-bus', targetState: 'live', hint: 'Confirm the source is on and close the breaker path.' }]
+    initialSwitchStates: { 'ex-normal-ds1': 'closed', 'ex-normal-cb': 'closed', 'ex-normal-ds2': 'closed', 'ex-normal-es1': 'open', 'ex-normal-es2': 'open', 'ex-standby-ds1': 'closed', 'ex-standby-cb': 'open', 'ex-standby-ds2': 'closed', 'ex-standby-es1': 'open', 'ex-standby-es2': 'open' },
+    teachingSteps: [
+      { id: 'open-feeder-1', title: 'Open feeder 1', body: 'Open F1 CB so the first circuit is no longer carrying the supply.', targetObjectId: 'ex-normal-cb', waitFor: 'correct-state', expectedState: 'open' },
+      { id: 'close-feeder-2', title: 'Close feeder 2', body: 'Close F2 CB to energise the standby circuit.', targetObjectId: 'ex-standby-cb', waitFor: 'correct-state', expectedState: 'closed' }
+    ],
+    objectives: [
+      { id: 'open-f1', text: 'Open feeder 1 circuit breaker', type: 'operate-switchgear', targetObjectId: 'ex-normal-cb', targetState: 'open', hint: 'Use the F1 CB to interrupt the first path.' },
+      { id: 'close-f2', text: 'Close feeder 2 circuit breaker', type: 'operate-switchgear', targetObjectId: 'ex-standby-cb', targetState: 'closed', hint: 'The F2 disconnectors are already ready, close the F2 CB.' },
+      { id: 'energise-f2', text: 'Energise feeder 2 line', type: 'restore-supply-to-load', targetObjectId: 'ex-standby-load', targetState: 'live', hint: 'Trace the source through F2 DS1, CB and DS2.' }
+    ]
   }),
   scenarioFromExample('template-simple-radial-feeder', {
     name: 'Do not open disconnector on load',
@@ -53,8 +62,14 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     tags: ['earthing', 'interlock'],
     minTier: 'Apprentice',
     recommendedTier: 'Apprentice',
+    teachingSteps: [
+      { id: 'try-live-earth', title: 'What interlocks prevent', body: 'First try closing F1 ES2 while the line is live. The lesson will show why that is unsafe, then restart and isolate first.', targetObjectId: 'radial-es2', waitFor: 'manual' },
+      { id: 'open-cb', title: 'Isolate with the breaker', body: 'Open F1 CB before using the earth switch.', targetObjectId: 'radial-cb', waitFor: 'correct-state', expectedState: 'open' },
+      { id: 'close-earth', title: 'Apply the line earth', body: 'Now close F1 ES2 to earth the isolated line side.', targetObjectId: 'radial-es2', waitFor: 'correct-state', expectedState: 'closed' }
+    ],
     objectives: [
       { id: 'open-cb', text: 'Open the circuit breaker', type: 'operate-switchgear', targetObjectId: 'radial-cb', targetState: 'open' },
+      { id: 'close-es2', text: 'Close the line earth switch after isolation', type: 'operate-switchgear', targetObjectId: 'radial-es2', targetState: 'closed' },
       { id: 'no-live-earth', text: 'Maintain no live-earth conflict', type: 'maintain-no-live-earth-conflict', targetObjectId: 'radial-es2', hint: 'Do not close the earth switch onto a live busbar.' }
     ],
     successRules: { requireNoLiveEarthConflict: true },
@@ -70,7 +85,7 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     faults: [{ ...fault('scenario-vt-fault', 'ex-phase-vt-b', 'B-E'), active: true }],
     objectives: [{ id: 'inspect-vt', text: 'Identify the phase-specific VT fault', type: 'identify-faulted-component', targetObjectId: 'ex-phase-vt-b', targetState: 'identified', hint: 'Inspect the three VTs and mark the one whose voltage has collapsed.' }],
     successRules: {},
-    failureRules: { maxWrongOperations: 3 }
+    failureRules: {}
   }),
   scenarioFromExample('example-phase-earth-fault', {
     name: 'Phase-to-earth fault trip',
@@ -90,7 +105,9 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     minTier: 'Apprentice',
     recommendedTier: 'Apprentice',
     objectives: [{ id: 'identify-hot', text: 'Identify the hot joint', type: 'identify-hot-joint', targetObjectId: 'ex-hot-bus', targetState: 'identified', hint: 'Switch to thermal overlay and inspect phase B.' }],
-    activeView: 'thermal'
+    activeView: 'three-phase',
+    successRules: {},
+    failureRules: { maxWrongOperations: 3 }
   }),
   scenarioFromExample('example-breaker-fail-backup', {
     name: 'Breaker fail with backup trip',

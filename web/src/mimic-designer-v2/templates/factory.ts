@@ -107,13 +107,13 @@ export function conductor(id: string, vertices: Point[], voltageLevelKv = 132, c
 
 export function feederChain(prefix: string, y: number, startX: number, labelPrefix: string, voltage = 132, closed = true) {
   const source = symbol(`${prefix}-source`, 'source', startX, y, `${labelPrefix} SRC`, voltage);
-  const es1 = symbol(`${prefix}-es1`, 'earth-switch', startX + 120, y + 180, `${labelPrefix} ES1`, voltage);
+  const es1 = symbol(`${prefix}-es1`, 'earth-switch', startX + 120, y + 90, `${labelPrefix} ES1`, voltage);
   const ds1 = symbol(`${prefix}-ds1`, 'disconnector', startX + 220, y, `${labelPrefix} DS1`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
   const cb = symbol(`${prefix}-cb`, 'circuit-breaker', startX + 380, y, `${labelPrefix} CB`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
   const ct = symbol(`${prefix}-ct`, 'ct', startX + 530, y, `${labelPrefix} CT`, voltage);
   const ds2 = symbol(`${prefix}-ds2`, 'disconnector', startX + 690, y, `${labelPrefix} DS2`, voltage, 0, { operation: { switchState: closed ? 'closed' : 'open' } });
-  const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 830, y + 180, `${labelPrefix} ES2`, voltage);
-  const vt = symbol(`${prefix}-vt`, 'vt', startX + 980, y + 210, `${labelPrefix} VT`, voltage);
+  const es2 = symbol(`${prefix}-es2`, 'earth-switch', startX + 830, y + 90, `${labelPrefix} ES2`, voltage);
+  const vt = symbol(`${prefix}-vt`, 'vt', startX + 980, y + 110, `${labelPrefix} VT`, voltage);
   const load = symbol(`${prefix}-load`, 'load', startX + 1110, y, `${labelPrefix} LINE`, voltage);
   return {
     symbols: [source, es1, ds1, cb, ct, ds2, es2, vt, load],
@@ -123,9 +123,9 @@ export function feederChain(prefix: string, y: number, startX: number, labelPref
       conductor(`${prefix}-ds1-cb`, [{ x: startX + 250, y }, { x: startX + 350, y }], voltage, 'overhead-line'),
       conductor(`${prefix}-cb-ct`, [{ x: startX + 410, y }, { x: startX + 510, y }], voltage, 'overhead-line'),
       conductor(`${prefix}-ct-ds2`, [{ x: startX + 550, y }, { x: startX + 660, y }], voltage, 'overhead-line'),
-      conductor(`${prefix}-es1-tap`, [{ x: startX + 120, y }, { x: startX + 120, y: y + 180 }], voltage, 'overhead-line'),
-      conductor(`${prefix}-es2-tap`, [{ x: startX + 830, y }, { x: startX + 830, y: y + 180 }], voltage, 'overhead-line'),
-      conductor(`${prefix}-vt-tap`, [{ x: startX + 980, y }, { x: startX + 980, y: y + 140 }, { x: startX + 980, y: y + 210 }], voltage, 'overhead-line')
+      conductor(`${prefix}-es1-tap`, [{ x: startX + 120, y }, { x: startX + 120, y: y + 90 }], voltage, 'overhead-line'),
+      conductor(`${prefix}-es2-tap`, [{ x: startX + 830, y }, { x: startX + 830, y: y + 90 }], voltage, 'overhead-line'),
+      conductor(`${prefix}-vt-tap`, [{ x: startX + 980, y }, { x: startX + 980, y: y + 70 }, { x: startX + 980, y: y + 110 }], voltage, 'overhead-line')
     ]
   };
 }
@@ -154,7 +154,7 @@ export function hotJoint(id: string, targetObjectId: string): HotJointMetadata {
 function terminalsFor(type: ElectricalSymbol['type']) {
   if (type === 'source') return [{ name: 'out', x: 40, y: 0 }];
   if (type === 'load') return [{ name: 'in', x: -40, y: 0 }];
-  if (type === 'earth-switch') return [{ name: 'in', x: 0, y: 0 }, { name: 'earth', x: 0, y: 30 }];
+  if (type === 'earth-switch') return [{ name: 'in', x: 0, y: 0 }];
   if (type === 'transformer') return [{ id: 'hv', name: 'hv', x: -40, y: 0 }, { id: 'lv', name: 'lv', x: 40, y: 0 }];
   if (type === 'vt') return [{ name: 'tap', x: 0, y: -20 }];
   if (type === 'ct') return [{ name: 'in', x: -20, y: 0 }, { name: 'out', x: 20, y: 0 }];
