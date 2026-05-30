@@ -2,8 +2,10 @@ import type { ReactNode, CSSProperties } from "react";
 import type { Node } from "reactflow";
 import type { NodeKind } from "../../core/model";
 import { schemaDefaultPrefix } from "../../app/labeling/bp109";
+import { LABEL_SCHEMES, getSchemeDefinition } from "../../app/labeling/schemes";
 
 import type {
+  AnsiIecMeta,
   BP109Meta,
   BayType,
   LabelMode,
@@ -11,8 +13,7 @@ import type {
   VoltageClass,
   CircuitType,
   PurposeDigit,
-} from "../../app/labeling/bp109";
-
+} from "../../app/labeling/types";
 
 function ModalShell(props: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
   const { title, open, onClose, children } = props;
@@ -78,12 +79,19 @@ export function LabellingModal(props: {
   bayTypeOverrides: Record<string, BayType>;
   setBayTypeOverrides: (fn: (prev: Record<string, BayType>) => Record<string, BayType>) => void;
 
-  bp109MetaById: Record<string, BP109Meta>;
-  setBp109MetaById: (fn: (prev: Record<string, BP109Meta>) => Record<string, BP109Meta>) => void;
+  bp109MetaById: Record<string, Partial<BP109Meta>>;
+  setBp109MetaById: (fn: (prev: Record<string, Partial<BP109Meta>>) => Record<string, Partial<BP109Meta>>) => void;
+
+  ansiIecMetaById: Record<string, Partial<AnsiIecMeta>>;
+  setAnsiIecMetaById: (fn: (prev: Record<string, Partial<AnsiIecMeta>>) => Record<string, Partial<AnsiIecMeta>>) => void;
+
+  resolvedBp109Meta: Record<string, BP109Meta>;
+  resolvedAnsiIecMeta: Record<string, AnsiIecMeta>;
+
+  substationVoltageKv: number;
+  setSubstationVoltageKv: (v: number) => void;
 
   getDisplayLabel: (nodeId: string) => string;
-
-  ensureBp109Meta: (nodeId: string, kind: NodeKind) => void;
 }) {
   const {
     open,
@@ -98,11 +106,16 @@ export function LabellingModal(props: {
     setLabelOverrides,
     bayTypeOverrides,
     setBayTypeOverrides,
-    bp109MetaById,
     setBp109MetaById,
+    setAnsiIecMetaById,
+    resolvedBp109Meta,
+    resolvedAnsiIecMeta,
+    substationVoltageKv,
+    setSubstationVoltageKv,
     getDisplayLabel,
-    ensureBp109Meta,
   } = props;
+
+  const schemeDef = getSchemeDefinition(labelScheme);
 
   const selectStyle: CSSProperties = {
     padding: 8,
@@ -116,15 +129,21 @@ export function LabellingModal(props: {
   return (
     <ModalShell title="Labelling" open={open} onClose={onClose}>
       <div style={{ color: "#cbd5e1", marginBottom: 10, fontSize: 12 }}>
-        FREEFORM overrides always win. BP109 uses the schema JSON and auto-sets prefix when Voltage changes.
+        {schemeDef.description}
+        {schemeDef.reference ? ` (${schemeDef.reference})` : ""}
+        {" — "}
+        FREEFORM overrides always win. Topology drives auto labels; field edits are saved as overrides.
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: 10, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>Scheme</div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>Naming scheme</div>
           <select value={labelScheme} onChange={(e) => setLabelScheme(e.target.value as LabelScheme)} style={selectStyle}>
-            <option value="DEFAULT">Default</option>
-            <option value="NG_BP109">NG BP109</option>
+            {LABEL_SCHEMES.filter((s) => s.available).map((scheme) => (
+              <option key={scheme.id} value={scheme.id}>
+                {scheme.label}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -134,6 +153,21 @@ export function LabellingModal(props: {
             <option value="FREEFORM">Freeform overrides</option>
           </select>
         </div>
+        {labelScheme === "NG_BP109" && (
+          <div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>Site kV</div>
+            <select
+              value={String(substationVoltageKv)}
+              onChange={(e) => setSubstationVoltageKv(Number(e.target.value))}
+              style={selectStyle}
+            >
+              <option value="400">400</option>
+              <option value="275">275</option>
+              <option value="132">132</option>
+              <option value="66">66</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
@@ -142,10 +176,8 @@ export function LabellingModal(props: {
           .filter((entry): entry is { n: Node; kind: NodeKind } => entry.kind !== null && entry.kind !== "junction")
           .map(({ n, kind }) => {
             const display = getDisplayLabel(n.id);
-
-            if (labelScheme === "NG_BP109" && !bp109MetaById[n.id]) ensureBp109Meta(n.id, kind);
-            const meta = bp109MetaById[n.id];
-
+            const bp109Meta = resolvedBp109Meta[n.id];
+            const ansiMeta = resolvedAnsiIecMeta[n.id];
             const bayType = bayTypeOverrides[n.id] ?? "AUTO";
 
             return (
@@ -166,13 +198,14 @@ export function LabellingModal(props: {
                 <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace' }}>{n.id}</div>
 
                 <div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>BayType</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>Bay type (override)</div>
                   <select
                     value={bayType}
                     onChange={(e) => setBayTypeOverrides((m) => ({ ...m, [n.id]: e.target.value as BayType }))}
                     style={{ ...selectStyle, background: "#0b1220" }}
+                    disabled={labelScheme === "DEFAULT"}
                   >
-                    <option value="AUTO">AUTO</option>
+                    <option value="AUTO">AUTO (from topology)</option>
                     <option value="BUS">BUS</option>
                     <option value="LINE">LINE</option>
                     <option value="TX">TX</option>
@@ -194,12 +227,12 @@ export function LabellingModal(props: {
                     </div>
                   )}
 
-                  {labelScheme === "NG_BP109" && meta && (
+                  {labelScheme === "NG_BP109" && bp109Meta && (
                     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
                       <div>
-                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Voltage</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Voltage class</div>
                         <select
-                          value={meta.voltageClass}
+                          value={bp109Meta.voltageClass}
                           onChange={(e) => {
                             const vc = e.target.value as VoltageClass;
                             const defPrefix = schemaDefaultPrefix(vc);
@@ -219,9 +252,9 @@ export function LabellingModal(props: {
                       </div>
 
                       <div>
-                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Type</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Circuit type</div>
                         <select
-                          value={meta.circuitType}
+                          value={bp109Meta.circuitType}
                           onChange={(e) =>
                             setBp109MetaById((m) => ({ ...m, [n.id]: { ...m[n.id], circuitType: e.target.value as CircuitType } }))
                           }
@@ -246,7 +279,7 @@ export function LabellingModal(props: {
                           type="number"
                           min={0}
                           max={9}
-                          value={meta.circuitNumber}
+                          value={bp109Meta.circuitNumber}
                           onChange={(e) =>
                             setBp109MetaById((m) => ({ ...m, [n.id]: { ...m[n.id], circuitNumber: Number(e.target.value) } }))
                           }
@@ -257,7 +290,7 @@ export function LabellingModal(props: {
                       <div>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>Purpose</div>
                         <select
-                          value={String(meta.purposeDigit)}
+                          value={String(bp109Meta.purposeDigit)}
                           onChange={(e) =>
                             setBp109MetaById((m) => ({
                               ...m,
@@ -275,7 +308,7 @@ export function LabellingModal(props: {
                       <div>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>Suffix</div>
                         <input
-                          value={meta.suffixLetter ?? ""}
+                          value={bp109Meta.suffixLetter ?? ""}
                           onChange={(e) => setBp109MetaById((m) => ({ ...m, [n.id]: { ...m[n.id], suffixLetter: e.target.value } }))}
                           style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#fff" }}
                         />
@@ -284,14 +317,45 @@ export function LabellingModal(props: {
                       <div style={{ gridColumn: "span 5" }}>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>Prefix override</div>
                         <select
-                          value={meta.prefix ?? ""}
-                          onChange={(e) => setBp109MetaById((m) => ({ ...m, [n.id]: { ...m[n.id], prefix: e.target.value as any } }))}
+                          value={bp109Meta.prefix ?? ""}
+                          onChange={(e) => setBp109MetaById((m) => ({ ...m, [n.id]: { ...m[n.id], prefix: e.target.value as BP109Meta["prefix"] } }))}
                           style={{ ...selectStyle, background: "#0b1220" }}
                         >
                           <option value="">(schema default)</option>
                           <option value="X">X</option>
                           <option value="D">D</option>
                         </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {labelScheme === "ANSI_IEC" && ansiMeta && (
+                    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Function</div>
+                        <input
+                          value={ansiMeta.functionCode}
+                          onChange={(e) => setAnsiIecMetaById((m) => ({ ...m, [n.id]: { ...m[n.id], functionCode: e.target.value } }))}
+                          style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#fff" }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Bay #</div>
+                        <input
+                          type="number"
+                          min={1}
+                          value={ansiMeta.bayNumber}
+                          onChange={(e) => setAnsiIecMetaById((m) => ({ ...m, [n.id]: { ...m[n.id], bayNumber: Number(e.target.value) } }))}
+                          style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#fff" }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>Suffix</div>
+                        <input
+                          value={ansiMeta.suffix ?? ""}
+                          onChange={(e) => setAnsiIecMetaById((m) => ({ ...m, [n.id]: { ...m[n.id], suffix: e.target.value } }))}
+                          style={{ padding: 8, width: "100%", borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#fff" }}
+                        />
                       </div>
                     </div>
                   )}

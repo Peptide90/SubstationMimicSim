@@ -32,7 +32,8 @@ import { ContextMenu } from "./components/ContextMenu";
 
 import { FaultNode } from "./ui/nodes/FaultNode";
 
-import { computeBp109Label, defaultBp109Meta } from "./app/labeling/bp109";
+import { getDisplayLabel as computeDisplayLabel, resolveLabelMaps } from "./app/labeling";
+import type { AnsiIecMeta, BayType, BP109Meta, LabelMode, LabelScheme } from "./app/labeling/types";
 
 import { useEventLog } from "./app/hooks/useEventLog";
 import { useSwitchCommands } from "./app/hooks/useSwitchCommands";
@@ -230,15 +231,13 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
 
 
   // Labeling state
-  const [labelScheme, setLabelScheme] = useState(initialProject.labelScheme ?? "DEFAULT");
-  const [labelMode, setLabelMode] = useState(initialProject.labelMode ?? "AUTO");
+  const [labelScheme, setLabelScheme] = useState<LabelScheme>(initialProject.labelScheme ?? "DEFAULT");
+  const [labelMode, setLabelMode] = useState<LabelMode>(initialProject.labelMode ?? "AUTO");
   const [labelOverrides, setLabelOverrides] = useState(initialProject.labelOverrides ?? {});
-  const [bayTypeOverrides, setBayTypeOverrides] = useState(initialProject.bayTypeOverrides ?? {});
-  const [bp109MetaById, setBp109MetaById] = useState(initialProject.bp109MetaById ?? {});
-
-  const ensureBp109Meta = useCallback((nodeId: string, kind: NodeKind) => {
-    setBp109MetaById((m) => (m[nodeId] ? m : { ...m, [nodeId]: defaultBp109Meta(kind) }));
-  }, []);
+  const [bayTypeOverrides, setBayTypeOverrides] = useState<Record<string, BayType>>(initialProject.bayTypeOverrides ?? {});
+  const [bp109MetaById, setBp109MetaById] = useState<Record<string, Partial<BP109Meta>>>(initialProject.bp109MetaById ?? {});
+  const [ansiIecMetaById, setAnsiIecMetaById] = useState<Record<string, Partial<AnsiIecMeta>>>(initialProject.ansiIecMetaById ?? {});
+  const [substationVoltageKv, setSubstationVoltageKv] = useState(initialProject.substationVoltageKv ?? 400);
 
   // Interlocks state
   const [interlocks, setInterlocks] = useState(initialProject.interlocks ?? []);
@@ -254,6 +253,7 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
     onDownload,
   } = useTemplates({
     appendEvent,
+    ansiIecMetaById,
     bayTypeOverrides,
     bp109MetaById,
     edges,
@@ -262,6 +262,7 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
     labelOverrides,
     labelScheme,
     nodes,
+    setAnsiIecMetaById,
     setBayTypeOverrides,
     setBp109MetaById,
     setEdges,
@@ -271,6 +272,8 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
     setLabelOverrides,
     setLabelScheme,
     setNodes,
+    setSubstationVoltageKv,
+    substationVoltageKv,
     initialProject,
   });
 
@@ -282,29 +285,37 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
   // Derived maps
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
-  // Label computation
-  const computeAutoLabel = useCallback((nodeId: string) => {
-    const node = nodeById.get(nodeId);
-    if (!node) return nodeId;
-    const md = getMimicData(node);
-    if (!md || md.kind === "junction") return nodeId;
+  const resolvedLabels = useMemo(
+    () =>
+      resolveLabelMaps({
+        labelScheme,
+        labelMode,
+        labelOverrides,
+        bayTypeOverrides,
+        bp109MetaById,
+        ansiIecMetaById,
+        substationVoltageKv,
+        nodes,
+        edges,
+      }),
+    [ansiIecMetaById, bayTypeOverrides, bp109MetaById, edges, labelMode, labelOverrides, labelScheme, nodes, substationVoltageKv]
+  );
 
-    const base = (node.data as any)?.label ?? node.id;
-
-    if (labelScheme === "DEFAULT") return base;
-
-    const meta = bp109MetaById[nodeId];
-    if (!meta) return base;
-    return computeBp109Label(meta);
-  }, [bp109MetaById, labelScheme, nodeById]);
-
-  const getDisplayLabel = useCallback((nodeId: string) => {
-    if (labelMode === "FREEFORM") {
-      const o = (labelOverrides[nodeId] ?? "").trim();
-      if (o.length > 0) return o;
-    }
-    return computeAutoLabel(nodeId);
-  }, [computeAutoLabel, labelMode, labelOverrides]);
+  const getDisplayLabel = useCallback(
+    (nodeId: string) =>
+      computeDisplayLabel(nodeId, nodeById, {
+        labelScheme,
+        labelMode,
+        labelOverrides,
+        bayTypeOverrides,
+        bp109MetaById,
+        ansiIecMetaById,
+        substationVoltageKv,
+        nodes,
+        edges,
+      }, resolvedLabels.bp109, resolvedLabels.ansiIec),
+    [ansiIecMetaById, bayTypeOverrides, bp109MetaById, edges, labelMode, labelOverrides, labelScheme, nodeById, nodes, resolvedLabels.ansiIec, resolvedLabels.bp109, substationVoltageKv]
+  );
 
   const applyLabelsToNodes = useCallback(() => {
     setNodes((ns) =>
@@ -320,7 +331,7 @@ function AppInner({ buildTag, onRequestMenu }: { buildTag: string; onRequestMenu
   useMemo(() => {
     applyLabelsToNodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [labelScheme, labelMode, labelOverrides, bayTypeOverrides, bp109MetaById]);
+  }, [labelScheme, labelMode, labelOverrides, bayTypeOverrides, bp109MetaById, ansiIecMetaById, nodes, edges, substationVoltageKv]);
 
   // Connect validation
 const getDegree = (nodeId: string) =>
@@ -487,9 +498,8 @@ const isValidConnection = useCallback(
         makeNode(kind, id, pos.x, pos.y, { state: kind === "cb" || kind === "ds" || kind === "es" ? "open" : undefined })
       )
     );
-    ensureBp109Meta(id, kind);
     appendEvent("debug", `DROP ${kind.toUpperCase()} ${id}`, { source: "player" });
-  }, [appendEvent, ensureBp109Meta, locked, screenToFlowPosition, setNodes]);
+  }, [appendEvent, locked, screenToFlowPosition, setNodes]);
 
   const onAddAtCenter = useCallback((kind: NodeKind) => {
     if (locked) return;
@@ -499,9 +509,8 @@ const isValidConnection = useCallback(
         makeNode(kind, id, 260, 160, { state: kind === "cb" || kind === "ds" || kind === "es" ? "open" : undefined })
       )
     );
-    ensureBp109Meta(id, kind);
     appendEvent("debug", `CREATE ${kind.toUpperCase()} ${id}`, { source: "player" });
-  }, [appendEvent, ensureBp109Meta, locked, setNodes]);
+  }, [appendEvent, locked, setNodes]);
 
   // Connect handler
   const onConnect = useCallback((c: Connection) => {
@@ -785,8 +794,13 @@ const isValidConnection = useCallback(
         setBayTypeOverrides={(fn) => setBayTypeOverrides(fn)}
         bp109MetaById={bp109MetaById}
         setBp109MetaById={(fn) => setBp109MetaById(fn)}
+        ansiIecMetaById={ansiIecMetaById}
+        setAnsiIecMetaById={(fn) => setAnsiIecMetaById(fn)}
+        resolvedBp109Meta={resolvedLabels.bp109}
+        resolvedAnsiIecMeta={resolvedLabels.ansiIec}
+        substationVoltageKv={substationVoltageKv}
+        setSubstationVoltageKv={setSubstationVoltageKv}
         getDisplayLabel={getDisplayLabel}
-        ensureBp109Meta={(nodeId, kind) => ensureBp109Meta(nodeId, kind)}
       />
 
       <SaveLoadModal

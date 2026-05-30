@@ -5,7 +5,7 @@ import type { EventCategory } from "../../components/EventLog";
 import type { InterlockRule } from "../../components/modals/InterlockingModal";
 import type { InterfaceMeta } from "../../components/modals/PowerFlowModal";
 import { loadTemplateById, TEMPLATE_INDEX } from "../../templates/manifest";
-import type { BayType, BP109Meta, LabelMode, LabelScheme } from "../labeling/bp109";
+import type { AnsiIecMeta, BayType, BP109Meta, LabelMode, LabelScheme } from "../labeling/types";
 import { normalizeNodes } from "../util/normalizeNodes";
 
 type TemplateProject = {
@@ -16,7 +16,9 @@ type TemplateProject = {
   labelMode?: LabelMode;
   labelOverrides?: Record<string, string>;
   bayTypeOverrides?: Record<string, BayType>;
-  bp109MetaById?: Record<string, BP109Meta>;
+  bp109MetaById?: Record<string, Partial<BP109Meta>>;
+  ansiIecMetaById?: Record<string, Partial<AnsiIecMeta>>;
+  substationVoltageKv?: number;
   interlocks?: InterlockRule[];
   interfaceMetaById?: Record<string, InterfaceMeta>;
 };
@@ -35,8 +37,9 @@ export function loadInitialProject(): TemplateProject {
 
 type UseTemplatesParams = {
   appendEvent: (category: EventCategory, msg: string, options?: { source?: "player" | "system" }) => void;
+  ansiIecMetaById: Record<string, Partial<AnsiIecMeta>>;
   bayTypeOverrides: Record<string, BayType>;
-  bp109MetaById: Record<string, BP109Meta>;
+  bp109MetaById: Record<string, Partial<BP109Meta>>;
   edges: Edge[];
   initialProject: TemplateProject;
   interlocks: InterlockRule[];
@@ -44,8 +47,9 @@ type UseTemplatesParams = {
   labelOverrides: Record<string, string>;
   labelScheme: LabelScheme;
   nodes: Node[];
+  setAnsiIecMetaById: React.Dispatch<React.SetStateAction<Record<string, Partial<AnsiIecMeta>>>>;
   setBayTypeOverrides: React.Dispatch<React.SetStateAction<Record<string, BayType>>>;
-  setBp109MetaById: React.Dispatch<React.SetStateAction<Record<string, BP109Meta>>>;
+  setBp109MetaById: React.Dispatch<React.SetStateAction<Record<string, Partial<BP109Meta>>>>;
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   setInterlocks: React.Dispatch<React.SetStateAction<InterlockRule[]>>;
   setInterfaceMetaById: React.Dispatch<React.SetStateAction<Record<string, InterfaceMeta>>>;
@@ -53,10 +57,13 @@ type UseTemplatesParams = {
   setLabelOverrides: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setLabelScheme: React.Dispatch<React.SetStateAction<LabelScheme>>;
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  setSubstationVoltageKv: React.Dispatch<React.SetStateAction<number>>;
+  substationVoltageKv: number;
 };
 
 export function useTemplates({
   appendEvent,
+  ansiIecMetaById,
   bayTypeOverrides,
   bp109MetaById,
   edges,
@@ -66,6 +73,7 @@ export function useTemplates({
   labelOverrides,
   labelScheme,
   nodes,
+  setAnsiIecMetaById,
   setBayTypeOverrides,
   setBp109MetaById,
   setEdges,
@@ -75,6 +83,8 @@ export function useTemplates({
   setLabelOverrides,
   setLabelScheme,
   setNodes,
+  setSubstationVoltageKv,
+  substationVoltageKv,
 }: UseTemplatesParams) {
   const [saveTitle, setSaveTitle] = useState(
     initialProject?.metadata?.title ?? "Untitled Template"
@@ -96,12 +106,15 @@ export function useTemplates({
           labelOverrides,
           bayTypeOverrides,
           bp109MetaById,
+          ansiIecMetaById,
+          substationVoltageKv,
           interlocks,
         },
         null,
         2
       ),
     [
+      ansiIecMetaById,
       bayTypeOverrides,
       bp109MetaById,
       edges,
@@ -112,6 +125,7 @@ export function useTemplates({
       nodes,
       saveDescription,
       saveTitle,
+      substationVoltageKv,
     ]
   );
 
@@ -145,11 +159,14 @@ export function useTemplates({
       if (parsed.labelOverrides) setLabelOverrides(parsed.labelOverrides);
       if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
       if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
+      if (parsed.ansiIecMetaById) setAnsiIecMetaById(parsed.ansiIecMetaById);
+      if (parsed.substationVoltageKv) setSubstationVoltageKv(parsed.substationVoltageKv);
       if (parsed.interlocks) setInterlocks(parsed.interlocks);
       appendEvent("debug", `Loaded ${file.name}`, { source: "player" });
     },
     [
       appendEvent,
+      setAnsiIecMetaById,
       setBayTypeOverrides,
       setBp109MetaById,
       setEdges,
@@ -158,6 +175,7 @@ export function useTemplates({
       setLabelOverrides,
       setLabelScheme,
       setNodes,
+      setSubstationVoltageKv,
     ]
   );
 
@@ -192,6 +210,8 @@ export function useTemplates({
       if (parsed.labelOverrides) setLabelOverrides(parsed.labelOverrides);
       if (parsed.bayTypeOverrides) setBayTypeOverrides(parsed.bayTypeOverrides);
       if (parsed.bp109MetaById) setBp109MetaById(parsed.bp109MetaById);
+      if (parsed.ansiIecMetaById) setAnsiIecMetaById(parsed.ansiIecMetaById);
+      if (parsed.substationVoltageKv) setSubstationVoltageKv(parsed.substationVoltageKv);
       if (parsed.interlocks) setInterlocks(parsed.interlocks);
       if (parsed.interfaceMetaById) setInterfaceMetaById(parsed.interfaceMetaById);
 
@@ -199,6 +219,7 @@ export function useTemplates({
     },
     [
       appendEvent,
+      setAnsiIecMetaById,
       setBayTypeOverrides,
       setBp109MetaById,
       setEdges,
@@ -208,6 +229,7 @@ export function useTemplates({
       setLabelOverrides,
       setLabelScheme,
       setNodes,
+      setSubstationVoltageKv,
     ]
   );
 

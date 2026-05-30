@@ -1,66 +1,76 @@
+import type { NodeKind } from "../../core/model";
 import bp109Schema from "../../schemas/labeling/ng-bp109.json";
 
-export type LabelScheme = "DEFAULT" | "NG_BP109";
-export type LabelMode = "AUTO" | "FREEFORM";
-export type BayType = "AUTO" | "BUS" | "LINE" | "TX";
+import type {
+  AnsiIecMeta,
+  BP109Meta,
+  CircuitType,
+  Prefix,
+  PurposeDigit,
+  VoltageClass,
+} from "./types";
 
-export type VoltageClass = "400" | "275" | "132" | "LV66" | "HVDC";
-export type Prefix = "" | "X" | "D";
+export type { LabelScheme, LabelMode, BayType, BP109Meta, AnsiIecMeta, CircuitType, VoltageClass, PurposeDigit, Prefix } from "./types";
 
-export type CircuitType =
-  | "LINE"
-  | "TX_HV"
-  | "MAIN_BUS_SEC"
-  | "BUS_COUPLER"
-  | "SERIES_REACTOR"
-  | "SHUNT_COMP"
-  | "RES_BUS_SEC"
-  | "SPARE"
-  | "TX_LV"
-  | "GEN";
-
-export type PurposeDigit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-export type BP109Meta = {
-  enabled: boolean;
-  voltageClass: VoltageClass;
-  prefix?: Prefix;
-  circuitType: CircuitType;
-  circuitNumber: number; // 0-9
-  purposeDigit: PurposeDigit;
-  suffixLetter?: string;
+const ANSI_FUNCTION: Record<string, string> = {
+  cb: "52",
+  ds: "89",
+  es: "09",
+  tx: "T",
+  ct: "CT",
+  vt: "VT",
 };
 
 export function schemaDefaultPrefix(vc: VoltageClass): Prefix {
-  const p = (bp109Schema as any)?.voltageClasses?.[vc]?.prefix ?? "";
+  const p = (bp109Schema as { voltageClasses?: Record<string, { prefix?: string }> }).voltageClasses?.[vc]?.prefix ?? "";
   if (p === "X" || p === "D") return p;
   return "";
 }
 
+export function voltageClassFromKv(kv: number): VoltageClass {
+  const map = (bp109Schema as { defaultVoltageClassByKv?: Record<string, VoltageClass> }).defaultVoltageClassByKv ?? {};
+  const exact = map[String(kv)];
+  if (exact) return exact;
+  if (kv >= 350) return "400";
+  if (kv >= 200) return "275";
+  if (kv >= 100) return "132";
+  return "LV66";
+}
+
+export function defaultPurposeDigit(kind: NodeKind | string, circuitType: CircuitType): PurposeDigit {
+  const purposeByKind = (bp109Schema as {
+    purposeByKind?: Record<string, { default?: number } & Partial<Record<CircuitType | "busbarSide" | "reserveSide", number>>>;
+  }).purposeByKind;
+  const row = purposeByKind?.[kind];
+  if (!row) return 0;
+  const value = row[circuitType] ?? row.default ?? 0;
+  return Math.max(0, Math.min(9, value)) as PurposeDigit;
+}
+
 export function defaultBp109Meta(kind: string): BP109Meta {
   const enabled = kind === "ds" || kind === "cb" || kind === "es";
-  const purposeDigit: PurposeDigit = kind === "es" ? 1 : kind === "cb" ? 5 : 3;
+  const circuitType: CircuitType = kind === "tx" ? "TX_HV" : "LINE";
   return {
     enabled,
     voltageClass: "400",
     prefix: "X",
-    circuitType: "LINE",
+    circuitType,
     circuitNumber: 1,
-    purposeDigit,
+    purposeDigit: defaultPurposeDigit(kind, circuitType),
     suffixLetter: "",
   };
 }
 
 /**
- * BP109 label generation with your corrected ordering:
+ * BP109 label generation (NG/ET/BP_109 Appendix A10–A13):
  * - 400/HVDC: PREFIX + CIRCUIT_NUM + TYPE_DIGIT + PURPOSE (+suffix)
  * - 132:      CIRCUIT_NUM + TYPE_DIGIT + PURPOSE (+suffix)
  * - 275:      TYPE_LETTER + CIRCUIT_NUM + PURPOSE (+suffix)
  * - LV66:     CIRCUIT_NUM + TYPE_LETTER + PURPOSE (+suffix)
  */
 export function computeBp109Label(meta: BP109Meta): string {
-  const digitMap = (bp109Schema as any).typeMaps?.digitMap ?? {};
-  const letterMap = (bp109Schema as any).typeMaps?.letterMap ?? {};
+  const digitMap = (bp109Schema as { typeMaps?: { digitMap?: Record<string, number> } }).typeMaps?.digitMap ?? {};
+  const letterMap = (bp109Schema as { typeMaps?: { letterMap?: Record<string, string> } }).typeMaps?.letterMap ?? {};
 
   const typeDigit = digitMap[meta.circuitType];
   const typeLetter = letterMap[meta.circuitType];
@@ -81,4 +91,23 @@ export function computeBp109Label(meta: BP109Meta): string {
     return `${typeLetter}${cnum}${p}${suffix}`;
   }
   return `${cnum}${typeLetter}${p}${suffix}`;
+}
+
+export function defaultAnsiIecMeta(kind: string): AnsiIecMeta {
+  return {
+    enabled: kind === "cb" || kind === "ds" || kind === "es",
+    functionCode: ANSI_FUNCTION[kind] ?? kind.toUpperCase(),
+    bayNumber: 1,
+    suffix: "",
+  };
+}
+
+/** Placeholder ANSI/IEC tag until full scheme is implemented. */
+export function computeAnsiIecLabel(meta: AnsiIecMeta): string {
+  const suffix = (meta.suffix ?? "").trim();
+  return suffix ? `${meta.functionCode}-${meta.bayNumber}${suffix}` : `${meta.functionCode}-${meta.bayNumber}`;
+}
+
+export function ansiFunctionForKind(kind: string): string {
+  return ANSI_FUNCTION[kind] ?? kind.toUpperCase();
 }

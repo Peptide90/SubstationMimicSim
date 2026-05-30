@@ -1,12 +1,13 @@
 {
   "schemeId": "NG_BP109",
-  "version": "0.1",
+  "version": "1.0",
+  "reference": "NG/ET/BP_109 Issue 1 — Appendix A10–A13",
   "voltageClasses": {
-    "400": { "prefix": "X", "format": "PREFIX+TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" },
+    "400": { "prefix": "X", "format": "PREFIX+CIRCUIT_NUM+TYPE_DIGIT+PURPOSE" },
     "275": { "prefix": "", "format": "TYPE_LETTER+CIRCUIT_NUM+PURPOSE" },
-    "132": { "prefix": "", "format": "TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" },
+    "132": { "prefix": "", "format": "CIRCUIT_NUM+TYPE_DIGIT+PURPOSE" },
     "LV66": { "prefix": "", "format": "CIRCUIT_NUM+TYPE_LETTER+PURPOSE" },
-    "HVDC": { "prefix": "D", "format": "PREFIX+TYPE_DIGIT+CIRCUIT_NUM+PURPOSE" }
+    "HVDC": { "prefix": "D", "format": "PREFIX+CIRCUIT_NUM+TYPE_DIGIT+PURPOSE" }
   },
   "typeMaps": {
     "digitMap": {
@@ -33,5 +34,16 @@
       "TX_LV": "T",
       "GEN": "M"
     }
+  },
+  "purposeByKind": {
+    "cb": { "LINE": 5, "TX_HV": 0, "TX_LV": 0, "MAIN_BUS_SEC": 5, "BUS_COUPLER": 5, "default": 0 },
+    "ds": { "LINE": 3, "TX_HV": 3, "TX_LV": 3, "MAIN_BUS_SEC": 3, "BUS_COUPLER": 3, "busbarSide": 4, "reserveSide": 6, "default": 3 },
+    "es": { "default": 1 }
+  },
+  "defaultVoltageClassByKv": {
+    "400": "400",
+    "275": "275",
+    "132": "132",
+    "66": "LV66"
   }
 }
