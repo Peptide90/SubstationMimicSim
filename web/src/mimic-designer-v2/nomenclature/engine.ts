@@ -1,4 +1,13 @@
 import type { DrawingDocument, ElectricalSymbol, Phase } from '../drawing/model';
+import {
+  ansiFunctionForKind,
+  computeAnsiIecLabel,
+  computeBp109Label,
+  defaultAnsiIecMeta,
+  defaultBp109Meta,
+  voltageClassFromKv
+} from '../../app/labeling/bp109';
+import type { LabelScheme } from '../../app/labeling/types';
 
 const TYPE_PREFIX: Record<ElectricalSymbol['type'], string> = {
   source: 'IN',
@@ -16,15 +25,39 @@ const TYPE_PREFIX: Record<ElectricalSymbol['type'], string> = {
 
 const phaseMarker = (phases: Phase[]) => (phases.length < 3 || !['A', 'B', 'C'].every((p) => phases.includes(p as Phase)) ? '*' : '');
 
-export function generateLabels(doc: DrawingDocument): DrawingDocument {
+function symbolKind(type: ElectricalSymbol['type']): string {
+  if (type === 'circuit-breaker') return 'cb';
+  if (type === 'disconnector') return 'ds';
+  if (type === 'earth-switch') return 'es';
+  if (type === 'transformer') return 'tx';
+  if (type === 'vt') return 'vt';
+  if (type === 'ct') return 'ct';
+  if (type === 'source') return 'source';
+  if (type === 'load') return 'load';
+  return type;
+}
+
+export function resolveLabelScheme(doc: DrawingDocument): LabelScheme {
+  return doc.uiState.labelScheme ?? 'DEFAULT';
+}
+
+export function generateLabels(doc: DrawingDocument, scheme: LabelScheme = resolveLabelScheme(doc)): DrawingDocument {
   const used = new Set<string>();
-  const symbols = doc.objects.symbols.map((symbol, index) => {
+  const sorted = [...doc.objects.symbols].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
+  const bayBySymbolId = new Map<string, number>();
+  sorted.forEach((symbol, index) => {
+    if (['circuit-breaker', 'disconnector', 'earth-switch', 'transformer', 'load', 'source'].includes(symbol.type)) {
+      bayBySymbolId.set(symbol.id, index + 1);
+    }
+  });
+
+  const symbols = doc.objects.symbols.map((symbol) => {
     if (symbol.label?.manualOverride) {
       used.add(symbol.label.text);
       return symbol;
     }
 
-    const base = makeBaseLabel(symbol, index + 1);
+    const base = makeLabelForScheme(symbol, scheme, bayBySymbolId.get(symbol.id) ?? 1);
     let candidate = `${base}${phaseMarker(symbol.phaseApplicability)}`;
     let suffix = 1;
     while (used.has(candidate)) {
@@ -44,10 +77,39 @@ export function generateLabels(doc: DrawingDocument): DrawingDocument {
     };
   });
 
-  return { ...doc, objects: { ...doc.objects, symbols } };
+  return {
+    ...doc,
+    uiState: { ...doc.uiState, labelScheme: scheme },
+    objects: { ...doc.objects, symbols }
+  };
 }
 
-function makeBaseLabel(symbol: ElectricalSymbol, index: number): string {
+function makeLabelForScheme(symbol: ElectricalSymbol, scheme: LabelScheme, bayNumber: number): string {
+  const kind = symbolKind(symbol.type);
+  if (scheme === 'NG_BP109') {
+    const meta = {
+      ...defaultBp109Meta(kind),
+      voltageClass: voltageClassFromKv(symbol.voltageLevelKv ?? 132),
+      circuitNumber: Math.min(9, bayNumber),
+      enabled: kind === 'cb' || kind === 'ds' || kind === 'es' || kind === 'ct' || kind === 'vt'
+    };
+    if (!meta.enabled) return makeDefaultLabel(symbol, bayNumber);
+    return computeBp109Label(meta);
+  }
+  if (scheme === 'ANSI_IEC') {
+    const meta = {
+      ...defaultAnsiIecMeta(kind),
+      bayNumber,
+      functionCode: ansiFunctionForKind(kind),
+      enabled: kind === 'cb' || kind === 'ds' || kind === 'es' || kind === 'ct' || kind === 'vt'
+    };
+    if (!meta.enabled) return makeDefaultLabel(symbol, bayNumber);
+    return computeAnsiIecLabel(meta);
+  }
+  return makeDefaultLabel(symbol, bayNumber);
+}
+
+function makeDefaultLabel(symbol: ElectricalSymbol, index: number): string {
   const voltage = symbol.voltageLevelKv ? `${symbol.voltageLevelKv}kV ` : '';
   if (symbol.type === 'transformer') return `${voltage}Transformer T${index}`;
   if (symbol.type === 'source') return `${voltage}Incomer ${index}`;

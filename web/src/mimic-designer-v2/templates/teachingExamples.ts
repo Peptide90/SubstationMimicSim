@@ -92,28 +92,34 @@ export const teachingExamples: DrawingTemplate[] = [
     category: 'example',
     tags: ['bus-coupler', 'operation'],
     voltageLevels: [275],
-    create: () => createBaseDocument('example-bus-coupler-operation', 'Example: bus coupler operation', {
-      drawingType: 'example',
-      tags: ['bus-coupler', 'operation'],
-      voltageLevels: [275],
-      objects: {
-        symbols: [
-          symbol('ex-bc-src', 'source', 80, 110, 'SRC', 275),
-          symbol('ex-bc-ds1', 'disconnector', 340, 140, 'BC DS1', 275, 90, { operation: { switchState: 'closed' } }),
-          symbol('ex-bc-cb', 'circuit-breaker', 340, 240, 'BC CB', 275, 90, { operation: { switchState: 'closed' } }),
-          symbol('ex-bc-ds2', 'disconnector', 340, 340, 'BC DS2', 275, 90, { operation: { switchState: 'closed' } })
-        ],
-        busbars: [
-          busbar('ex-bc-main', [{ x: 120, y: 110 }, { x: 560, y: 110 }], 275),
-          busbar('ex-bc-reserve', [{ x: 120, y: 370 }, { x: 560, y: 370 }], 275),
-          busbar('ex-bc-ds1-to-cb', [{ x: 340, y: 170 }, { x: 340, y: 210 }], 275),
-          busbar('ex-bc-cb-to-ds2', [{ x: 340, y: 270 }, { x: 340, y: 310 }], 275)
-        ],
-        conductors: [],
-        labels: [],
-        annotations: []
-      }
-    })
+    create: () => {
+      const couplerX = 340;
+      return createBaseDocument('example-bus-coupler-operation', 'Example: bus coupler operation', {
+        drawingType: 'example',
+        tags: ['bus-coupler', 'operation'],
+        voltageLevels: [275],
+        objects: {
+          symbols: [
+            symbol('ex-bc-src', 'source', 80, 110, 'SRC', 275),
+            symbol('ex-bc-ds1', 'disconnector', couplerX - 24, 142, 'BC MAIN DS', 275, 90, { operation: { switchState: 'closed' } }),
+            symbol('ex-bc-cb', 'circuit-breaker', couplerX, 324, 'BC CB', 275, 90, { operation: { switchState: 'closed' } }),
+            symbol('ex-bc-ds2', 'disconnector', couplerX + 24, 232, 'BC RES DS', 275, 90, { operation: { switchState: 'closed' } })
+          ],
+          busbars: [
+            busbar('ex-bc-main', [{ x: 120, y: 110 }, { x: 560, y: 110 }], 275),
+            busbar('ex-bc-reserve', [{ x: 120, y: 202 }, { x: 560, y: 202 }], 275),
+            busbar('ex-bc-main-selector', [{ x: couplerX - 24, y: 110 }, { x: couplerX - 24, y: 172 }], 275),
+            busbar('ex-bc-reserve-selector', [{ x: couplerX + 24, y: 202 }, { x: couplerX + 24, y: 262 }], 275),
+            busbar('ex-bc-main-link', [{ x: couplerX - 24, y: 270 }, { x: couplerX, y: 270 }], 275),
+            busbar('ex-bc-reserve-link', [{ x: couplerX + 24, y: 270 }, { x: couplerX, y: 270 }], 275),
+            busbar('ex-bc-stack', [{ x: couplerX, y: 270 }, { x: couplerX, y: 294 }, { x: couplerX, y: 354 }], 275)
+          ],
+          conductors: [],
+          labels: [],
+          annotations: []
+        }
+      });
+    }
   },
   {
     id: 'example-transformer-lv-busbar',

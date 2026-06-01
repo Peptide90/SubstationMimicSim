@@ -2,24 +2,35 @@ import type { DrawingDocument, FaultMetadata, FaultType, Phase, Point } from '..
 
 const phasesAll = ['A', 'B', 'C'] as Phase[];
 
-export function createFault(targetObjectId: string, type: FaultType = 'phase-to-earth', location?: Point): FaultMetadata {
+export function createFault(
+  targetObjectId: string,
+  type: FaultType = 'phase-to-earth',
+  location?: Point,
+  options?: { transient?: boolean }
+): FaultMetadata {
   const now = new Date().toISOString();
-  const transient = type === 'transient';
+  const transient = options?.transient ?? type === 'transient';
   const phases = phasesForFault(type);
+  const displayType = type === 'transient' || type === 'persistent' ? 'phase-to-earth' : type;
   return {
     id: `fault-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
     targetObjectId,
     targetPhase: phases.length === 1 ? phases[0] : undefined,
     location,
     phases,
-    type,
+    type: displayType,
     persistent: !transient,
     durationMs: transient ? 1000 : undefined,
     resistanceOhms: type === 'high-impedance' ? 10 : 0,
     active: true,
-    label: type.replaceAll('-', ' '),
+    label: faultDisplayLabel(displayType, transient),
     createdAt: now
   };
+}
+
+function faultDisplayLabel(type: FaultType, transient: boolean): string {
+  const base = type.replaceAll('-', ' ');
+  return transient ? `${base} (transient)` : `${base} (persistent)`;
 }
 
 function phasesForFault(type: FaultType): Phase[] {

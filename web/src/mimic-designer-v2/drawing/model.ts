@@ -546,6 +546,7 @@ export interface DrawingDocument {
     snapToGrid: boolean;
     snapToTerminals: boolean;
     snapToIntersections: boolean;
+    labelScheme?: 'DEFAULT' | 'NG_BP109' | 'ANSI_IEC';
   };
   history?: {
     undoStack: string[];
