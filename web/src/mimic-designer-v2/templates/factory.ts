@@ -1,5 +1,6 @@
 import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultMetadata, HotJointMetadata, Phase, Point, ProtectionElement, ProtectionZone, RelaySettings } from '../drawing/model';
 import { MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../schema/documentSchema';
+import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 
 export interface DrawingTemplate {
   id: string;
@@ -119,10 +120,10 @@ export function feederChain(prefix: string, y: number, startX: number, labelPref
     symbols: [source, es1, ds1, cb, ct, ds2, es2, vt, load],
     busbars: [busbar(`${prefix}-bus`, [{ x: startX + 720, y }, { x: startX + 830, y }, { x: startX + 980, y }, { x: startX + 1070, y }], voltage)],
     conductors: [
-      conductor(`${prefix}-source-ds1`, [{ x: startX + 40, y }, { x: startX + 120, y }, { x: startX + 190, y }], voltage, 'overhead-line'),
-      conductor(`${prefix}-ds1-cb`, [{ x: startX + 250, y }, { x: startX + 350, y }], voltage, 'overhead-line'),
-      conductor(`${prefix}-cb-ct`, [{ x: startX + 410, y }, { x: startX + 510, y }], voltage, 'overhead-line'),
-      conductor(`${prefix}-ct-ds2`, [{ x: startX + 550, y }, { x: startX + 660, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-source-ds1`, [{ x: startX + 40, y }, { x: startX + 120, y }, { x: startX + 220 - SWITCH_TERMINAL_SPAN, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-ds1-cb`, [{ x: startX + 220 + SWITCH_TERMINAL_SPAN, y }, { x: startX + 380 - SWITCH_TERMINAL_SPAN, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-cb-ct`, [{ x: startX + 380 + SWITCH_TERMINAL_SPAN, y }, { x: startX + 530 - 20, y }], voltage, 'overhead-line'),
+      conductor(`${prefix}-ct-ds2`, [{ x: startX + 530 + 20, y }, { x: startX + 690 - SWITCH_TERMINAL_SPAN, y }], voltage, 'overhead-line'),
       conductor(`${prefix}-es1-tap`, [{ x: startX + 120, y }, { x: startX + 120, y: y + 90 }], voltage, 'overhead-line'),
       conductor(`${prefix}-es2-tap`, [{ x: startX + 830, y }, { x: startX + 830, y: y + 90 }], voltage, 'overhead-line'),
       conductor(`${prefix}-vt-tap`, [{ x: startX + 980, y }, { x: startX + 980, y: y + 70 }, { x: startX + 980, y: y + 110 }], voltage, 'overhead-line')
@@ -158,7 +159,7 @@ function terminalsFor(type: ElectricalSymbol['type']) {
   if (type === 'transformer') return [{ id: 'hv', name: 'hv', x: -40, y: 0 }, { id: 'lv', name: 'lv', x: 40, y: 0 }];
   if (type === 'vt') return [{ name: 'tap', x: 0, y: -20 }];
   if (type === 'ct') return [{ name: 'in', x: -20, y: 0 }, { name: 'out', x: 20, y: 0 }];
-  return [{ name: 'in', x: -30, y: 0 }, { name: 'out', x: 30, y: 0 }];
+  return [{ name: 'in', x: -SWITCH_TERMINAL_SPAN, y: 0 }, { name: 'out', x: SWITCH_TERMINAL_SPAN, y: 0 }];
 }
 
 function terminalId(terminal: ReturnType<typeof terminalsFor>[number], index: number): string {

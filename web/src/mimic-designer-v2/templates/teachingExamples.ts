@@ -1,4 +1,5 @@
 import { busbar, conductor, createBaseDocument, fault, feederChain, hotJoint, protection, relay, symbol, type DrawingTemplate } from './factory';
+import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import type { ConductorPath, Phase } from '../drawing/model';
 
 const phaseConductor = (path: ConductorPath, phase: Phase): ConductorPath => ({
@@ -31,10 +32,10 @@ export const teachingExamples: DrawingTemplate[] = [
         conductor(`${prefix}-source-vt`, [{ x: 120, y }, { x: 180, y }, { x: 280, y }, { x: 350, y }], 132, 'overhead-line'),
         conductor(`${prefix}-vt-tap`, [{ x: 180, y }, { x: 180, y: y + 75 }], 132, 'overhead-line'),
         conductor(`${prefix}-es1-tap`, [{ x: 280, y }, { x: 280, y: y + 90 }], 132, 'overhead-line'),
-        conductor(`${prefix}-ds1-cb`, [{ x: 410, y }, { x: 510, y }], 132, 'overhead-line'),
-        conductor(`${prefix}-cb-ct`, [{ x: 570, y }, { x: 660, y }], 132, 'overhead-line'),
-        conductor(`${prefix}-ct-ds2`, [{ x: 700, y }, { x: 790, y }], 132, 'overhead-line'),
-        conductor(`${prefix}-to-main-bus`, [{ x: 850, y }, { x: 980, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-ds1-cb`, [{ x: 380 + SWITCH_TERMINAL_SPAN, y }, { x: 540 - SWITCH_TERMINAL_SPAN, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-cb-ct`, [{ x: 540 + SWITCH_TERMINAL_SPAN, y }, { x: 680 - 20, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-ct-ds2`, [{ x: 680 + 20, y }, { x: 820 - SWITCH_TERMINAL_SPAN, y }], 132, 'overhead-line'),
+        conductor(`${prefix}-to-main-bus`, [{ x: 820 + SWITCH_TERMINAL_SPAN, y }, { x: 980, y }], 132, 'overhead-line'),
         conductor(`${prefix}-es2-tap`, [{ x: 920, y }, { x: 920, y: y + 90 }], 132, 'overhead-line')
       ];
       return createBaseDocument('example-normal-energisation', 'Example: normal energisation', {

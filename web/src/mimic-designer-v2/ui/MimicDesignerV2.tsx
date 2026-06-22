@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, LearningTier, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
-import { SYMBOL_LIBRARY } from '../symbols/library';
+import { SYMBOL_LIBRARY, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
@@ -1001,6 +1001,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setLastOperationReason(`Trip reset ${selectedObject.label?.text ?? selectedObject.id}`);
   };
 
+  const rotateSelectedSymbols = useCallback(() => {
+    if (!selectedSymbols.length) return;
+    commit({ ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.map((symbol) => selected.includes(symbol.id) ? { ...symbol, rotation: (symbol.rotation + 90) % 360 } : symbol) } });
+  }, [commit, doc, selected, selectedSymbols.length]);
+
   const setSelectedVoltageOnObject = (value: number) => {
     if (!selectedObject) return;
     updateSelectedSymbol((symbol) => ({ ...symbol, voltageLevelKv: value }));
@@ -1376,14 +1381,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         setRedoStack((r) => r.slice(0, -1));
         setDoc(next);
       }
-      if (event.key.toLowerCase() === 'r' && selectedSymbols.length) {
-        commit({ ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.map((s) => selected.includes(s.id) ? { ...s, rotation: (s.rotation + 90) % 360 } : s) } });
-      }
+      if (event.key.toLowerCase() === 'r' && selectedSymbols.length) rotateSelectedSymbols();
       if (event.key === 'Enter' && tool === 'conductor') finishPath();
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [commit, deleteDisabled, doc, finishPath, focusedOperateMode, redoStack, selected, selectedSymbols.length, tool, undoStack]);
+  }, [commit, deleteDisabled, doc, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
 
   useEffect(() => {
     if (!learningVisibility.showThreePhase && doc.activeView === 'three-phase') setDoc((prev) => ({ ...prev, activeView: 'single-line' }));
@@ -1431,20 +1434,20 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const renderSymbolGlyph = (symbol: ElectricalSymbol) => {
     const selectedStroke = selected.includes(symbol.id) ? 'var(--md2-selected)' : 'var(--md2-text)';
     if (renderMode === 'nodes') return <circle cx={0} cy={0} r={18} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2} />;
-    if (symbol.type === 'cable-sealing-end') return <polygon points='-14,-13 18,0 -14,13' fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={2} />;
+    if (symbol.type === 'cable-sealing-end') return <polygon points={`-14,-13 ${SWITCH_TERMINAL_SPAN},0 -14,13`} fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={2} />;
     if (symbol.type === 'source') return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='-14,-16 18,0 -14,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={40} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-40} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'ct') return <g><line x1={-30} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>V</text><line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'circuit-breaker') {
       const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
       const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
-      return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><text x={0} y={5} textAnchor='middle' fontSize='14' fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><text x={0} y={5} textAnchor='middle' fontSize='14' fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
     }
     if (symbol.type === 'disconnector') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
-      return <g><line x1={-30} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={2.5} fill={selectedStroke}/><circle cx={12} cy={0} r={2.5} fill={selectedStroke}/><line x1={12} y1={0} x2={30} y2={0} stroke={selectedStroke} strokeWidth={2}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={2}/></g>;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={2.5} fill={selectedStroke}/><circle cx={12} cy={0} r={2.5} fill={selectedStroke}/><line x1={12} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={2}/></g>;
     }
     if (symbol.type === 'earth-switch') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
@@ -1757,17 +1760,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <p>{doc.name}{dirty ? ' *' : ''}</p>
       {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
       {draftNotice && <p className='mimic-v2-warning-text'>{draftNotice} <button className='mimic-v2-chip' onClick={recoverDraft}>Recover</button></p>}
-      <div className='mimic-v2-voltage-row inspector'>
-        <button className='mimic-v2-chip' onClick={() => setLibraryOpen(true)}>Library</button>
-        <button className='mimic-v2-chip' onClick={saveCurrentDrawing}>Save</button>
-        <button className='mimic-v2-chip' onClick={saveCurrentDrawingAs}>Save as</button>
-      </div>
-      <div className='mimic-v2-voltage-row inspector'>
-        <button className={`mimic-v2-chip ${managerView === 'inspector' ? 'active' : ''}`} onClick={() => setManagerView('inspector')}>Inspector</button>
-        {learningVisibility.showPowerFlow && <button className='mimic-v2-chip' onClick={openPowerFlowModal}>Power flow...</button>}
-        {learningVisibility.showProtectionManager && <button className='mimic-v2-chip' onClick={openProtectionModal}>Protection...</button>}
-        <button className={`mimic-v2-chip ${managerView === 'scenario' ? 'active' : ''}`} onClick={() => setManagerView('scenario')}>Scenarios</button>
-      </div>
       {managerView === 'scenario' && <section className='mimic-v2-manager-panel'>
         <h4>{learningTier} Mode</h4>
         <p>{learningTiers[learningTier].explanationStyle}</p>
@@ -1875,6 +1867,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <p>Editing: {selectedPhase ? `phase ${selectedPhase}` : doc.activeView === 'three-phase' ? 'whole object / all phases' : 'single-line aggregate (applies to all phases)'}</p>
       {selectedObject && <>
         {inspectorEditingDisabled && <p className='mimic-v2-warning-text'>Inspector editing is disabled for this operation exercise.</p>}
+        <div className='mimic-v2-voltage-row inspector'>
+          <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={rotateSelectedSymbols} title='Rotate 90° (R)'>Rotate 90°</button>
+        </div>
         <label>Label <input disabled={inspectorEditingDisabled} value={selectedObject.label?.text ?? ''} onChange={(event)=>setDoc((prev)=>({ ...prev, objects:{ ...prev.objects, symbols: prev.objects.symbols.map((symbol)=>symbol.id===selectedObject.id?{...symbol,label:{text:event.target.value,autoGenerated:false,manualOverride:true}}:symbol)}}))} /></label>
         <label>Voltage kV <input disabled={inspectorEditingDisabled} type='number' value={selectedObject.voltageLevelKv ?? ''} onChange={(event)=>setSelectedVoltageOnObject(Number(event.target.value)||selectedVoltage)} /></label>
         <div className='mimic-v2-voltage-row inspector'>
@@ -1909,7 +1904,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </div>
         <h4>Power Flow</h4>
         <p>Input {selectedPowerFlow?.mw ?? 'n/a'}MW / {selectedPowerFlow?.mvar ?? 'n/a'}MVAR. Derived {selectedSummary?.aggregate.mw?.toFixed(1) ?? 'n/a'}MW / {selectedSummary?.aggregate.currentA?.toFixed(0) ?? 'n/a'}A.</p>
-        <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Edit Power Flow...</button>
       </>}
       <h4>Simulation</h4>
       <div className='mimic-v2-voltage-row inspector'>
@@ -1925,18 +1919,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       {learningVisibility.showProtectionManager && <>
         <h4>Protection</h4>
         <p>{doc.relays.length} relays / {doc.protectionZones.length} zones. {doc.relays.filter((relay) => relay.state === 'picked-up' || relay.state === 'tripped').length} active.</p>
-        <button className='mimic-v2-btn' onClick={openProtectionModal}>Edit Protection...</button>
       </>}
       <h4>Faults</h4>
-      <button className='mimic-v2-btn' onClick={() => setTool('fault')}>View Faults...</button>
-      {doc.scenarios.length > 0 && <>
-        <h4>Scenarios</h4>
-        {doc.scenarios.map((scenario) => <button key={scenario.id} className='mimic-v2-btn' onClick={() => setDoc((prev) => migrateDrawingDocument(loadScenario(prev, scenario.id))!)}>{scenario.name}</button>)}
-      </>}
-      {doc.faults.some((fault) => fault.active) && <>
-        <h4>Faults</h4>
-        {doc.faults.filter((fault) => fault.active).map((fault) => <p key={fault.id}>{fault.label ?? fault.type} on {fault.targetObjectId ?? fault.targetTopologyBranchId ?? fault.targetTopologyNodeId} <button className='mimic-v2-chip' onClick={() => setDoc(clearFault(doc, fault.id))}>clear</button></p>)}
-      </>}
+      {doc.faults.some((fault) => fault.active) ? doc.faults.filter((fault) => fault.active).map((fault) => <p key={fault.id}>{fault.label ?? fault.type} on {fault.targetObjectId ?? fault.targetTopologyBranchId ?? fault.targetTopologyNodeId} <button className='mimic-v2-chip' onClick={() => setDoc(clearFault(doc, fault.id))}>clear</button></p>) : <p>No active faults.</p>}
       {learningVisibility.showDebug && <>
         <h4>Debug</h4>
         <p>Selected IDs: {selected.join(', ') || 'none'}</p>

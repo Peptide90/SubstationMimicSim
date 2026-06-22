@@ -4,6 +4,7 @@ import { MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../sch
 import { breakerAndHalfTemplates } from './breakerAndHalf';
 import { doubleBusbarTemplates } from './doubleBusbar';
 import { busbar, conductor, createBaseDocument, symbol, type DrawingTemplate } from './factory';
+import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { meshCornerTemplates } from './meshCorner';
 import { singleBusbarTemplates } from './singleBusbar';
 import { teachingExamples } from './teachingExamples';
@@ -34,8 +35,8 @@ const transformerTertiaryTemplate: DrawingTemplate = {
       ],
       busbars: [busbar('txopt-lv-bus', [{ x: 350, y: 160 }, { x: 460, y: 160 }], 132)],
       conductors: [
-        conductor('txopt-hv', [{ x: 120, y: 160 }, { x: 160, y: 160 }, { x: 220, y: 160 }, { x: 230, y: 160 }, { x: 270, y: 160 }], 275),
-        conductor('txopt-lv', [{ x: 350, y: 160 }, { x: 370, y: 160 }, { x: 410, y: 160 }, { x: 460, y: 160 }], 132),
+        conductor('txopt-hv', [{ x: 120, y: 160 }, { x: 190 - SWITCH_TERMINAL_SPAN, y: 160 }, { x: 190 + SWITCH_TERMINAL_SPAN, y: 160 }, { x: 250 + 20, y: 160 }, { x: 310 - 40, y: 160 }], 275),
+        conductor('txopt-lv', [{ x: 310 + 40, y: 160 }, { x: 350, y: 160 }, { x: 390 - 20, y: 160 }, { x: 500 - 40, y: 160 }], 132),
         conductor('txopt-ter', [{ x: 310, y: 194 }, { x: 310, y: 200 }, { x: 310, y: 240 }], 33)
       ],
       labels: [],
@@ -63,7 +64,7 @@ const ctVtTeachingTemplate: DrawingTemplate = {
         symbol('meter-vt', 'vt', 470, 320, 'VT-B', 132, 0, { phaseApplicability: ['B'] }),
         symbol('meter-load', 'load', 620, 160, 'FEEDER', 132)
       ],
-      busbars: [busbar('meter-bus', [{ x: 120, y: 160 }, { x: 200, y: 160 }, { x: 290, y: 160 }, { x: 410, y: 160 }, { x: 470, y: 160 }, { x: 580, y: 160 }], 132)],
+      busbars: [busbar('meter-bus', [{ x: 120, y: 160 }, { x: 230 - SWITCH_TERMINAL_SPAN, y: 160 }, { x: 230 + SWITCH_TERMINAL_SPAN, y: 160 }, { x: 350 - 20, y: 160 }, { x: 350 + 20, y: 160 }, { x: 620 - 40, y: 160 }], 132)],
       conductors: [conductor('meter-vt-tap', [{ x: 470, y: 160 }, { x: 470, y: 260 }, { x: 470, y: 320 }], 132, 'overhead-line')],
       labels: [],
       annotations: []

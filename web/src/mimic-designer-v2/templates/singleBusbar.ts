@@ -1,4 +1,5 @@
 import { busbar, conductor, createBaseDocument, feederChain, symbol, type DrawingTemplate } from './factory';
+import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 
 export const singleBusbarTemplates: DrawingTemplate[] = [
   {
@@ -45,7 +46,7 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
         ...[0, 1, 2].flatMap((index) => {
           const x = 180 + index * 150;
           return [
-            busbar(`sb-bay-${index + 1}-drop`, [{ x, y: 120 }, { x, y: 160 }, { x, y: 220 }, { x, y: 285 }, { x, y: 340 }], 132)
+            busbar(`sb-bay-${index + 1}-drop`, [{ x, y: 120 }, { x, y: 190 - SWITCH_TERMINAL_SPAN }, { x, y: 190 + SWITCH_TERMINAL_SPAN }, { x, y: 255 + SWITCH_TERMINAL_SPAN }, { x, y: 380 - SWITCH_TERMINAL_SPAN }], 132)
           ];
         })
       ];
@@ -84,7 +85,7 @@ export const singleBusbarTemplates: DrawingTemplate[] = [
         busbars: [busbar('sbt-main-bus', [{ x: 120, y: 120 }, { x: 360, y: 120 }], 132)],
         conductors: [
           conductor('sbt-incomer', [{ x: 120, y: 120 }, { x: 360, y: 120 }], 132),
-          conductor('sbt-hv-drop', [{ x: 220, y: 120 }, { x: 220, y: 170 }, { x: 220, y: 190 }, { x: 220, y: 245 }, { x: 220, y: 305 }, { x: 220, y: 310 }, { x: 220, y: 350 }, { x: 220, y: 355 }, { x: 220, y: 415 }, { x: 220, y: 440 }, { x: 220, y: 470 }], 132),
+          conductor('sbt-hv-drop', [{ x: 220, y: 120 }, { x: 220, y: 170 }, { x: 220, y: 220 - SWITCH_TERMINAL_SPAN }, { x: 220, y: 220 + SWITCH_TERMINAL_SPAN }, { x: 220, y: 275 + SWITCH_TERMINAL_SPAN }, { x: 220, y: 330 + 20 }, { x: 220, y: 385 + SWITCH_TERMINAL_SPAN }, { x: 220, y: 440 }, { x: 220, y: 510 - 40 }], 132),
           conductor('sbt-lv-side', [{ x: 220, y: 550 }, { x: 220, y: 570 }, { x: 220, y: 610 }, { x: 220, y: 640 }], 33)
         ],
         labels: [],
