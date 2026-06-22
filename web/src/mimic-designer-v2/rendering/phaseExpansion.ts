@@ -1,4 +1,5 @@
 import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, Phase, Point, ViewMode } from '../drawing/model';
+import { rotatePoint } from '../topology/connectivity';
 
 export interface RenderedSymbolInstance {
   id: string;
@@ -24,11 +25,12 @@ const phaseOrder = ['A', 'B', 'C'] as Phase[];
 
 const minimumPhaseSpacingPx = 150;
 
-export function phaseOffset(phase: Phase | undefined, spacing = minimumPhaseSpacingPx): Point {
+export function phaseOffset(phase: Phase | undefined, spacing = minimumPhaseSpacingPx, rotation = 0): Point {
   if (!phase) return { x: 0, y: 0 };
   const index = phaseOrder.indexOf(phase);
   if (index < 0) return { x: 0, y: 0 };
-  return { x: 0, y: (index - 1) * Math.max(spacing, minimumPhaseSpacingPx) };
+  const lane = { x: 0, y: (index - 1) * Math.max(spacing, minimumPhaseSpacingPx) };
+  return rotatePoint(lane, rotation);
 }
 
 export function visiblePhases(phases: Phase[]): Phase[] {
@@ -53,7 +55,7 @@ export function expandSymbol(symbol: ElectricalSymbol, view: ViewMode): Rendered
   const shouldExpand = view === 'three-phase' && phases.length > 1 && (symbol.renderExpansion !== 'single-symbol' || transformerExpanded);
   if (!shouldExpand) return [{ id: symbol.id, canonicalId: symbol.id, symbol, phases: symbol.phaseApplicability, position: symbol.position, phaseInstance: false }];
   return phases.map((phase) => {
-    const offset = phaseOffset(phase, symbol.phaseSpacingPx);
+    const offset = phaseOffset(phase, symbol.phaseSpacingPx, symbol.rotation);
     return {
       id: `${symbol.id}:phase:${phase}`,
       canonicalId: symbol.id,

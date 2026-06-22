@@ -11,6 +11,7 @@ import type {
 import type { OperationState } from '../topology/operation';
 import { branchAllowsTraversal } from '../topology/operation';
 import type { ElectricalBranch, TopologyGraph } from '../topology/types';
+import { actsAsPowerLoad, actsAsPowerSource } from './powerRoles';
 
 const phaseOrder = ['A', 'B', 'C'] as Phase[];
 const defaultVoltageKv = 132;
@@ -54,7 +55,7 @@ export interface SimulationDerivedState {
 
 export function deriveSimulationState(doc: DrawingDocument, graph: TopologyGraph, operation: OperationState, elapsedMs = 0): SimulationDerivedState {
   const symbolById = new Map(doc.objects.symbols.map((symbol) => [symbol.id, symbol]));
-  const sourceSymbols = doc.objects.symbols.filter((symbol) => symbol.type === 'source' && symbol.operation?.sourceOn !== false && hasPower(symbol.powerFlow));
+  const sourceSymbols = doc.objects.symbols.filter((symbol) => actsAsPowerSource(symbol) && symbol.operation?.sourceOn !== false && hasPower(symbol.powerFlow));
   const branchFlows = new Map<string, BranchSimulationState>();
 
   sourceSymbols.forEach((source) => {
@@ -204,7 +205,7 @@ function calculatePhaseFlow(source: ElectricalSymbol, branch: ElectricalBranch, 
 
 function loadShareForReach(sourceId: string, doc: DrawingDocument, graph: TopologyGraph, liveNodeIds: Set<string>): number {
   const reachableLoads = doc.objects.symbols.filter((symbol) => {
-    if (symbol.id === sourceId || symbol.type !== 'load') return false;
+    if (symbol.id === sourceId || !actsAsPowerLoad(symbol)) return false;
     const terminalIds = graph.devices.find((device) => device.symbolId === symbol.id)?.terminalIds ?? [];
     return terminalIds.some((terminalId) => {
       const terminal = graph.terminals.find((item) => item.id === terminalId);

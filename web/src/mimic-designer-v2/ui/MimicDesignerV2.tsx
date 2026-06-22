@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, LearningTier, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
-import { SYMBOL_LIBRARY, SWITCH_TERMINAL_SPAN } from '../symbols/library';
+import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
@@ -11,10 +11,10 @@ import { deriveOperationState, operateDevice } from '../topology/operation';
 import { computePowerFlow, MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../schema/documentSchema';
 import { addFault, clearFault, createFault, expireTransientFaults } from '../faults/faults';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from '../rendering/phaseExpansion';
-import { applyProtectionStep, deriveSimulationState, mergePhaseValues } from '../simulation/powerFlow';
-import { applyRelayProtectionStep } from '../simulation/protection';
+import { deriveSimulationState, mergePhaseValues } from '../simulation/powerFlow';
+import { powerEndpointLabel } from '../simulation/powerRoles';
 import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTemplateIntoDrawing, type DrawingTemplate } from '../templates';
-import { activeDrawingId, clearDraft, deleteDrawing, duplicateDrawing, listDrawings, loadDraft, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
+import { activeDrawingId, deleteDrawing, duplicateDrawing, listDrawings, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
 import { downloadDrawingJson, exportDrawingJson, importDrawingJson } from '../persistence/importExport';
 import { builtInScenarioPackages } from '../scenarios/builtInScenarios';
 import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage } from '../scenarios/packageScenario';
@@ -63,6 +63,13 @@ const snap = (value: number, grid: number) => Math.round(value / grid) * grid;
 const hasAllPhases = (p: Phase[]) => ['A', 'B', 'C'].every((ph) => p.includes(ph as Phase));
 const pointKey = (p: Point) => `${p.x}:${p.y}`;
 const isSwitchingDevice = (type: ElectricalSymbol['type']) => type === 'circuit-breaker' || type === 'disconnector' || type === 'earth-switch';
+const isGridEndpoint = (type: ElectricalSymbol['type']) => type === 'source' || type === 'grid-connection';
+
+const symbolHitBounds = (type: ElectricalSymbol['type']) => {
+  if (type === 'vt' || type === 'earth-switch') return { x: -24, y: -32, width: 48, height: 72 };
+  if (type === 'transformer') return { x: -44, y: -18, width: 88, height: 36 };
+  return { x: -44, y: -22, width: 88, height: 44 };
+};
 
 const createEmpty = (): DrawingDocument => ({
   id: `doc-${Date.now()}`,
@@ -105,6 +112,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedPhase, setSelectedPhase] = useState<Phase | undefined>();
   const [selectedVoltage, setSelectedVoltage] = useState<number>(132);
+  const [defaultPlacementRotation, setDefaultPlacementRotation] = useState<0 | 90>(0);
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [draftPath, setDraftPath] = useState<Point[]>([]);
@@ -129,7 +137,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [drawingSummaries, setDrawingSummaries] = useState<DrawingSummary[]>(() => listDrawings());
   const [dirty, setDirty] = useState(false);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
-  const [draftNotice, setDraftNotice] = useState<string | null>(() => loadDraft() ? 'Unsaved draft recovery is available.' : null);
   const [jsonPreview, setJsonPreview] = useState<string>('');
   const [scenarioPackages, setScenarioPackages] = useState<ScenarioPackage[]>(() => listScenarioPackages());
   const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
@@ -275,17 +282,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const resetToTemplate = () => {
     if (!confirmDiscard()) return;
     replaceDocument(createDrawingFromTemplate(builtInTemplates[0]), { dirty: true });
-  };
-
-  const recoverDraft = () => {
-    const draft = loadDraft();
-    if (!draft || !confirmDiscard()) return;
-    replaceDocument(draft.result.doc, {
-      dirty: true,
-      notice: draft.result.migrated ? `Draft migrated from schema ${draft.result.fromSchemaVersion}.` : null
-    });
-    clearDraft();
-    setDraftNotice(null);
   };
 
   const exportJsonToPreview = () => setJsonPreview(exportDrawingJson(doc));
@@ -599,24 +595,26 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       id,
       type: template.type,
       position,
-      rotation: 0,
+      rotation: defaultPlacementRotation,
       terminals,
       phaseApplicability: phases,
       voltageLevelKv: selectedVoltage,
       phaseMode: phases.length > 1 ? 'three-phase' : 'single-phase',
       renderExpansion: 'per-phase-symbols',
       phaseSpacingPx: defaultPhaseSpacingPx,
-      powerFlow: { direction: 'unknown' },
+      powerFlow: type === 'grid-connection'
+        ? { mw: 30, mvar: 10, voltageKv: selectedVoltage, direction: 'forward' }
+        : { direction: 'unknown' },
       engineering: type === 'ct' ? { ctPolarity: 'P1-left' } : type === 'transformer' ? { transformerPolarity: 'hv-left', hasTertiary: false, transformerExpansion: 'single-symbol' } : undefined,
       simulation: {},
       operation: {
-        sourceOn: type === 'source' ? true : undefined,
+        sourceOn: isGridEndpoint(type) ? true : undefined,
         switchState: isSwitchingDevice(type) ? 'open' : undefined,
         tripped: false
       },
       viewMetadata: { 'single-line': { visible: true }, 'three-phase': { visible: true } }
     };
-  }, [doc.activeView, selectedVoltage]);
+  }, [defaultPlacementRotation, doc.activeView, selectedVoltage]);
 
   const operateState = useMemo(() => deriveOperationState(doc, topology), [doc, topology]);
   const simulationState = useMemo(() => deriveSimulationState(doc, topology, operateState), [doc, topology, operateState]);
@@ -869,7 +867,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       if (tool === 'pan') return;
       const operateSwitchgear = tool === 'operate' || tool === 'select';
       if (!operateSwitchgear) return;
-      if (!isSwitchingDevice(symbol.type) && symbol.type !== 'source') {
+      if (!isSwitchingDevice(symbol.type) && !isGridEndpoint(symbol.type)) {
         setSelected([symbol.id]);
         return;
       }
@@ -1006,6 +1004,14 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     commit({ ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.map((symbol) => selected.includes(symbol.id) ? { ...symbol, rotation: (symbol.rotation + 90) % 360 } : symbol) } });
   }, [commit, doc, selected, selectedSymbols.length]);
 
+  const toggleSimulationRun = () => setDoc((prev) => ({ ...prev, simulationState: { ...prev.simulationState, running: !prev.simulationState.running } }));
+
+  const resetSimulation = () => setDoc((prev) => ({
+    ...prev,
+    faults: prev.faults.map((fault) => fault.persistent ? fault : { ...fault, active: false }),
+    simulationState: { ...prev.simulationState, running: false }
+  }));
+
   const setSelectedVoltageOnObject = (value: number) => {
     if (!selectedObject) return;
     updateSelectedSymbol((symbol) => ({ ...symbol, voltageLevelKv: value }));
@@ -1052,7 +1058,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     ...doc.objects.busbars.map((object) => ({ id: object.id, label: object.label?.text ?? object.id, kind: 'busbar', flow: object.powerFlow })),
     ...doc.objects.conductors.map((object) => ({ id: object.id, label: object.label?.text ?? object.id, kind: 'conductor', flow: object.powerFlow }))
   ];
-  const sourceLoadFlowCards = doc.objects.symbols.filter((symbol) => symbol.type === 'source' || symbol.type === 'load');
+  const sourceLoadFlowCards = doc.objects.symbols.filter((symbol) => symbol.type === 'source' || symbol.type === 'load' || symbol.type === 'grid-connection');
 
   const powerFlowTarget = allPowerFlowObjects.find((object) => object.id === (powerFlowTargetId || selected[0])) ?? allPowerFlowObjects[0];
   const powerFlowTargetSummary = powerFlowTarget ? simulationState.objectSummaries.get(powerFlowTarget.id) : undefined;
@@ -1436,6 +1442,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (renderMode === 'nodes') return <circle cx={0} cy={0} r={18} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2} />;
     if (symbol.type === 'cable-sealing-end') return <polygon points={`-14,-13 ${SWITCH_TERMINAL_SPAN},0 -14,13`} fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={2} />;
     if (symbol.type === 'source') return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='-14,-16 18,0 -14,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={40} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'grid-connection') {
+      const exporting = (symbol.powerFlow?.mw ?? 0) >= 0;
+      return <g>
+        <line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-16} y2={0} stroke={selectedStroke} strokeWidth={2}/>
+        <circle cx={0} cy={0} r={14} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/>
+        <polygon points={exporting ? '6,-5 16,0 6,5' : '-6,-5 -16,0 -6,5'} fill={selectedStroke}/>
+        <text x={0} y={4} textAnchor='middle' fontSize='9' fill={selectedStroke}>G</text>
+        <line x1={16} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/>
+      </g>;
+    }
     if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
@@ -1543,14 +1559,14 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     : undefined;
 
   const operationLabel = (symbol: ElectricalSymbol) => {
-    if (symbol.type === 'source') return symbol.operation?.sourceOn === false ? 'Off' : 'On';
+    if (isGridEndpoint(symbol.type)) return symbol.operation?.sourceOn === false ? 'Off' : 'On';
     if (!isSwitchingDevice(symbol.type) || symbol.type === 'circuit-breaker') return null;
     if (symbol.operation?.tripped) return 'Trip';
     return symbol.operation?.switchState === 'closed' ? 'Closed' : 'Open';
   };
 
   const switchVisual = (symbol: ElectricalSymbol) => {
-    if (symbol.type === 'source') {
+    if (isGridEndpoint(symbol.type)) {
       const on = symbol.operation?.sourceOn !== false;
       return <circle cx={0} cy={-26} r={4} fill={on ? 'var(--md2-live)' : 'var(--md2-deenergised)'} />;
     }
@@ -1559,6 +1575,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   };
 
   const componentGlyph = (type: ElectricalSymbol['type']) => {
+    if (type === 'grid-connection') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='2' y1='14' x2='12' y2='14'/><circle cx='20' cy='14' r='8'/><text x='17' y='17'>G</text><line x1='28' y1='14' x2='38' y2='14'/></svg>;
     if (type === 'source') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='2' y1='14' x2='10' y2='14'/><polygon points='10,4 28,14 10,24'/><line x1='28' y1='14' x2='38' y2='14'/></svg>;
     if (type === 'load' || type === 'line-end') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='2' y1='14' x2='12' y2='14'/><polygon points='30,4 12,14 30,24'/><line x1='30' y1='14' x2='38' y2='14'/></svg>;
     if (type === 'transformer') return <svg viewBox='0 0 40 28' aria-hidden='true'><circle cx='16' cy='14' r='8'/><circle cx='24' cy='14' r='8'/><line x1='2' y1='14' x2='8' y2='14'/><line x1='32' y1='14' x2='38' y2='14'/></svg>;
@@ -1593,7 +1610,20 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <div className='mimic-v2-voltage-row'>
         {standardVoltages.map((voltage) => <button key={voltage} className={`mimic-v2-chip ${selectedVoltage === voltage ? 'active' : ''}`} onClick={() => setSelectedVoltage(voltage)}>{voltage}</button>)}
       </div>
+      <div className='mimic-v2-voltage-row'>
+        <button className={`mimic-v2-chip ${defaultPlacementRotation === 0 ? 'active' : ''}`} title='Place with terminals left and right' onClick={() => setDefaultPlacementRotation(0)}>Horizontal</button>
+        <button className={`mimic-v2-chip ${defaultPlacementRotation === 90 ? 'active' : ''}`} title='Place with terminals top and bottom' onClick={() => setDefaultPlacementRotation(90)}>Vertical</button>
+      </div>
       {SYMBOL_LIBRARY.filter((s) => s.type !== 'line-end' && s.type !== 'cable-sealing-end' && s.type !== 'busbar-coupler').map((s) =>
+        <div key={s.type} className='mimic-v2-item'>
+          <button className='mimic-v2-component-btn' draggable onDragStart={(event) => onLibraryDragStart(event, s.type)} onClick={() => placeSymbol(s.type)}>
+            <span className='mimic-v2-component-icon'>{componentGlyph(s.type)}</span>
+            <span>{s.displayName}</span>
+          </button>
+        </div>
+      )}
+      <h4 className='mimic-v2-sidebar-subhead'>Examples</h4>
+      {POWER_EXAMPLE_SYMBOLS.map((s) =>
         <div key={s.type} className='mimic-v2-item'>
           <button className='mimic-v2-component-btn' draggable onDragStart={(event) => onLibraryDragStart(event, s.type)} onClick={() => placeSymbol(s.type)}>
             <span className='mimic-v2-component-icon'>{componentGlyph(s.type)}</span>
@@ -1631,7 +1661,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}</div>
           <div className='mimic-v2-tool-group'><span>Managers</span>{learningVisibility.showPowerFlow && <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button>}<button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
         </>}
-        <div className='mimic-v2-tool-group'><span>UI</span><button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{!focusedOperateMode && learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
+        <div className='mimic-v2-tool-group'><span>UI</span>{!focusedOperateMode && <><button className={`mimic-v2-btn ${doc.simulationState.running ? 'active' : ''}`} title='Start or pause timed simulation' onClick={toggleSimulationRun}>{doc.simulationState.running ? 'Pause' : 'Start'}</button><button className='mimic-v2-btn' title='Clear transient faults and pause simulation' onClick={resetSimulation}>Reset</button></>}<button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{!focusedOperateMode && learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
       {scenarioSelectorOnly ? <div className='mimic-v2-canvas mimic-v2-canvas-empty' /> : <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
@@ -1662,9 +1692,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
           {renderedSymbols.map((instance) => <g key={instance.id} transform={`translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})`} onMouseDown={(event) => onSymbolMouseDown(event, instance.symbol, instance.phase)}>
+            <rect {...symbolHitBounds(instance.symbol.type)} fill='transparent' />
             {focusObjectIds.has(instance.symbol.id) && <circle className='mimic-v2-focus-ring' cx={0} cy={0} r={34} fill='none' stroke='var(--md2-selected)' strokeWidth={3} />}
             {instance.symbol.simulation?.arced && <circle className='mimic-v2-arc-flash' cx={0} cy={0} r={36} fill='none' stroke='var(--md2-warning)' strokeWidth={4} />}
-            {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
+            {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'grid-connection' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize='10' fill='var(--md2-selected)'>3P</text>}
             {renderSymbolGlyph(instance.symbol)}
             {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize='8'>{instance.symbol.type.slice(0, 4)}</text>}
@@ -1759,7 +1790,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <h3>{managerView === 'scenario' ? 'Scenario Manager' : 'Inspector'}</h3>
       <p>{doc.name}{dirty ? ' *' : ''}</p>
       {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
-      {draftNotice && <p className='mimic-v2-warning-text'>{draftNotice} <button className='mimic-v2-chip' onClick={recoverDraft}>Recover</button></p>}
       {managerView === 'scenario' && <section className='mimic-v2-manager-panel'>
         <h4>{learningTier} Mode</h4>
         <p>{learningTiers[learningTier].explanationStyle}</p>
@@ -1877,6 +1907,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </div>
         {selectedObject.type === 'ct' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleCtPolarity}>Swap CT P1/P2</button>}
         {selectedObject.type === 'source' && <p>Source output: {formatPowerStatistic(selectedObject.powerFlow)}.</p>}
+        {selectedObject.type === 'grid-connection' && <p>Grid {powerEndpointLabel(selectedObject).toLowerCase()}: {formatPowerStatistic(selectedObject.powerFlow)}. Use positive MW/MVAR to export, negative to import.</p>}
         {selectedObject.type === 'ct' && <p>CT construction: zero-flux core. Ratio: 1000/1. Primary {selectedSummary?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedSummary?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A.</p>}
         {selectedObject.type === 'vt' && <p>VT construction: capacitive VT. Ratio: {vtRatioText(selectedObject)}. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerPolarity}>Swap TX HV/LV</button>}
@@ -1905,21 +1936,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <h4>Power Flow</h4>
         <p>Input {selectedPowerFlow?.mw ?? 'n/a'}MW / {selectedPowerFlow?.mvar ?? 'n/a'}MVAR. Derived {selectedSummary?.aggregate.mw?.toFixed(1) ?? 'n/a'}MW / {selectedSummary?.aggregate.currentA?.toFixed(0) ?? 'n/a'}A.</p>
       </>}
-      <h4>Simulation</h4>
-      <div className='mimic-v2-voltage-row inspector'>
-        <button className='mimic-v2-chip' onClick={() => setDoc((prev)=>({ ...prev, simulationState: { ...prev.simulationState, running: !prev.simulationState.running } }))}>{doc.simulationState.running ? 'Pause' : 'Run'}</button>
-        <button className='mimic-v2-chip' onClick={() => setDoc((prev)=> {
-          const relayStepped = applyRelayProtectionStep(prev, simulationState).doc;
-          return migrateDrawingDocument({ ...applyProtectionStep(relayStepped, simulationState), simulationState: { ...prev.simulationState, lastRecomputedAt: new Date().toISOString() } })!;
-        })}>Step</button>
-        <button className='mimic-v2-chip' onClick={() => setDoc((prev)=>({ ...prev, faults: prev.faults.map((fault)=>fault.persistent ? fault : { ...fault, active: false }), simulationState: { ...prev.simulationState, running: false } }))}>Reset</button>
-      </div>
-      <p>{simulationState.approximationLabel}</p>
-      {overlayMode === 'thermal' && <p>Thermal legend: green normal, amber warm, red hot, dark red critical.</p>}
       {learningVisibility.showProtectionManager && <>
         <h4>Protection</h4>
         <p>{doc.relays.length} relays / {doc.protectionZones.length} zones. {doc.relays.filter((relay) => relay.state === 'picked-up' || relay.state === 'tripped').length} active.</p>
       </>}
+      {overlayMode === 'thermal' && <p>Thermal legend: green normal, amber warm, red hot, dark red critical.</p>}
       <h4>Faults</h4>
       {doc.faults.some((fault) => fault.active) ? doc.faults.filter((fault) => fault.active).map((fault) => <p key={fault.id}>{fault.label ?? fault.type} on {fault.targetObjectId ?? fault.targetTopologyBranchId ?? fault.targetTopologyNodeId} <button className='mimic-v2-chip' onClick={() => setDoc(clearFault(doc, fault.id))}>clear</button></p>) : <p>No active faults.</p>}
       {learningVisibility.showDebug && <>
@@ -2078,10 +2099,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             const summary = simulationState.objectSummaries.get(symbol.id);
             return <article key={symbol.id} className={`mimic-v2-flow-card ${powerFlowCardClass(symbol.id)}`} onClick={() => setPowerFlowTargetId(symbol.id)}>
               <strong>{symbol.label?.text ?? symbol.id}</strong>
-              <span>{symbol.type === 'source' ? 'Incomer' : 'Load'}</span>
+              <span>{powerEndpointLabel(symbol)}</span>
               <p>{summary?.aggregate.mw?.toFixed(1) ?? symbol.powerFlow?.mw?.toFixed?.(1) ?? '0.0'}MW / {summary?.aggregate.currentA?.toFixed(0) ?? symbol.powerFlow?.currentA?.toFixed?.(0) ?? '0'}A</p>
               <p>Loading {summary?.aggregate.loadingPercent?.toFixed(0) ?? '0'}%</p>
-              {symbol.type === 'source' ? <div className='mimic-v2-flow-card-inputs' onClick={(event) => event.stopPropagation()}>
+              {symbol.type === 'source' || symbol.type === 'grid-connection' ? <div className='mimic-v2-flow-card-inputs' onClick={(event) => event.stopPropagation()}>
                 <label>MW<input type='number' value={symbol.powerFlow?.mw ?? ''} onChange={(event) => updatePowerFlowForObject(symbol.id, { mw: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
                 <label>MVAR<input type='number' value={symbol.powerFlow?.mvar ?? ''} onChange={(event) => updatePowerFlowForObject(symbol.id, { mvar: Number(event.target.value) || undefined }, undefined, balancedPowerFlow)} /></label>
               </div> : <div className='mimic-v2-flow-card-inputs' onClick={(event) => event.stopPropagation()}>
@@ -2091,7 +2112,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
               </div>}
             </article>;
           })}
-          {!sourceLoadFlowCards.length && <p>No incomers or loads in this drawing yet.</p>}
+          {!sourceLoadFlowCards.length && <p>No grid connections, incomers, or loads in this drawing yet.</p>}
         </section>
         <div className='mimic-v2-form-grid'>
           <label>Context {info('Choose the source, load, switchgear, busbar, or conductor whose inputs and branch results you want to inspect.')}<select value={powerFlowTarget?.id ?? ''} onChange={(event) => setPowerFlowTargetId(event.target.value)}>{allPowerFlowObjects.map((object) => <option key={object.id} value={object.id}>{object.label} / {object.kind}</option>)}</select></label>

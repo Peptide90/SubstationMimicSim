@@ -459,6 +459,7 @@ export interface ElectricalSymbol extends BaseDrawingObject {
   type:
     | 'source'
     | 'load'
+    | 'grid-connection'
     | 'busbar-coupler'
     | 'circuit-breaker'
     | 'disconnector'

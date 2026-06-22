@@ -1,4 +1,5 @@
 import type { DrawingDocument, ElectricalSymbol, OperationEvent } from '../drawing/model';
+import { actsAsPowerSource } from '../simulation/powerRoles';
 import type { TopologyGraph } from './types';
 
 export interface OperationOverride {
@@ -84,7 +85,7 @@ function traceLiveVoltages(doc: DrawingDocument, graph: TopologyGraph, symbolByI
   const voltageConflictBranchIds = new Set<string>();
   const sourceRoots = graph.devices
     .map((device) => ({ device, symbol: symbolById.get(device.symbolId) }))
-    .filter((item) => item.symbol?.type === 'source' && item.symbol.operation?.sourceOn !== false)
+    .filter((item) => item.symbol && actsAsPowerSource(item.symbol) && item.symbol.operation?.sourceOn !== false)
     .flatMap((item) => item.device.terminalIds.flatMap((terminalId) => graph.terminals.find((terminal) => terminal.id === terminalId)?.connectedNodeIds.map((nodeId) => ({ nodeId, voltageKv: item.symbol!.voltageLevelKv ?? 0 })) ?? []))
     .filter((item) => item.voltageKv > 0);
   const queue = [...sourceRoots];
@@ -157,7 +158,7 @@ function rootsForDevices(graph: TopologyGraph, symbolById: Map<string, Electrica
 
 export function deriveOperationState(doc: DrawingDocument, graph: TopologyGraph, override?: OperationOverride): OperationState {
   const symbolById = symbolsWithOverride(doc, override);
-  const sourceRoots = rootsForDevices(graph, symbolById, (symbol) => symbol.type === 'source' && symbol.operation?.sourceOn !== false);
+  const sourceRoots = rootsForDevices(graph, symbolById, (symbol) => actsAsPowerSource(symbol) && symbol.operation?.sourceOn !== false);
   const earthRoots = rootsForDevices(graph, symbolById, (symbol) => symbol.type === 'earth-switch' && symbol.operation?.switchState === 'closed');
   const earthFaultTypes = new Set(['phase-to-earth', 'three-phase', 'persistent', 'transient', 'high-impedance', 'A-E', 'B-E', 'C-E', 'A-B-C-E']);
   const faultEarthRoots = doc.faults
@@ -200,9 +201,9 @@ export function deriveOperationState(doc: DrawingDocument, graph: TopologyGraph,
 export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbolId: string): OperationResult {
   const symbol = doc.objects.symbols.find((item) => item.id === symbolId);
   if (!symbol) return { doc, state: deriveOperationState(doc, graph), reason: `No device ${symbolId}` };
-  if (symbol.type === 'source') {
+  if (symbol.type === 'source' || symbol.type === 'grid-connection') {
     const nextDoc = updateOperation(doc, symbol.id, { sourceOn: symbol.operation?.sourceOn === false });
-    return { doc: addOperationEvent(nextDoc, `Source ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Source ${symbol.id} toggled` };
+    return { doc: addOperationEvent(nextDoc, `Grid endpoint ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Grid endpoint ${symbol.id} toggled` };
   }
   if (!isSwitchingDevice(symbol.type)) return { doc, state: deriveOperationState(doc, graph), reason: `${symbol.type} has no operate action` };
   if (symbol.type === 'circuit-breaker' && symbol.operation?.lockout) {

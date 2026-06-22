@@ -64,6 +64,14 @@ describe('phase expansion, power metadata, and faults', () => {
     expect(expanded.map((item) => item.phase)).toEqual(['A', 'B', 'C']);
   });
 
+  it('offsets three-phase lanes perpendicular to a vertically placed symbol', () => {
+    const verticalCb = { ...cb, rotation: 90, phaseSpacingPx: 150 };
+    const phaseDoc = migrateDrawingDocument({ ...doc('three-phase'), objects: { ...doc('three-phase').objects, symbols: [verticalCb] } })!;
+    const expanded = renderSymbolsForView(phaseDoc);
+    expect(expanded.map((item) => item.position.x).sort((a, b) => a - b)).toEqual([100 - 150, 100, 100 + 150]);
+    expect(new Set(expanded.map((item) => item.position.y))).toEqual(new Set([100]));
+  });
+
   it('renders a phase-specific VT only on its configured lane', () => {
     const vt = { ...cb, id: 'vt-b', type: 'vt' as const, phaseApplicability: ['B' as const], terminals: [{ id: 'tap', name: 'tap', offset: { x: 0, y: 20 }, phaseApplicability: ['B' as const] }] };
     const phaseDoc = migrateDrawingDocument({ ...doc('three-phase'), objects: { ...doc('three-phase').objects, symbols: [vt] } })!;

@@ -11,7 +11,7 @@ export type PersistedDrawingDocument = Omit<Partial<DrawingDocument>, 'objects'>
 
 function defaultOperation(type: ElectricalSymbol['type'], existing: ElectricalSymbol['operation'] = {}): ElectricalSymbol['operation'] {
   return {
-    sourceOn: type === 'source' ? existing.sourceOn ?? true : existing.sourceOn,
+    sourceOn: type === 'source' || type === 'grid-connection' ? existing.sourceOn ?? true : existing.sourceOn,
     switchState: switchingTypes.has(type) ? existing.switchState ?? 'open' : existing.switchState,
     perPhaseSwitchState: existing.perPhaseSwitchState ?? {},
     tripped: existing.tripped ?? false,

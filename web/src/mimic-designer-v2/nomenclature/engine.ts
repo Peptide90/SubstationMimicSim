@@ -12,6 +12,7 @@ import type { LabelScheme } from '../../app/labeling/types';
 const TYPE_PREFIX: Record<ElectricalSymbol['type'], string> = {
   source: 'IN',
   load: 'LD',
+  'grid-connection': 'GC',
   'busbar-coupler': 'BC',
   'circuit-breaker': 'CB',
   disconnector: 'DS',
@@ -34,6 +35,7 @@ function symbolKind(type: ElectricalSymbol['type']): string {
   if (type === 'ct') return 'ct';
   if (type === 'source') return 'source';
   if (type === 'load') return 'load';
+  if (type === 'grid-connection') return 'source';
   return type;
 }
 
@@ -46,7 +48,7 @@ export function generateLabels(doc: DrawingDocument, scheme: LabelScheme = resol
   const sorted = [...doc.objects.symbols].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
   const bayBySymbolId = new Map<string, number>();
   sorted.forEach((symbol, index) => {
-    if (['circuit-breaker', 'disconnector', 'earth-switch', 'transformer', 'load', 'source'].includes(symbol.type)) {
+    if (['circuit-breaker', 'disconnector', 'earth-switch', 'transformer', 'load', 'source', 'grid-connection'].includes(symbol.type)) {
       bayBySymbolId.set(symbol.id, index + 1);
     }
   });
@@ -113,6 +115,7 @@ function makeDefaultLabel(symbol: ElectricalSymbol, index: number): string {
   const voltage = symbol.voltageLevelKv ? `${symbol.voltageLevelKv}kV ` : '';
   if (symbol.type === 'transformer') return `${voltage}Transformer T${index}`;
   if (symbol.type === 'source') return `${voltage}Incomer ${index}`;
+  if (symbol.type === 'grid-connection') return `${voltage}Grid ${index}`;
   if (symbol.type === 'load') return `${voltage}Feeder ${index}`;
   return `${voltage}${TYPE_PREFIX[symbol.type]}${String(index).padStart(3, '0')}`;
 }
