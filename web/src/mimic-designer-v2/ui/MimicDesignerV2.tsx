@@ -12,7 +12,7 @@ import { computePowerFlow, MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocum
 import { addFault, clearFault, createFault, expireTransientFaults } from '../faults/faults';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from '../rendering/phaseExpansion';
 import { applyProtectionStep, deriveSimulationState, mergePhaseValues } from '../simulation/powerFlow';
-import { applyRelayProtectionStep, loadScenario } from '../simulation/protection';
+import { applyRelayProtectionStep } from '../simulation/protection';
 import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTemplateIntoDrawing, type DrawingTemplate } from '../templates';
 import { activeDrawingId, clearDraft, deleteDrawing, duplicateDrawing, listDrawings, loadDraft, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
 import { downloadDrawingJson, exportDrawingJson, importDrawingJson } from '../persistence/importExport';
