@@ -122,7 +122,9 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
       gridSize: input.uiState?.gridSize ?? 20,
       snapToGrid: input.uiState?.snapToGrid ?? true,
       snapToTerminals: input.uiState?.snapToTerminals ?? true,
-      snapToIntersections: input.uiState?.snapToIntersections ?? true
+      snapToIntersections: input.uiState?.snapToIntersections ?? true,
+      labelScheme: input.uiState?.labelScheme,
+      displayScale: input.uiState?.displayScale
     },
     history: { undoStack: [], redoStack: [] }
   };

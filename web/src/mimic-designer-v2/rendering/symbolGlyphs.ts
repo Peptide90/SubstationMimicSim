@@ -2,6 +2,7 @@ import { rotatePoint } from '../topology/connectivity';
 import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import type { ElectricalSymbol } from '../drawing/model';
 import type { Point } from '../drawing/model';
+import { DEFAULT_DISPLAY_SCALE, type DisplayScale, scaledSize, symbolLabelY } from './displayMetrics';
 
 const stroke = '#0f172a';
 const live = '#16a34a';
@@ -40,23 +41,27 @@ export function symbolGlyphSvg(symbol: ElectricalSymbol): string {
   return `<rect x="-20" y="-14" width="40" height="28" fill="${bg}" stroke="${selectedStroke}" stroke-width="2"/>`;
 }
 
-export function symbolLabelOffset(symbol: ElectricalSymbol): Point {
-  const y = symbol.type === 'earth-switch' || symbol.type === 'vt' ? 52 : symbol.type === 'ct' ? 44 : 38;
-  return rotatePoint({ x: 0, y }, symbol.rotation);
+export function symbolLabelOffset(symbol: ElectricalSymbol, textScale = DEFAULT_DISPLAY_SCALE.text): Point {
+  return rotatePoint({ x: 0, y: symbolLabelY(symbol, textScale) }, symbol.rotation);
 }
 
-export function symbolLabelWorldPosition(symbol: ElectricalSymbol, position: Point): Point {
-  const offset = symbolLabelOffset(symbol);
+export function symbolLabelWorldPosition(symbol: ElectricalSymbol, position: Point, textScale = DEFAULT_DISPLAY_SCALE.text): Point {
+  const offset = symbolLabelOffset(symbol, textScale);
   return { x: position.x + offset.x, y: position.y + offset.y };
 }
 
-export function symbolLabelSvgWorld(symbol: ElectricalSymbol, position: Point, text = symbol.label?.text ?? ''): string {
+export function symbolLabelSvgWorld(
+  symbol: ElectricalSymbol,
+  position: Point,
+  text = symbol.label?.text ?? '',
+  display: DisplayScale = DEFAULT_DISPLAY_SCALE
+): string {
   if (!text) return '';
-  const anchor = symbolLabelWorldPosition(symbol, position);
-  return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="middle" font-size="8">${escapeXml(text)}</text>`;
+  const anchor = symbolLabelWorldPosition(symbol, position, display.text);
+  return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="middle" font-size="${scaledSize(8, display.text)}">${escapeXml(text)}</text>`;
 }
 
-export function operationLabelSvgWorld(symbol: ElectricalSymbol, position: Point): string {
+export function operationLabelSvgWorld(symbol: ElectricalSymbol, position: Point, display: DisplayScale = DEFAULT_DISPLAY_SCALE): string {
   let state: string | undefined;
   if (symbol.type === 'circuit-breaker' || symbol.type === 'disconnector' || symbol.type === 'earth-switch') {
     state = symbol.operation?.tripped ? 'Trip' : symbol.operation?.switchState === 'closed' ? 'Closed' : 'Open';
@@ -64,6 +69,6 @@ export function operationLabelSvgWorld(symbol: ElectricalSymbol, position: Point
     state = symbol.operation?.sourceOn === false ? 'Off' : 'On';
   }
   if (!state) return '';
-  const anchor = symbolLabelWorldPosition(symbol, position);
-  return `<text x="${anchor.x}" y="${anchor.y + 11}" text-anchor="middle" font-size="8">${state}</text>`;
+  const anchor = symbolLabelWorldPosition(symbol, position, display.text);
+  return `<text x="${anchor.x}" y="${anchor.y + scaledSize(11, display.text)}" text-anchor="middle" font-size="${scaledSize(8, display.text)}">${state}</text>`;
 }

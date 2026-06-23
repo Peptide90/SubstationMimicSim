@@ -563,6 +563,11 @@ export interface DrawingDocument {
     snapToTerminals: boolean;
     snapToIntersections: boolean;
     labelScheme?: 'DEFAULT' | 'NG_BP109' | 'ANSI_IEC';
+    displayScale?: {
+      busbar?: number;
+      text?: number;
+      symbol?: number;
+    };
   };
   history?: {
     undoStack: string[];

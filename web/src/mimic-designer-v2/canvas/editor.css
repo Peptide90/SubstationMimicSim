@@ -67,6 +67,14 @@
 .mimic-v2-launch-grid p { margin:6px 0; color:var(--md2-muted-text); font-size:12px; }
 .mimic-v2-launch-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); }
 .mimic-v2-scenario-menu { width:min(360px, calc(100vw - 36px)); }
+.mimic-v2-escape-menu { width:min(420px, calc(100vw - 36px)); }
+.mimic-v2-escape-menu-section { margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); }
+.mimic-v2-escape-menu-section h3 { margin:0 0 10px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--md2-muted-text); }
+.mimic-v2-escape-menu-hint { margin:0 0 10px; color:var(--md2-muted-text); font-size:12px; line-height:1.45; }
+.mimic-v2-display-scale-row { display:grid; grid-template-columns:1fr; gap:6px; margin:0 0 10px; font-size:13px; }
+.mimic-v2-display-scale-row span { color:var(--md2-text); }
+.mimic-v2-display-scale-row input[type='range'] { width:100%; accent-color:var(--md2-selected); }
+.mimic-v2-display-scale-row input[type='number'] { width:72px; justify-self:end; box-sizing:border-box; background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
 .mimic-v2-scenario-menu-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; margin-top:14px; }
 .mimic-v2-scenario-menu-actions .mimic-v2-btn { width:100%; justify-content:flex-start; text-align:left; }
 .mimic-v2-scenario-menu-setting { display:flex; flex-direction:column; gap:6px; margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); font-size:13px; }

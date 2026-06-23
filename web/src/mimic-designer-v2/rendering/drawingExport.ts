@@ -1,4 +1,5 @@
 import type { DrawingDocument, Point } from '../drawing/model';
+import { resolveDisplayScale, scaledSize, type DisplayScale } from './displayMetrics';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from './phaseExpansion';
 import { operationLabelSvgWorld, symbolGlyphSvg, symbolLabelSvgWorld } from './symbolGlyphs';
 
@@ -10,6 +11,7 @@ export interface DrawingExportOptions {
   includeOperationState?: boolean;
   labelMode?: DrawingExportLabelMode;
   selectedObjectIds?: string[];
+  displayScale?: DisplayScale;
 }
 
 const exportSizes: Record<Exclude<DrawingExportFormat, 'svg'>, { width: number; height: number }> = {
@@ -52,6 +54,7 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   const includeOperationState = options.includeOperationState ?? true;
   const labelMode = options.labelMode ?? 'all';
   const selectedObjectIds = new Set(options.selectedObjectIds ?? []);
+  const display = options.displayScale ?? resolveDisplayScale(doc.uiState);
   const bounds = drawingBounds(doc);
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
@@ -60,9 +63,10 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   const cableStroke = theme === 'dark' ? '#38bdf8' : '#0284c7';
   const textFill = theme === 'dark' ? '#f8fafc' : '#0f172a';
 
-  const busbars = renderBusbarsForView(doc).map((instance) =>
-    `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${busbarStroke}" stroke-width="${instance.path.width || 7}" stroke-linecap="square" stroke-linejoin="round"/>`
-  ).join('');
+  const busbars = renderBusbarsForView(doc).map((instance) => {
+    const strokeWidth = scaledSize(instance.path.width || 7, display.busbar);
+    return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${busbarStroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="round"/>`;
+  }).join('');
 
   const conductors = renderConductorsForView(doc).map((instance) =>
     `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${cableStroke}" stroke-width="3" stroke-dasharray="${instance.path.conductorStyle === 'overhead-line' ? '0' : '18 10'}" stroke-linecap="round"/>`
@@ -70,24 +74,28 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
 
   const symbols = renderSymbolsForView(doc).map((instance) => {
     const label = shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
-      ? symbolLabelSvgWorld(instance.symbol, instance.position)
+      ? symbolLabelSvgWorld(instance.symbol, instance.position, instance.symbol.label?.text ?? '', display)
       : '';
     const operation = includeOperationState && shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
-      ? operationLabelSvgWorld(instance.symbol, instance.position)
+      ? operationLabelSvgWorld(instance.symbol, instance.position, display)
       : '';
-    return `<g transform="translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})">${symbolGlyphSvg(instance.symbol)}</g>${label}${operation}`;
+    const glyph = symbolGlyphSvg(instance.symbol);
+    const scaledGlyph = display.symbol === 1
+      ? glyph
+      : `<g transform="scale(${display.symbol})">${glyph}</g>`;
+    return `<g transform="translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})">${scaledGlyph}</g>${label}${operation}`;
   }).join('');
 
   const labels = labelMode === 'all'
-    ? doc.objects.labels.map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="11" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
+    ? doc.objects.labels.map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="${scaledSize(11, display.text)}" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
     : labelMode === 'selected'
       ? doc.objects.labels
         .filter((label) => !label.forObjectId || selectedObjectIds.has(label.forObjectId))
-        .map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="11" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
+        .map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="${scaledSize(11, display.text)}" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
       : '';
 
   const annotations = labelMode === 'none' ? '' : doc.objects.annotations.map((annotation) =>
-    `<text x="${annotation.position.x}" y="${annotation.position.y}" font-size="10" fill="${theme === 'dark' ? '#94a3b8' : '#64748b'}">${annotation.text.replaceAll('&', '&amp;')}</text>`
+    `<text x="${annotation.position.x}" y="${annotation.position.y}" font-size="${scaledSize(10, display.text)}" fill="${theme === 'dark' ? '#94a3b8' : '#64748b'}">${annotation.text.replaceAll('&', '&amp;')}</text>`
   ).join('');
 
   return `<?xml version="1.0" encoding="UTF-8"?>

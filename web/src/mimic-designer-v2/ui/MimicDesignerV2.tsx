@@ -6,6 +6,14 @@ import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
 import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
 import { downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
+import {
+  displayScaleFromPercent,
+  displayScalePercent,
+  resolveDisplayScale,
+  scaledSize,
+  symbolLabelY,
+  type DisplayScale
+} from '../rendering/displayMetrics';
 import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
 import { deriveOperationState, operateDevice } from '../topology/operation';
@@ -176,6 +184,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
   const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
+  const [escapeMenuOpen, setEscapeMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<DrawingExportFormat>('svg');
   const [exportLabelMode, setExportLabelMode] = useState<DrawingExportLabelMode>('all');
@@ -193,6 +202,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const renderedSymbols = useMemo(() => renderSymbolsForView(doc), [doc]);
   const renderedConductors = useMemo(() => renderConductorsForView(doc), [doc]);
   const renderedBusbars = useMemo(() => renderBusbarsForView(doc), [doc]);
+  const displayMetrics = useMemo(() => resolveDisplayScale(doc.uiState), [doc.uiState]);
+  const busStroke = useCallback((base: number) => scaledSize(base, displayMetrics.busbar), [displayMetrics.busbar]);
+  const textSize = useCallback((base: number) => scaledSize(base, displayMetrics.text), [displayMetrics.text]);
   const selectedSymbols = doc.objects.symbols.filter((s) => selected.includes(s.id));
   const selectedObject = selectedSymbols[0];
   const selectedPath = doc.objects.conductors.find((path) => selected.includes(path.id)) ?? doc.objects.busbars.find((path) => selected.includes(path.id));
@@ -934,11 +946,35 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setDirty(true);
   };
 
+  const updateDisplayScale = (key: keyof DisplayScale, percent: number) => {
+    const value = displayScaleFromPercent(percent);
+    setDoc((prev) => ({
+      ...prev,
+      uiState: {
+        ...prev.uiState,
+        displayScale: { ...resolveDisplayScale(prev.uiState), [key]: value }
+      }
+    }));
+    setDirty(true);
+  };
+
+  const resetDisplayScale = () => {
+    setDoc((prev) => ({
+      ...prev,
+      uiState: {
+        ...prev.uiState,
+        displayScale: { busbar: 1, text: 1, symbol: 1 }
+      }
+    }));
+    setDirty(true);
+  };
+
   const runDrawingExport = async () => {
     await downloadDrawingExport(doc, exportFormat, {
       theme,
       labelMode: exportLabelMode,
-      selectedObjectIds: selected
+      selectedObjectIds: selected,
+      displayScale: displayMetrics
     });
     setExportModalOpen(false);
   };
@@ -1444,15 +1480,24 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (exportModalOpen) {
+          event.preventDefault();
+          setExportModalOpen(false);
+          return;
+        }
+        if (escapeMenuOpen) {
+          event.preventDefault();
+          setEscapeMenuOpen(false);
+          return;
+        }
         if (focusedOperateMode) {
           event.preventDefault();
           setScenarioMenuOpen((open) => !open);
           return;
         }
-        setSelected([]);
-        setDraftPath([]);
-        setCursorPoint(null);
-        setSelectionBox(null);
+        event.preventDefault();
+        setEscapeMenuOpen((open) => !open);
+        return;
       }
       if (event.key === 'Delete' && selected.length && !deleteDisabled) {
         commit({
@@ -1485,7 +1530,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [commit, deleteDisabled, doc, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
+  }, [commit, deleteDisabled, doc, escapeMenuOpen, exportModalOpen, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
 
   useEffect(() => {
     if (!learningVisibility.showThreePhase && doc.activeView === 'three-phase') setDoc((prev) => ({ ...prev, activeView: 'single-line' }));
@@ -1569,9 +1614,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (symbol.type !== 'transformer') return null;
     const hvLeft = symbol.engineering?.transformerPolarity !== 'hv-right';
     return <g>
-      <text x={hvLeft ? -36 : 26} y={-20} fontSize='8'>{hvLeft ? 'HV' : 'LV'}</text>
-      <text x={hvLeft ? 26 : -36} y={-20} fontSize='8'>{hvLeft ? 'LV' : 'HV'}</text>
-      {symbol.engineering?.hasTertiary && <text x={-18} y={46} fontSize='8'>T {symbol.engineering.tertiaryVoltageKv ? `${symbol.engineering.tertiaryVoltageKv}kV` : ''}</text>}
+      <text x={hvLeft ? -36 : 26} y={-20} fontSize={textSize(8)}>{hvLeft ? 'HV' : 'LV'}</text>
+      <text x={hvLeft ? 26 : -36} y={-20} fontSize={textSize(8)}>{hvLeft ? 'LV' : 'HV'}</text>
+      {symbol.engineering?.hasTertiary && <text x={-18} y={textSize(46)} fontSize={textSize(8)}>T {symbol.engineering.tertiaryVoltageKv ? `${symbol.engineering.tertiaryVoltageKv}kV` : ''}</text>}
     </g>;
   };
 
@@ -1579,8 +1624,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (symbol.type !== 'ct') return null;
     const p1Left = symbol.engineering?.ctPolarity !== 'P1-right';
     return <g>
-      <text x={p1Left ? -35 : 22} y={-20} fontSize='8'>P1</text>
-      <text x={p1Left ? 22 : -35} y={-20} fontSize='8'>P2</text>
+      <text x={p1Left ? -35 : 22} y={-20} fontSize={textSize(8)}>P1</text>
+      <text x={p1Left ? 22 : -35} y={-20} fontSize={textSize(8)}>P2</text>
       <path d={p1Left ? 'M -24 18 L 24 18' : 'M 24 18 L -24 18'} stroke='var(--md2-selected)' strokeWidth={1.5} markerEnd='url(#arrow)' />
     </g>;
   };
@@ -1663,7 +1708,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       const on = symbol.operation?.sourceOn !== false;
       return <circle cx={0} cy={-26} r={4} fill={on ? 'var(--md2-live)' : 'var(--md2-deenergised)'} />;
     }
-    if (symbol.operation?.tripped) return <text x={-11} y={-23} fontSize='8' fill='var(--md2-warning)'>TRIP</text>;
+    if (symbol.operation?.tripped) return <text x={-11} y={-23} fontSize={textSize(8)} fill='var(--md2-warning)'>TRIP</text>;
     return null;
   };
 
@@ -1697,7 +1742,31 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const selectedVoltageEstimate = selectedFault ? 0 : selectedObject?.voltageLevelKv;
   const selectedBusbars = doc.objects.busbars.filter((busbar) => selected.includes(busbar.id));
   const busbarOnlySelection = selectedBusbars.length > 0 && selected.length === selectedBusbars.length;
-  const symbolLabelY = (symbol: ElectricalSymbol) => symbol.type === 'earth-switch' || symbol.type === 'vt' ? 52 : symbol.type === 'ct' ? 44 : 38;
+  const equipmentLabelY = (symbol: ElectricalSymbol) => symbolLabelY(symbol, displayMetrics.text);
+  const equipmentLabelStep = textSize(11);
+
+  const displayScaleControl = (key: keyof DisplayScale, label: string) => {
+    const percent = displayScalePercent(displayMetrics[key]);
+    return <label key={key} className='mimic-v2-display-scale-row'>
+      <span>{label}</span>
+      <input
+        type='range'
+        min={50}
+        max={300}
+        step={5}
+        value={percent}
+        onChange={(event) => updateDisplayScale(key, Number(event.target.value))}
+      />
+      <input
+        type='number'
+        min={50}
+        max={300}
+        step={5}
+        value={percent}
+        onChange={(event) => updateDisplayScale(key, Number(event.target.value))}
+      />
+    </label>;
+  };
 
   return <div className='mimic-v2-root' data-theme={theme}>
     {!placementDisabled && (!focusedOperateMode || buildingScenario) && <aside className='mimic-v2-sidebar'>
@@ -1733,16 +1802,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </select>
       </label>
       <button className='mimic-v2-btn' onClick={regenerateLabels}>Regenerate auto labels</button>
-      <button className='mimic-v2-btn' onClick={() => setLibraryOpen(true)}>Drawing library</button>
-      <button className='mimic-v2-btn' onClick={createNewDrawing}>New</button>
-      <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
-      <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
-      <button className='mimic-v2-btn' onClick={openExportModal}>Print / export</button>
-      {onRequestMenu && <button className='mimic-v2-btn' onClick={onRequestMenu}>Main menu</button>}
     </aside>}
     <main className='mimic-v2-main'>
       <div className='mimic-v2-toolbar'>
-        {focusedOperateMode && <button className='mimic-v2-btn active' title='Scenario menu' onClick={() => setScenarioMenuOpen(true)}>Menu</button>}
+        {focusedOperateMode && <button className='mimic-v2-btn active' title='Scenario menu (Esc)' onClick={() => setScenarioMenuOpen(true)}>Menu</button>}
+        {!focusedOperateMode && <button className={`mimic-v2-btn ${escapeMenuOpen ? 'active' : ''}`} title='Application menu (Esc)' onClick={() => setEscapeMenuOpen(true)}>Menu</button>}
         {focusedOperateMode ? <>
           <div className='mimic-v2-tool-group'><span>{activeScenarioPackage?.title ?? 'Scenario'}</span></div>
           <div className='mimic-v2-tool-group'><span>Mode</span><button className='mimic-v2-btn active'>Operate</button></div>
@@ -1756,8 +1820,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <div className='mimic-v2-tool-group'><span>View</span><button className={`mimic-v2-btn ${doc.activeView==='single-line'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'single-line'}))}>Single-line</button>{learningVisibility.showThreePhase && <button className={`mimic-v2-btn ${doc.activeView==='three-phase'?'active':''}`} onClick={() => setDoc((p)=>({ ...p, activeView:'three-phase'}))}>Three-phase</button>}</div>
           <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button><button className={`mimic-v2-btn ${overlayMode==='power'?'active':''}`} onClick={() => setOverlayMode('power')}>Power</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}</div>
           <div className='mimic-v2-tool-group'><span>Managers</span>{learningVisibility.showPowerFlow && <button className='mimic-v2-btn' onClick={openPowerFlowModal}>Power Flow</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection</button>}<button className={`mimic-v2-btn ${managerView==='scenario'?'active':''}`} onClick={() => setManagerView('scenario')}>Scenarios</button></div>
+          {!focusedOperateMode && <div className='mimic-v2-tool-group'><span>Sim</span><button className={`mimic-v2-btn ${doc.simulationState.running ? 'active' : ''}`} title='Start or pause timed simulation' onClick={toggleSimulationRun}>{doc.simulationState.running ? 'Pause' : 'Start'}</button><button className='mimic-v2-btn' title='Clear transient faults and pause simulation' onClick={resetSimulation}>Reset</button></div>}
         </>}
-        <div className='mimic-v2-tool-group'><span>UI</span>{!focusedOperateMode && <><button className={`mimic-v2-btn ${doc.simulationState.running ? 'active' : ''}`} title='Start or pause timed simulation' onClick={toggleSimulationRun}>{doc.simulationState.running ? 'Pause' : 'Start'}</button><button className='mimic-v2-btn' title='Clear transient faults and pause simulation' onClick={resetSimulation}>Reset</button></>}<button className='mimic-v2-btn' title='Toggle light/dark theme' onClick={() => setTheme((t)=>t==='light'?'dark':'light')}>Theme</button>{!focusedOperateMode && learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
+        <div className='mimic-v2-tool-group'><span>UI</span>{!focusedOperateMode && learningVisibility.showDebug && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
       </div>
       <div className='mimic-v2-canvas-wrap' onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
       {scenarioSelectorOnly ? <div className='mimic-v2-canvas mimic-v2-canvas-empty' /> : <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
@@ -1775,28 +1840,30 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={18} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
             {focusObjectIds.has(instance.canonicalId) && <polyline className='mimic-v2-focus-stroke' points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='var(--md2-selected)' strokeWidth={16} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />}
             {instance.phase && <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={phaseColour(instance.phase)} strokeWidth={selected.includes(instance.canonicalId) ? 12 : 10} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />}
-            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-busbar)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 8 : instance.phase ? 5 : 7} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />
-            {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize='9'>{instance.phase}</text>}
-            {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
+            <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-busbar)'), lineStateForPath(instance.canonicalId))} strokeWidth={busStroke(selected.includes(instance.canonicalId) ? 8 : instance.phase ? 5 : instance.path.width || 7)} strokeLinecap='square' strokeLinejoin='round' pointerEvents='none' />
+            {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize={textSize(9)}>{instance.phase}</text>}
+            {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize={textSize(8)}>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
           {renderedConductors.map((instance) => <g key={instance.id}>
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={16} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
             {focusObjectIds.has(instance.canonicalId) && <polyline className='mimic-v2-focus-stroke' points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='var(--md2-selected)' strokeWidth={12} strokeLinecap='round' pointerEvents='none' />}
             {instance.phase && <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={phaseColour(instance.phase)} strokeWidth={selected.includes(instance.canonicalId) ? 7 : 6} strokeDasharray={instance.path.conductorStyle === 'overhead-line' ? undefined : '18 10'} strokeLinecap='round' pointerEvents='none' />}
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={selected.includes(instance.canonicalId) && selectedPhase === instance.phase ? 'var(--md2-selected)' : lineStroke(thermalStrokeForObjectPhase(instance.canonicalId, instance.phase, 'var(--md2-cable)'), lineStateForPath(instance.canonicalId))} strokeWidth={selected.includes(instance.canonicalId) ? 5 : instance.phase ? 3 : 3} strokeDasharray={instance.path.conductorStyle === 'overhead-line' ? undefined : '18 10'} strokeLinecap='round' pointerEvents='none' />
-            {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize='9'>{instance.phase}</text>}
-            {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize='8'>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
+            {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize={textSize(9)}>{instance.phase}</text>}
+            {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize={textSize(8)}>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
           {renderedSymbols.map((instance) => <g key={instance.id} transform={`translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})`} onMouseDown={(event) => onSymbolMouseDown(event, instance.symbol, instance.phase)}>
             <rect {...symbolHitBounds(instance.symbol.type)} fill='transparent' />
             {focusObjectIds.has(instance.symbol.id) && <circle className='mimic-v2-focus-ring' cx={0} cy={0} r={34} fill='none' stroke='var(--md2-selected)' strokeWidth={3} />}
             {instance.symbol.simulation?.arced && <circle className='mimic-v2-arc-flash' cx={0} cy={0} r={36} fill='none' stroke='var(--md2-warning)' strokeWidth={4} />}
-            {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'grid-connection' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize='9'>{instance.phase}</text>}
-            {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize='10' fill='var(--md2-selected)'>3P</text>}
-            {renderSymbolGlyph(instance.symbol)}
-            {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize='8'>{instance.symbol.type.slice(0, 4)}</text>}
-            <text x={0} y={symbolLabelY(instance.symbol)} textAnchor='middle' fontSize='8' transform={`rotate(${-instance.symbol.rotation} 0 ${symbolLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
-            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={symbolLabelY(instance.symbol) + 11} textAnchor='middle' fontSize='8' transform={`rotate(${-instance.symbol.rotation} 0 ${symbolLabelY(instance.symbol) + 11})`}>{operationLabel(instance.symbol)}</text>}
+            {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'grid-connection' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize={textSize(9)}>{instance.phase}</text>}
+            {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize={textSize(10)} fill='var(--md2-selected)'>3P</text>}
+            {displayMetrics.symbol === 1
+              ? renderSymbolGlyph(instance.symbol)
+              : <g transform={`scale(${displayMetrics.symbol})`}>{renderSymbolGlyph(instance.symbol)}</g>}
+            {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize={textSize(8)}>{instance.symbol.type.slice(0, 4)}</text>}
+            <text x={0} y={equipmentLabelY(instance.symbol)} textAnchor='middle' fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
+            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={equipmentLabelY(instance.symbol) + equipmentLabelStep} textAnchor='middle' fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol) + equipmentLabelStep})`}>{operationLabel(instance.symbol)}</text>}
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
@@ -1808,9 +1875,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {doc.activeView==='single-line' && !hasAllPhases(instance.symbol.phaseApplicability) && <text x={16} y={-16} fontSize='12' fill='var(--md2-warning)'>*</text>}
             <title>{!hasAllPhases(instance.symbol.phaseApplicability) ? `* phase-specific device: ${instance.symbol.phaseApplicability.join(',')}` : 'all phases'}</title>
           </g>)}
-          {doc.faults.filter((fault) => fault.active && fault.location).map((fault) => <g key={fault.id} transform={`translate(${fault.location!.x},${fault.location!.y})`}><path d='M -8 -8 L 8 8 M 8 -8 L -8 8' stroke='var(--md2-warning)' strokeWidth={3}/><text x={10} y={-8} fontSize='8'>{fault.label ?? fault.type}</text></g>)}
-          {doc.objects.labels.map((item) => <text key={item.id} x={item.position.x} y={item.position.y} fontSize='11' fontWeight={700} fill='var(--md2-text)'>{item.text}</text>)}
-          {doc.objects.annotations.map((item) => <text key={item.id} x={item.position.x} y={item.position.y} fontSize='10' fill='var(--md2-muted-text)'>{item.text}</text>)}
+          {doc.faults.filter((fault) => fault.active && fault.location).map((fault) => <g key={fault.id} transform={`translate(${fault.location!.x},${fault.location!.y})`}><path d='M -8 -8 L 8 8 M 8 -8 L -8 8' stroke='var(--md2-warning)' strokeWidth={3}/><text x={10} y={-8} fontSize={textSize(8)}>{fault.label ?? fault.type}</text></g>)}
+          {doc.objects.labels.map((item) => <text key={item.id} x={item.position.x} y={item.position.y} fontSize={textSize(11)} fontWeight={700} fill='var(--md2-text)'>{item.text}</text>)}
+          {doc.objects.annotations.map((item) => <text key={item.id} x={item.position.x} y={item.position.y} fontSize={textSize(10)} fill='var(--md2-muted-text)'>{item.text}</text>)}
           {overlayMode === 'protection' && doc.relays.flatMap((relay) => {
             const targets = [
               ...(relay.inputs ?? []).map((input) => input.sourceObjectId).filter(Boolean) as string[],
@@ -1827,7 +1894,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {showTopologyOverlay && topology.branches.map((branch) => { const from = topology.nodes.find((node)=>node.id===branch.fromNodeId); const to = topology.nodes.find((node)=>node.id===branch.toNodeId); if(!from||!to) return null; const symbol = branch.objectId ? doc.objects.symbols.find((item) => item.id === branch.objectId) : undefined; const open = branch.kind === 'device-internal' && isSwitchingDevice(symbol?.type as ElectricalSymbol['type']) && symbol?.operation?.switchState !== 'closed'; return <line key={`dbg-${branch.id}`} x1={from.position.x} y1={from.position.y} x2={to.position.x} y2={to.position.y} stroke={topologyBranchStroke(branch.id)} strokeWidth={branch.kind === 'device-internal' ? 2 : 1} opacity={open ? 0.35 : 0.9} strokeDasharray={open ? '2 5' : branch.kind === 'device-internal' ? '5 3' : '3 3'} />; })}
           {showTopologyOverlay && topology.nodes.map((node) => <g key={`node-${node.id}`}><circle cx={node.position.x} cy={node.position.y} r={4} fill={operateState.faultNodeIds.has(node.id) ? 'var(--md2-warning)' : operateState.earthedNodeIds.has(node.id) ? 'var(--md2-earth)' : operateState.liveNodeIds.has(node.id) ? 'var(--md2-live)' : node.junction ? 'var(--md2-warning)' : 'var(--md2-selected)'} /><text x={node.position.x+6} y={node.position.y-6} fontSize='7'>{node.id}</text></g>)}
           {showTopologyOverlay && topology.terminals.filter((terminal)=>!terminal.connectedNodeIds.length).map((terminal)=> <circle key={`floating-${terminal.id}`} cx={terminal.worldPosition.x} cy={terminal.worldPosition.y} r={5} fill='none' stroke='var(--md2-warning)' strokeWidth={2} />)}
-          {ghostPath.length > 0 && <polyline points={ghostPath.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={conductorToolKind === 'busbar' ? 'var(--md2-busbar)' : 'var(--md2-cable)'} strokeDasharray={conductorToolKind === 'busbar' || conductorToolKind === 'overhead-line' ? undefined : '18 10'} strokeWidth={conductorToolKind === 'busbar' ? 7 : 3} opacity={0.58} strokeLinecap={conductorToolKind === 'busbar' ? 'square' : 'round'} />}
+          {ghostPath.length > 0 && <polyline points={ghostPath.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke={conductorToolKind === 'busbar' ? 'var(--md2-busbar)' : 'var(--md2-cable)'} strokeDasharray={conductorToolKind === 'busbar' || conductorToolKind === 'overhead-line' ? undefined : '18 10'} strokeWidth={conductorToolKind === 'busbar' ? busStroke(7) : 3} opacity={0.58} strokeLinecap={conductorToolKind === 'busbar' ? 'square' : 'round'} />}
           {selectedBoxRect && <rect x={selectedBoxRect.x1} y={selectedBoxRect.y1} width={selectedBoxRect.x2 - selectedBoxRect.x1} height={selectedBoxRect.y2 - selectedBoxRect.y1} fill='var(--md2-selected-fill)' stroke='var(--md2-selected)' strokeDasharray='4 3' />}
         </g>
       </svg>}
@@ -2072,6 +2139,45 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>}
+    {escapeMenuOpen && !focusedOperateMode && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setEscapeMenuOpen(false)}>
+      <div className='mimic-v2-launch-modal mimic-v2-scenario-menu mimic-v2-escape-menu' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Menu</h2>
+            <p>{doc.name}{dirty ? ' *' : ''}</p>
+          </div>
+        </header>
+        <section className='mimic-v2-escape-menu-section'>
+          <h3>File</h3>
+          <div className='mimic-v2-scenario-menu-actions'>
+            <button className='mimic-v2-btn' onClick={() => { setLibraryOpen(true); setEscapeMenuOpen(false); }}>Drawing library</button>
+            <button className='mimic-v2-btn' onClick={() => { createNewDrawing(); setEscapeMenuOpen(false); }}>New drawing</button>
+            <button className='mimic-v2-btn' onClick={() => { saveCurrentDrawing(); setEscapeMenuOpen(false); }}>Save</button>
+            <button className='mimic-v2-btn' onClick={() => { saveCurrentDrawingAs(); setEscapeMenuOpen(false); }}>Save as</button>
+            <button className='mimic-v2-btn' onClick={() => { openExportModal(); setEscapeMenuOpen(false); }}>Print / export</button>
+            {onRequestMenu && <button className='mimic-v2-btn' onClick={() => { setEscapeMenuOpen(false); onRequestMenu(); }}>Main menu</button>}
+          </div>
+        </section>
+        <section className='mimic-v2-escape-menu-section'>
+          <h3>Settings</h3>
+          <label className='mimic-v2-scenario-menu-setting'>
+            Theme
+            <select value={theme} onChange={(event) => setTheme(event.target.value as 'light' | 'dark')}>
+              <option value='light'>Light</option>
+              <option value='dark'>Dark</option>
+            </select>
+          </label>
+          <p className='mimic-v2-escape-menu-hint'>Display scale adjusts drawing legibility without moving equipment or connections. Values apply to the canvas and exports.</p>
+          {displayScaleControl('busbar', 'Busbar thickness')}
+          {displayScaleControl('text', 'Label text size')}
+          {displayScaleControl('symbol', 'Symbol size')}
+          <button className='mimic-v2-btn' style={{ marginTop: 8 }} onClick={resetDisplayScale}>Reset display scale</button>
+        </section>
+        <div className='mimic-v2-scenario-menu-actions'>
+          <button className='mimic-v2-btn active' onClick={() => setEscapeMenuOpen(false)}>Return to drawing</button>
+        </div>
+      </div>
+    </div>}
     {exportModalOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setExportModalOpen(false)}>
       <div className='mimic-v2-launch-modal mimic-v2-scenario-menu' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>
@@ -2107,15 +2213,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <p>{activeScenarioPackage?.title ?? 'No scenario running'}</p>
           </div>
         </header>
-        <label className='mimic-v2-scenario-menu-setting'>
-          Naming scheme
-          <select value={resolveLabelScheme(doc)} onChange={(event) => applyLabelScheme(event.target.value as LabelScheme)}>
-            {LABEL_SCHEMES.filter((scheme) => scheme.available).map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
-          </select>
-        </label>
         <div className='mimic-v2-scenario-menu-actions'>
           <button className='mimic-v2-btn active' onClick={returnToScenarioSelector}>Return to scenario selector</button>
-          <button className='mimic-v2-btn' onClick={() => setTheme((t) => t === 'light' ? 'dark' : 'light')}>Change theme colours</button>
           <button className='mimic-v2-btn' onClick={() => setScenarioMenuOpen(false)}>Return to scenario</button>
         </div>
       </div>
