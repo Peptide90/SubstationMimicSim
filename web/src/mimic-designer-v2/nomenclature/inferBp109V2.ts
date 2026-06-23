@@ -1,7 +1,7 @@
 import type { DrawingDocument, ElectricalSymbol } from '../drawing/model';
 import { extractTopology } from '../topology/extractTopology';
 import { computeBp109Label, defaultPurposeDigit, schemaDefaultPrefix, voltageClassFromKv } from '../../app/labeling/bp109';
-import type { BusbarRole, BP109Meta, CircuitType, PurposeDigit } from '../../app/labeling/types';
+import type { BusbarRole, BP109Meta, CircuitType, Prefix, PurposeDigit } from '../../app/labeling/types';
 import { parseBp109Label, parseLineCircuitNumber } from './parseBp109';
 
 const SWITCH_TYPES = new Set<ElectricalSymbol['type']>(['circuit-breaker', 'disconnector', 'earth-switch']);
@@ -190,16 +190,32 @@ function nearestBusbarRole(symbol: ElectricalSymbol, doc: DrawingDocument, adjac
   return best?.role;
 }
 
+function asCircuitType(value?: string): CircuitType | undefined {
+  if (!value || value === 'AUTO') return undefined;
+  return value as CircuitType;
+}
+
+function asPurposeDigit(value?: number): PurposeDigit | undefined {
+  if (value === undefined) return undefined;
+  return Math.max(0, Math.min(9, Math.floor(value))) as PurposeDigit;
+}
+
+function asPrefix(value: string | undefined, voltageClass: ReturnType<typeof voltageClassFromKv>): Prefix {
+  if (value === 'X' || value === 'D' || value === '') return value;
+  return schemaDefaultPrefix(voltageClass);
+}
+
 function anchorMetaForSymbol(symbol: ElectricalSymbol, voltageClass: ReturnType<typeof voltageClassFromKv>): Partial<BP109Meta> | null {
   const engineering = symbol.engineering?.bp109;
   if (engineering?.circuitNumber !== undefined || engineering?.circuitType) {
+    const circuitType = asCircuitType(engineering.circuitType);
     return {
       enabled: true,
       voltageClass,
-      prefix: engineering.prefix ?? schemaDefaultPrefix(voltageClass),
-      circuitType: engineering.circuitType && engineering.circuitType !== 'AUTO' ? engineering.circuitType : undefined,
+      prefix: asPrefix(engineering.prefix, voltageClass),
+      circuitType: circuitType ?? 'LINE',
       circuitNumber: engineering.circuitNumber,
-      purposeDigit: engineering.purposeDigit,
+      purposeDigit: asPurposeDigit(engineering.purposeDigit),
       suffixLetter: engineering.suffixLetter ?? ''
     };
   }
@@ -215,7 +231,7 @@ function anchorMetaForSymbol(symbol: ElectricalSymbol, voltageClass: ReturnType<
         enabled: true,
         voltageClass,
         prefix: schemaDefaultPrefix(voltageClass),
-        circuitType: engineering?.circuitType && engineering.circuitType !== 'AUTO' ? engineering.circuitType : 'LINE',
+        circuitType: asCircuitType(engineering?.circuitType) ?? 'LINE',
         circuitNumber
       };
     }
