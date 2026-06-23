@@ -6,6 +6,7 @@ import { parseBp109Label, parseLineCircuitNumber } from './parseBp109';
 
 const SWITCH_TYPES = new Set<ElectricalSymbol['type']>(['circuit-breaker', 'disconnector', 'earth-switch']);
 const ENDPOINT_TYPES = new Set<ElectricalSymbol['type']>(['grid-connection', 'line-end', 'load', 'source', 'transformer']);
+const LINE_ENDPOINT_TYPES = new Set<ElectricalSymbol['type']>(['grid-connection', 'line-end', 'load', 'source']);
 
 function symbolKind(type: ElectricalSymbol['type']): string {
   if (type === 'circuit-breaker') return 'cb';
@@ -15,16 +16,6 @@ function symbolKind(type: ElectricalSymbol['type']): string {
   if (type === 'ct') return 'ct';
   if (type === 'vt') return 'vt';
   return type;
-}
-
-function defaultPurposeFor(kind: string, circuitType: CircuitType, role?: BusbarRole): PurposeDigit {
-  if (kind === 'cb') return defaultPurposeDigit('cb', circuitType);
-  if (kind === 'es') return defaultPurposeDigit('es', circuitType);
-  if (kind === 'ds' && role) {
-    if (role.includes('main')) return 4;
-    if (role.includes('reserve')) return 6;
-  }
-  return defaultPurposeDigit('ds', circuitType);
 }
 
 function substationVoltageKv(doc: DrawingDocument): number {
@@ -132,15 +123,38 @@ function collectBaySymbols(startId: string, doc: DrawingDocument, adjacency: Map
   return bay;
 }
 
-function classifyCircuitType(symbolId: string, doc: DrawingDocument, adjacency: Map<string, Set<string>>): CircuitType {
+function findBayEndpoint(symbol: ElectricalSymbol, doc: DrawingDocument): ElectricalSymbol | undefined {
+  const lineEndpoints = doc.objects.symbols.filter((item) => LINE_ENDPOINT_TYPES.has(item.type));
+  let best: { symbol: ElectricalSymbol; score: number } | undefined;
+  lineEndpoints.forEach((endpoint) => {
+    const dx = Math.abs(endpoint.position.x - symbol.position.x);
+    const dy = endpoint.position.y - symbol.position.y;
+    if (dx > 40 || dy > 20) return;
+    const score = dx + Math.max(0, dy);
+    if (!best || score < best.score) best = { symbol: endpoint, score };
+  });
+  return best?.symbol;
+}
+
+function classifyCircuitType(symbolId: string, doc: DrawingDocument, adjacency: Map<string, Set<string>>, bayMeta: Map<string, Partial<BP109Meta>>): CircuitType {
+  const hinted = bayMeta.get(symbolId)?.circuitType;
+  if (hinted) return hinted;
+
   const symbol = doc.objects.symbols.find((item) => item.id === symbolId);
   const override = symbol?.engineering?.bp109?.circuitType;
   if (override && override !== 'AUTO') return override as CircuitType;
 
+  const endpoint = symbol ? findBayEndpoint(symbol, doc) : undefined;
+  if (endpoint) {
+    const endpointType = endpoint.engineering?.bp109?.circuitType;
+    if (endpointType && endpointType !== 'AUTO') return endpointType as CircuitType;
+    if (LINE_ENDPOINT_TYPES.has(endpoint.type)) return 'LINE';
+  }
+
   const neighbors = [...(adjacency.get(symbolId) ?? [])];
   const neighborSymbols = neighbors.map((id) => doc.objects.symbols.find((item) => item.id === id)).filter(Boolean) as ElectricalSymbol[];
   if (neighborSymbols.some((item) => item.type === 'transformer')) return 'TX_HV';
-  if (neighborSymbols.some((item) => ENDPOINT_TYPES.has(item.type))) return 'LINE';
+  if (neighborSymbols.some((item) => LINE_ENDPOINT_TYPES.has(item.type))) return 'LINE';
 
   const busbarTouches = countReachableBusbars(symbolId, doc, adjacency);
   if (busbarTouches >= 3) return 'MAIN_BUS_SEC';
@@ -167,6 +181,12 @@ function countReachableBusbars(symbolId: string, doc: DrawingDocument, adjacency
   return found.size;
 }
 
+function busbarAverageY(busbarId: string, doc: DrawingDocument): number {
+  const busbar = doc.objects.busbars.find((item) => item.id === busbarId);
+  if (!busbar?.vertices.length) return 0;
+  return busbar.vertices.reduce((sum, vertex) => sum + vertex.y, 0) / busbar.vertices.length;
+}
+
 function nearestBusbarRole(symbol: ElectricalSymbol, doc: DrawingDocument, adjacency: Map<string, Set<string>>): BusbarRole | undefined {
   const busbarById = new Map(doc.objects.busbars.map((busbar) => [busbar.id, busbar]));
   const visited = new Set<string>([symbol.id]);
@@ -175,19 +195,74 @@ function nearestBusbarRole(symbol: ElectricalSymbol, doc: DrawingDocument, adjac
 
   while (queue.length) {
     const current = queue.shift()!;
-    const depth = current === symbol.id ? 0 : 1;
     for (const neighbor of adjacency.get(current) ?? []) {
       if (visited.has(neighbor)) continue;
       visited.add(neighbor);
       const busbar = busbarById.get(neighbor);
       if (busbar?.engineering?.busbarRole) {
-        if (!best || depth < best.distance) best = { role: busbar.engineering.busbarRole, distance: depth };
+        const distance = Math.abs(symbol.position.y - busbarAverageY(neighbor, doc));
+        if (!best || distance < best.distance) best = { role: busbar.engineering.busbarRole, distance };
       }
       queue.push(neighbor);
     }
   }
 
-  return best?.role;
+  if (best) return best.role;
+
+  const horizontal = doc.objects.busbars.filter((busbar) => {
+    const ys = busbar.vertices.map((vertex) => vertex.y);
+    return ys.length > 1 && Math.max(...ys) - Math.min(...ys) < 12;
+  });
+  if (horizontal.length < 2) return undefined;
+
+  const ranked = horizontal
+    .map((busbar) => ({
+      busbar,
+      y: busbar.vertices.reduce((sum, vertex) => sum + vertex.y, 0) / busbar.vertices.length,
+      distance: Math.abs(symbol.position.y - (busbar.vertices.reduce((sum, vertex) => sum + vertex.y, 0) / busbar.vertices.length))
+    }))
+    .sort((a, b) => a.distance - b.distance);
+  const nearest = ranked[0];
+  if (!nearest) return undefined;
+  if (nearest.busbar.engineering?.busbarRole) return nearest.busbar.engineering.busbarRole;
+
+  const rows = [...new Set(horizontal.map((busbar) => Math.round(busbar.vertices[0]!.y / 20) * 20))].sort((a, b) => a - b);
+  if (rows.length < 2) return undefined;
+  if (Math.abs(nearest.y - rows[0]!) < 20) return 'main';
+  if (Math.abs(nearest.y - rows[rows.length - 1]!) < 20) return 'reserve';
+  return undefined;
+}
+
+function bayDistanceFromEndpoint(symbol: ElectricalSymbol, endpoint: ElectricalSymbol): number {
+  return Math.hypot(symbol.position.x - endpoint.position.x, symbol.position.y - endpoint.position.y);
+}
+
+function inferPurposeDigit(
+  symbol: ElectricalSymbol,
+  circuitType: CircuitType,
+  doc: DrawingDocument,
+  adjacency: Map<string, Set<string>>,
+  endpoint?: ElectricalSymbol
+): PurposeDigit {
+  const kind = symbolKind(symbol.type);
+  if (kind === 'cb') return defaultPurposeDigit('cb', circuitType);
+  if (kind === 'es') return defaultPurposeDigit('es', circuitType);
+  if (kind !== 'ds') return defaultPurposeDigit(kind, circuitType);
+
+  if (circuitType === 'LINE' && endpoint) {
+    const bayDisconnectors = doc.objects.symbols.filter((item) => {
+      if (item.type !== 'disconnector') return false;
+      return verticalBaySymbols(endpoint, doc).has(item.id) || collectBaySymbols(endpoint.id, doc, adjacency).has(item.id);
+    });
+    const furthest = [...bayDisconnectors].sort((a, b) => bayDistanceFromEndpoint(b, endpoint) - bayDistanceFromEndpoint(a, endpoint))[0];
+    if (furthest?.id === symbol.id) return 3;
+  }
+
+  const role = nearestBusbarRole(symbol, doc, adjacency);
+  if (role?.includes('main')) return 4;
+  if (role?.includes('reserve')) return 6;
+
+  return defaultPurposeDigit('ds', circuitType);
 }
 
 function asCircuitType(value?: string): CircuitType | undefined {
@@ -224,17 +299,15 @@ function anchorMetaForSymbol(symbol: ElectricalSymbol, voltageClass: ReturnType<
   const parsed = parseBp109Label(symbol.label.text, voltageClass);
   if (parsed) return parsed;
 
-  if (symbol.type === 'grid-connection' || symbol.type === 'line-end' || symbol.type === 'load') {
-    const circuitNumber = parseLineCircuitNumber(symbol.label.text);
-    if (circuitNumber !== null) {
-      return {
-        enabled: true,
-        voltageClass,
-        prefix: schemaDefaultPrefix(voltageClass),
-        circuitType: asCircuitType(engineering?.circuitType) ?? 'LINE',
-        circuitNumber
-      };
-    }
+  const circuitNumber = parseLineCircuitNumber(symbol.label.text);
+  if (circuitNumber !== null && LINE_ENDPOINT_TYPES.has(symbol.type)) {
+    return {
+      enabled: true,
+      voltageClass,
+      prefix: schemaDefaultPrefix(voltageClass),
+      circuitType: asCircuitType(engineering?.circuitType) ?? 'LINE',
+      circuitNumber
+    };
   }
 
   return null;
@@ -245,8 +318,23 @@ function isAnchorSymbol(symbol: ElectricalSymbol, voltageClass: ReturnType<typeo
   if (symbol.engineering?.bp109?.circuitType && symbol.engineering.bp109.circuitType !== 'AUTO') return true;
   if (!symbol.label?.text || !symbol.label.manualOverride) return false;
   if (parseBp109Label(symbol.label.text, voltageClass)) return true;
-  if ((symbol.type === 'grid-connection' || symbol.type === 'line-end' || symbol.type === 'load') && parseLineCircuitNumber(symbol.label.text) !== null) return true;
+  if (LINE_ENDPOINT_TYPES.has(symbol.type) && parseLineCircuitNumber(symbol.label.text) !== null) return true;
   return false;
+}
+
+function propagateBayMeta(
+  bay: Set<string>,
+  anchor: Partial<BP109Meta>,
+  bayMeta: Map<string, Partial<BP109Meta>>
+) {
+  bay.forEach((symbolId) => {
+    const existing = bayMeta.get(symbolId) ?? {};
+    bayMeta.set(symbolId, {
+      ...existing,
+      circuitNumber: anchor.circuitNumber ?? existing.circuitNumber,
+      circuitType: anchor.circuitType ?? existing.circuitType
+    });
+  });
 }
 
 export function inferBp109MetaForDocument(doc: DrawingDocument): Record<string, BP109Meta> {
@@ -256,24 +344,21 @@ export function inferBp109MetaForDocument(doc: DrawingDocument): Record<string, 
   const result: Record<string, BP109Meta> = {};
   const bayMeta = new Map<string, Partial<BP109Meta>>();
 
-  const endpoints = doc.objects.symbols.filter((symbol) => symbol.type === 'grid-connection' || symbol.type === 'line-end' || symbol.type === 'load' || symbol.type === 'source');
+  const endpoints = doc.objects.symbols.filter((symbol) => LINE_ENDPOINT_TYPES.has(symbol.type));
   endpoints.forEach((endpoint) => {
-    const topologyBay = collectBaySymbols(endpoint.id, doc, adjacency);
-    const columnBay = verticalBaySymbols(endpoint, doc);
-    const bay = new Set([...topologyBay, ...columnBay]);
     const anchor = anchorMetaForSymbol(endpoint, voltageClass);
-    if (!anchor) return;
-    bay.forEach((symbolId) => {
-      const existing = bayMeta.get(symbolId) ?? {};
-      bayMeta.set(symbolId, {
-        ...existing,
-        circuitNumber: anchor.circuitNumber ?? existing.circuitNumber,
-        circuitType: anchor.circuitType ?? existing.circuitType,
-        purposeDigit: existing.purposeDigit
-      });
-    });
+    if (!anchor?.circuitNumber && !anchor?.circuitType) return;
+    const bay = new Set([
+      ...collectBaySymbols(endpoint.id, doc, adjacency),
+      ...verticalBaySymbols(endpoint, doc)
+    ]);
+    propagateBayMeta(bay, anchor, bayMeta);
     if (anchor.circuitNumber !== undefined) {
-      bayMeta.set(endpoint.id, { ...bayMeta.get(endpoint.id), circuitNumber: anchor.circuitNumber, circuitType: anchor.circuitType });
+      bayMeta.set(endpoint.id, {
+        ...bayMeta.get(endpoint.id),
+        circuitNumber: anchor.circuitNumber,
+        circuitType: anchor.circuitType ?? 'LINE'
+      });
     }
   });
 
@@ -281,48 +366,32 @@ export function inferBp109MetaForDocument(doc: DrawingDocument): Record<string, 
     if (!SWITCH_TYPES.has(symbol.type) && symbol.type !== 'ct' && symbol.type !== 'vt') return;
     const anchor = anchorMetaForSymbol(symbol, voltageClass);
     if (!anchor || !isAnchorSymbol(symbol, voltageClass)) return;
-    collectBaySymbols(symbol.id, doc, adjacency).forEach((symbolId) => {
-      const existing = bayMeta.get(symbolId) ?? {};
-      bayMeta.set(symbolId, {
-        ...existing,
-        circuitNumber: anchor.circuitNumber ?? existing.circuitNumber,
-        circuitType: anchor.circuitType ?? existing.circuitType,
-        purposeDigit: anchor.purposeDigit ?? existing.purposeDigit
-      });
-    });
-    verticalBaySymbols(symbol, doc).forEach((symbolId) => {
-      const existing = bayMeta.get(symbolId) ?? {};
-      bayMeta.set(symbolId, {
-        ...existing,
-        circuitNumber: anchor.circuitNumber ?? existing.circuitNumber,
-        circuitType: anchor.circuitType ?? existing.circuitType,
-        purposeDigit: anchor.purposeDigit ?? existing.purposeDigit
-      });
-    });
+    const bay = new Set([
+      ...collectBaySymbols(symbol.id, doc, adjacency),
+      ...verticalBaySymbols(findBayEndpoint(symbol, doc) ?? symbol, doc)
+    ]);
+    propagateBayMeta(bay, anchor, bayMeta);
   });
 
   const switchSymbols = doc.objects.symbols.filter((symbol) => SWITCH_TYPES.has(symbol.type) || symbol.type === 'ct' || symbol.type === 'vt');
   const circuitTypeBySymbol = new Map<string, CircuitType>();
   switchSymbols.forEach((symbol) => {
-    const hinted = bayMeta.get(symbol.id)?.circuitType;
-    circuitTypeBySymbol.set(symbol.id, hinted ?? classifyCircuitType(symbol.id, doc, adjacency));
+    circuitTypeBySymbol.set(symbol.id, classifyCircuitType(symbol.id, doc, adjacency, bayMeta));
   });
 
   const circuitNumbers = assignCircuitNumbers(switchSymbols, circuitTypeBySymbol, bayMeta, adjacency);
 
   switchSymbols.forEach((symbol) => {
-    const kind = symbolKind(symbol.type);
-    const circuitType = circuitTypeBySymbol.get(symbol.id) ?? 'LINE';
-    const hinted = bayMeta.get(symbol.id);
-    const role = symbol.type === 'disconnector' ? nearestBusbarRole(symbol, doc, adjacency) : undefined;
+    const circuitType = bayMeta.get(symbol.id)?.circuitType ?? circuitTypeBySymbol.get(symbol.id) ?? 'LINE';
+    const endpoint = findBayEndpoint(symbol, doc);
     const inferred: BP109Meta = {
       enabled: true,
       voltageClass,
       prefix,
-      circuitType: hinted?.circuitType ?? circuitType,
-      circuitNumber: hinted?.circuitNumber ?? circuitNumbers.get(symbol.id) ?? 1,
-      purposeDigit: hinted?.purposeDigit ?? defaultPurposeFor(kind, circuitType, role),
-      suffixLetter: hinted?.suffixLetter ?? ''
+      circuitType,
+      circuitNumber: bayMeta.get(symbol.id)?.circuitNumber ?? circuitNumbers.get(symbol.id) ?? 1,
+      purposeDigit: inferPurposeDigit(symbol, circuitType, doc, adjacency, endpoint),
+      suffixLetter: bayMeta.get(symbol.id)?.suffixLetter ?? ''
     };
     result[symbol.id] = inferred;
   });

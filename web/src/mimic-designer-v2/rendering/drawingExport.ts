@@ -1,7 +1,16 @@
 import type { DrawingDocument, Point } from '../drawing/model';
-import { operationLabelSvg, symbolGlyphSvg, symbolLabelSvg } from './symbolGlyphs';
+import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from './phaseExpansion';
+import { operationLabelSvgWorld, symbolGlyphSvg, symbolLabelSvgWorld } from './symbolGlyphs';
 
 export type DrawingExportFormat = 'svg' | '1920x1080' | '2560x1440' | '3840x2160';
+export type DrawingExportLabelMode = 'all' | 'selected' | 'none';
+
+export interface DrawingExportOptions {
+  theme?: 'light' | 'dark';
+  includeOperationState?: boolean;
+  labelMode?: DrawingExportLabelMode;
+  selectedObjectIds?: string[];
+}
 
 const exportSizes: Record<Exclude<DrawingExportFormat, 'svg'>, { width: number; height: number }> = {
   '1920x1080': { width: 1920, height: 1080 },
@@ -10,10 +19,13 @@ const exportSizes: Record<Exclude<DrawingExportFormat, 'svg'>, { width: number; 
 };
 
 function drawingBounds(doc: DrawingDocument, padding = 80) {
+  const renderedSymbols = renderSymbolsForView(doc);
+  const renderedConductors = renderConductorsForView(doc);
+  const renderedBusbars = renderBusbarsForView(doc);
   const points: Point[] = [
-    ...doc.objects.symbols.map((symbol) => symbol.position),
-    ...doc.objects.conductors.flatMap((path) => path.vertices),
-    ...doc.objects.busbars.flatMap((path) => path.vertices),
+    ...renderedSymbols.map((instance) => instance.position),
+    ...renderedConductors.flatMap((path) => path.vertices),
+    ...renderedBusbars.flatMap((path) => path.vertices),
     ...doc.objects.labels.map((label) => label.position)
   ];
   if (!points.length) return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
@@ -29,7 +41,17 @@ function polyline(points: Point[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
-export function buildDrawingExportSvg(doc: DrawingDocument, theme: 'light' | 'dark' = 'light', includeOperationState = true): string {
+function shouldLabelSymbol(canonicalId: string, labelMode: DrawingExportLabelMode, selectedObjectIds: Set<string>): boolean {
+  if (labelMode === 'none') return false;
+  if (labelMode === 'selected') return selectedObjectIds.has(canonicalId);
+  return true;
+}
+
+export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExportOptions = {}): string {
+  const theme = options.theme ?? 'light';
+  const includeOperationState = options.includeOperationState ?? true;
+  const labelMode = options.labelMode ?? 'all';
+  const selectedObjectIds = new Set(options.selectedObjectIds ?? []);
   const bounds = drawingBounds(doc);
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
@@ -38,25 +60,33 @@ export function buildDrawingExportSvg(doc: DrawingDocument, theme: 'light' | 'da
   const cableStroke = theme === 'dark' ? '#38bdf8' : '#0284c7';
   const textFill = theme === 'dark' ? '#f8fafc' : '#0f172a';
 
-  const busbars = doc.objects.busbars.map((path) =>
-    `<polyline points="${polyline(path.vertices)}" fill="none" stroke="${busbarStroke}" stroke-width="${path.width || 7}" stroke-linecap="square" stroke-linejoin="round"/>`
+  const busbars = renderBusbarsForView(doc).map((instance) =>
+    `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${busbarStroke}" stroke-width="${instance.path.width || 7}" stroke-linecap="square" stroke-linejoin="round"/>`
   ).join('');
 
-  const conductors = doc.objects.conductors.map((path) =>
-    `<polyline points="${polyline(path.vertices)}" fill="none" stroke="${cableStroke}" stroke-width="3" stroke-dasharray="${path.conductorStyle === 'overhead-line' ? '0' : '18 10'}" stroke-linecap="round"/>`
+  const conductors = renderConductorsForView(doc).map((instance) =>
+    `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${cableStroke}" stroke-width="3" stroke-dasharray="${instance.path.conductorStyle === 'overhead-line' ? '0' : '18 10'}" stroke-linecap="round"/>`
   ).join('');
 
-  const symbols = doc.objects.symbols.map((symbol) => {
-    const label = symbolLabelSvg(symbol);
-    const operation = includeOperationState ? operationLabelSvg(symbol) : '';
-    return `<g transform="translate(${symbol.position.x},${symbol.position.y}) rotate(${symbol.rotation})">${symbolGlyphSvg(symbol)}${label}${operation}</g>`;
+  const symbols = renderSymbolsForView(doc).map((instance) => {
+    const label = shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
+      ? symbolLabelSvgWorld(instance.symbol, instance.position)
+      : '';
+    const operation = includeOperationState && shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
+      ? operationLabelSvgWorld(instance.symbol, instance.position)
+      : '';
+    return `<g transform="translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})">${symbolGlyphSvg(instance.symbol)}</g>${label}${operation}`;
   }).join('');
 
-  const labels = doc.objects.labels.map((label) =>
-    `<text x="${label.position.x}" y="${label.position.y}" font-size="11" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`
-  ).join('');
+  const labels = labelMode === 'all'
+    ? doc.objects.labels.map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="11" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
+    : labelMode === 'selected'
+      ? doc.objects.labels
+        .filter((label) => !label.forObjectId || selectedObjectIds.has(label.forObjectId))
+        .map((label) => `<text x="${label.position.x}" y="${label.position.y}" font-size="11" font-weight="700" fill="${textFill}">${label.text.replaceAll('&', '&amp;')}</text>`).join('')
+      : '';
 
-  const annotations = doc.objects.annotations.map((annotation) =>
+  const annotations = labelMode === 'none' ? '' : doc.objects.annotations.map((annotation) =>
     `<text x="${annotation.position.x}" y="${annotation.position.y}" font-size="10" fill="${theme === 'dark' ? '#94a3b8' : '#64748b'}">${annotation.text.replaceAll('&', '&amp;')}</text>`
   ).join('');
 
@@ -67,8 +97,12 @@ export function buildDrawingExportSvg(doc: DrawingDocument, theme: 'light' | 'da
 </svg>`;
 }
 
-export async function rasterizeDrawingExport(doc: DrawingDocument, format: Exclude<DrawingExportFormat, 'svg'>, theme: 'light' | 'dark' = 'light'): Promise<Blob> {
-  const svg = buildDrawingExportSvg(doc, theme);
+export async function rasterizeDrawingExport(
+  doc: DrawingDocument,
+  format: Exclude<DrawingExportFormat, 'svg'>,
+  options: DrawingExportOptions = {}
+): Promise<Blob> {
+  const svg = buildDrawingExportSvg(doc, options);
   const { width, height } = exportSizes[format];
   const bounds = drawingBounds(doc);
   const sourceWidth = bounds.maxX - bounds.minX;
@@ -85,7 +119,7 @@ export async function rasterizeDrawingExport(doc: DrawingDocument, format: Exclu
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas unavailable');
-  context.fillStyle = theme === 'dark' ? '#0f172a' : '#ffffff';
+  context.fillStyle = options.theme === 'dark' ? '#0f172a' : '#ffffff';
   context.fillRect(0, 0, width, height);
   context.drawImage(image, offsetX, offsetY, fittedWidth, fittedHeight);
 
@@ -113,16 +147,20 @@ function loadSvgImage(svg: string): Promise<HTMLImageElement> {
   });
 }
 
-export function downloadDrawingExport(doc: DrawingDocument, format: DrawingExportFormat, theme: 'light' | 'dark' = 'light'): Promise<void> {
+export function downloadDrawingExport(
+  doc: DrawingDocument,
+  format: DrawingExportFormat,
+  options: DrawingExportOptions = {}
+): Promise<void> {
   const safeName = doc.name.replace(/[^\w\-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'mimic-drawing';
   if (format === 'svg') {
-    const svg = buildDrawingExportSvg(doc, theme);
+    const svg = buildDrawingExportSvg(doc, options);
     const blob = new Blob([svg], { type: 'image/svg+xml' });
     triggerDownload(blob, `${safeName}.svg`);
     return Promise.resolve();
   }
 
-  return rasterizeDrawingExport(doc, format, theme).then((blob) => triggerDownload(blob, `${safeName}-${format}.png`));
+  return rasterizeDrawingExport(doc, format, options).then((blob) => triggerDownload(blob, `${safeName}-${format}.png`));
 }
 
 function triggerDownload(blob: Blob, filename: string) {

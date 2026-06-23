@@ -7,11 +7,18 @@ const letterMap = (bp109Schema as { typeMaps?: { letterMap?: Record<string, stri
 const circuitTypeByDigit = Object.fromEntries(Object.entries(digitMap).map(([type, digit]) => [String(digit), type as CircuitType]));
 const circuitTypeByLetter = Object.fromEntries(Object.entries(letterMap).map(([type, letter]) => [letter, type as CircuitType]));
 
+function clampCircuitNumber(value: string | number): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 9) return null;
+  return parsed;
+}
+
 export function parseLineCircuitNumber(text: string): number | null {
-  const match = text.trim().match(/^(?:line|feeder|circuit|bay)\s*(\d+)/i);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) && value >= 0 && value <= 9 ? value : null;
+  const trimmed = text.trim();
+  const named = trimmed.match(/^(?:line|feeder|circuit|bay)\s*#?\s*(\d+)/i);
+  if (named) return clampCircuitNumber(named[1]!);
+  if (/^\d{1,2}$/.test(trimmed)) return clampCircuitNumber(trimmed);
+  return null;
 }
 
 export function looksLikeBp109Label(text: string, voltageClass: VoltageClass): boolean {

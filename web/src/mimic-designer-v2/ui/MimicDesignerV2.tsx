@@ -5,7 +5,7 @@ import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
 import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
-import { downloadDrawingExport, type DrawingExportFormat } from '../rendering/drawingExport';
+import { downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
 import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
 import { deriveOperationState, operateDevice } from '../topology/operation';
@@ -75,7 +75,12 @@ const busbarRoleOptions: Array<{ value: BusbarRole | ''; label: string }> = [
   { value: 'main-2', label: 'Main bar 2' },
   { value: 'reserve-2', label: 'Reserve bar 2' }
 ];
-const drawingExportOptions: Array<{ value: DrawingExportFormat; label: string }> = [
+const drawingExportLabelOptions: Array<{ value: DrawingExportLabelMode; label: string }> = [
+  { value: 'all', label: 'All equipment labels' },
+  { value: 'selected', label: 'Selected equipment only' },
+  { value: 'none', label: 'No labels' }
+];
+const drawingExportFormatOptions: Array<{ value: DrawingExportFormat; label: string }> = [
   { value: 'svg', label: 'SVG (vector, best for animation)' },
   { value: '1920x1080', label: 'PNG 1920×1080' },
   { value: '2560x1440', label: 'PNG 2560×1440' },
@@ -173,6 +178,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<DrawingExportFormat>('svg');
+  const [exportLabelMode, setExportLabelMode] = useState<DrawingExportLabelMode>('all');
   const [scenarioOutcome, setScenarioOutcome] = useState<ScenarioOutcome>(null);
   const [scenarioLaunchPackage, setScenarioLaunchPackage] = useState<ScenarioPackage | null>(() => initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? builtInScenarioPackages.find((pkg) => pkg.scenario.mode === initialPlatformView) ?? builtInScenarioPackages[0] ?? null : null);
   const [scenarioCatalogueOpen, setScenarioCatalogueOpen] = useState(initialPlatformView === 'scenarios' || initialPlatformView === 'challenge' || initialPlatformView === 'lesson');
@@ -929,8 +935,17 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   };
 
   const runDrawingExport = async () => {
-    await downloadDrawingExport(doc, exportFormat, theme);
+    await downloadDrawingExport(doc, exportFormat, {
+      theme,
+      labelMode: exportLabelMode,
+      selectedObjectIds: selected
+    });
     setExportModalOpen(false);
+  };
+
+  const openExportModal = () => {
+    setExportLabelMode(selected.length > 0 ? 'selected' : 'all');
+    setExportModalOpen(true);
   };
 
   const onSymbolMouseDown = (event: React.MouseEvent<SVGGElement>, symbol: ElectricalSymbol, phase?: Phase) => {
@@ -1722,7 +1737,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <button className='mimic-v2-btn' onClick={createNewDrawing}>New</button>
       <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
       <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
-      <button className='mimic-v2-btn' onClick={() => setExportModalOpen(true)}>Print / export</button>
+      <button className='mimic-v2-btn' onClick={openExportModal}>Print / export</button>
       {onRequestMenu && <button className='mimic-v2-btn' onClick={onRequestMenu}>Main menu</button>}
     </aside>}
     <main className='mimic-v2-main'>
@@ -2066,9 +2081,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           </div>
         </header>
         <label className='mimic-v2-scenario-menu-setting'>
+          Labels
+          <select value={exportLabelMode} onChange={(event) => setExportLabelMode(event.target.value as DrawingExportLabelMode)}>
+            {drawingExportLabelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className='mimic-v2-scenario-menu-setting'>
           Format
           <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as DrawingExportFormat)}>
-            {drawingExportOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {drawingExportFormatOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <p className='mimic-v2-warning-text' style={{ marginTop: 10 }}>SVG preserves vector geometry and text for frame-by-frame animation. PNG exports use the current light/dark theme.</p>

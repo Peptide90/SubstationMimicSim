@@ -1,5 +1,7 @@
+import { rotatePoint } from '../topology/connectivity';
 import { SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import type { ElectricalSymbol } from '../drawing/model';
+import type { Point } from '../drawing/model';
 
 const stroke = '#0f172a';
 const live = '#16a34a';
@@ -38,28 +40,30 @@ export function symbolGlyphSvg(symbol: ElectricalSymbol): string {
   return `<rect x="-20" y="-14" width="40" height="28" fill="${bg}" stroke="${selectedStroke}" stroke-width="2"/>`;
 }
 
-export function symbolLabelY(symbol: ElectricalSymbol): number {
-  if (symbol.type === 'earth-switch' || symbol.type === 'vt') return 52;
-  if (symbol.type === 'ct') return 44;
-  return 38;
+export function symbolLabelOffset(symbol: ElectricalSymbol): Point {
+  const y = symbol.type === 'earth-switch' || symbol.type === 'vt' ? 52 : symbol.type === 'ct' ? 44 : 38;
+  return rotatePoint({ x: 0, y }, symbol.rotation);
 }
 
-export function symbolLabelSvg(symbol: ElectricalSymbol): string {
-  const y = symbolLabelY(symbol);
-  const text = escapeXml(symbol.label?.text ?? '');
-  return `<text x="0" y="${y}" text-anchor="middle" font-size="8" transform="rotate(${-symbol.rotation} 0 ${y})">${text}</text>`;
+export function symbolLabelWorldPosition(symbol: ElectricalSymbol, position: Point): Point {
+  const offset = symbolLabelOffset(symbol);
+  return { x: position.x + offset.x, y: position.y + offset.y };
 }
 
-export function operationLabelSvg(symbol: ElectricalSymbol): string {
+export function symbolLabelSvgWorld(symbol: ElectricalSymbol, position: Point, text = symbol.label?.text ?? ''): string {
+  if (!text) return '';
+  const anchor = symbolLabelWorldPosition(symbol, position);
+  return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="middle" font-size="8">${escapeXml(text)}</text>`;
+}
+
+export function operationLabelSvgWorld(symbol: ElectricalSymbol, position: Point): string {
+  let state: string | undefined;
   if (symbol.type === 'circuit-breaker' || symbol.type === 'disconnector' || symbol.type === 'earth-switch') {
-    const state = symbol.operation?.tripped ? 'Trip' : symbol.operation?.switchState === 'closed' ? 'Closed' : 'Open';
-    const y = symbolLabelY(symbol) + 11;
-    return `<text x="0" y="${y}" text-anchor="middle" font-size="8" transform="rotate(${-symbol.rotation} 0 ${y})">${state}</text>`;
+    state = symbol.operation?.tripped ? 'Trip' : symbol.operation?.switchState === 'closed' ? 'Closed' : 'Open';
+  } else if (symbol.type === 'source' || symbol.type === 'grid-connection') {
+    state = symbol.operation?.sourceOn === false ? 'Off' : 'On';
   }
-  if (symbol.type === 'source' || symbol.type === 'grid-connection') {
-    const state = symbol.operation?.sourceOn === false ? 'Off' : 'On';
-    const y = symbolLabelY(symbol) + 11;
-    return `<text x="0" y="${y}" text-anchor="middle" font-size="8" transform="rotate(${-symbol.rotation} 0 ${y})">${state}</text>`;
-  }
-  return '';
+  if (!state) return '';
+  const anchor = symbolLabelWorldPosition(symbol, position);
+  return `<text x="${anchor.x}" y="${anchor.y + 11}" text-anchor="middle" font-size="8">${state}</text>`;
 }
