@@ -4,7 +4,8 @@ import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
-import type { LabelScheme } from '../../app/labeling/types';
+import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
+import { downloadDrawingExport, type DrawingExportFormat } from '../rendering/drawingExport';
 import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
 import { deriveOperationState, operateDevice } from '../topology/operation';
@@ -52,6 +53,34 @@ type ScenarioOutcome = {
 
 const phasesAll = ['A', 'B', 'C'] as Phase[];
 const standardVoltages = [11, 33, 66, 132, 275, 400, 525];
+const bp109CircuitTypeOptions: Array<{ value: CircuitType | 'AUTO'; label: string }> = [
+  { value: 'AUTO', label: 'Auto-detect from topology' },
+  { value: 'LINE', label: 'Line feeder' },
+  { value: 'TX_HV', label: 'Transformer HV' },
+  { value: 'TX_LV', label: 'Transformer LV' },
+  { value: 'BUS_COUPLER', label: 'Bus coupler' },
+  { value: 'MAIN_BUS_SEC', label: 'Main bus section' },
+  { value: 'RES_BUS_SEC', label: 'Reserve bus section' },
+  { value: 'SERIES_REACTOR', label: 'Series reactor' },
+  { value: 'SHUNT_COMP', label: 'Shunt compensation' },
+  { value: 'GEN', label: 'Generator' },
+  { value: 'SPARE', label: 'Spare' }
+];
+const busbarRoleOptions: Array<{ value: BusbarRole | ''; label: string }> = [
+  { value: '', label: 'Unassigned' },
+  { value: 'main', label: 'Main bar' },
+  { value: 'reserve', label: 'Reserve bar' },
+  { value: 'main-1', label: 'Main bar 1' },
+  { value: 'reserve-1', label: 'Reserve bar 1' },
+  { value: 'main-2', label: 'Main bar 2' },
+  { value: 'reserve-2', label: 'Reserve bar 2' }
+];
+const drawingExportOptions: Array<{ value: DrawingExportFormat; label: string }> = [
+  { value: 'svg', label: 'SVG (vector, best for animation)' },
+  { value: '1920x1080', label: 'PNG 1920×1080' },
+  { value: '2560x1440', label: 'PNG 2560×1440' },
+  { value: '3840x2160', label: 'PNG 3840×2160 (4K)' }
+];
 const defaultPhaseSpacingPx = 150;
 const phaseColour = (phase?: Phase) => {
   if (phase === 'A') return 'var(--md2-phase-a)';
@@ -142,6 +171,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
   const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<DrawingExportFormat>('svg');
   const [scenarioOutcome, setScenarioOutcome] = useState<ScenarioOutcome>(null);
   const [scenarioLaunchPackage, setScenarioLaunchPackage] = useState<ScenarioPackage | null>(() => initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? builtInScenarioPackages.find((pkg) => pkg.scenario.mode === initialPlatformView) ?? builtInScenarioPackages[0] ?? null : null);
   const [scenarioCatalogueOpen, setScenarioCatalogueOpen] = useState(initialPlatformView === 'scenarios' || initialPlatformView === 'challenge' || initialPlatformView === 'lesson');
@@ -853,6 +884,53 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
 
   const applyLabelScheme = (scheme: LabelScheme) => {
     commit(generateLabels(doc, scheme));
+  };
+
+  const regenerateLabels = () => {
+    commit(generateLabels(doc, resolveLabelScheme(doc)));
+  };
+
+  const updateSymbolBp109 = (symbolId: string, patch: { circuitType?: CircuitType | 'AUTO'; circuitNumber?: number }) => {
+    setDoc((prev) => ({
+      ...prev,
+      objects: {
+        ...prev.objects,
+        symbols: prev.objects.symbols.map((symbol) => symbol.id === symbolId ? {
+          ...symbol,
+          engineering: {
+            ...symbol.engineering,
+            bp109: {
+              ...symbol.engineering?.bp109,
+              ...patch
+            }
+          }
+        } : symbol)
+      }
+    }));
+    setDirty(true);
+  };
+
+  const updateSelectedBusbars = (patch: { busbarRole?: BusbarRole }) => {
+    if (!selected.length) return;
+    setDoc((prev) => ({
+      ...prev,
+      objects: {
+        ...prev.objects,
+        busbars: prev.objects.busbars.map((busbar) => selected.includes(busbar.id) ? {
+          ...busbar,
+          engineering: {
+            ...busbar.engineering,
+            ...patch
+          }
+        } : busbar)
+      }
+    }));
+    setDirty(true);
+  };
+
+  const runDrawingExport = async () => {
+    await downloadDrawingExport(doc, exportFormat, theme);
+    setExportModalOpen(false);
   };
 
   const onSymbolMouseDown = (event: React.MouseEvent<SVGGElement>, symbol: ElectricalSymbol, phase?: Phase) => {
@@ -1602,6 +1680,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const selectedFault = selectedObject ? doc.faults.find((fault) => fault.active && fault.targetObjectId === selectedObject.id) : undefined;
   const selectedDiagnostic = selectedObject ? simulationState.objectSummaries.get(selectedObject.id) : undefined;
   const selectedVoltageEstimate = selectedFault ? 0 : selectedObject?.voltageLevelKv;
+  const selectedBusbars = doc.objects.busbars.filter((busbar) => selected.includes(busbar.id));
+  const busbarOnlySelection = selectedBusbars.length > 0 && selected.length === selectedBusbars.length;
   const symbolLabelY = (symbol: ElectricalSymbol) => symbol.type === 'earth-switch' || symbol.type === 'vt' ? 52 : symbol.type === 'ct' ? 44 : 38;
 
   return <div className='mimic-v2-root' data-theme={theme}>
@@ -1637,11 +1717,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {LABEL_SCHEMES.filter((scheme) => scheme.available).map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.label}</option>)}
         </select>
       </label>
-      <button className='mimic-v2-btn' onClick={() => commit(generateLabels(doc))}>Regenerate auto labels</button>
+      <button className='mimic-v2-btn' onClick={regenerateLabels}>Regenerate auto labels</button>
       <button className='mimic-v2-btn' onClick={() => setLibraryOpen(true)}>Drawing library</button>
       <button className='mimic-v2-btn' onClick={createNewDrawing}>New</button>
       <button className='mimic-v2-btn' onClick={saveCurrentDrawing}>Save</button>
       <button className='mimic-v2-btn' onClick={saveCurrentDrawingAs}>Save as</button>
+      <button className='mimic-v2-btn' onClick={() => setExportModalOpen(true)}>Print / export</button>
       {onRequestMenu && <button className='mimic-v2-btn' onClick={onRequestMenu}>Main menu</button>}
     </aside>}
     <main className='mimic-v2-main'>
@@ -1908,6 +1989,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         {selectedObject.type === 'ct' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleCtPolarity}>Swap CT P1/P2</button>}
         {selectedObject.type === 'source' && <p>Source output: {formatPowerStatistic(selectedObject.powerFlow)}.</p>}
         {selectedObject.type === 'grid-connection' && <p>Grid {powerEndpointLabel(selectedObject).toLowerCase()}: {formatPowerStatistic(selectedObject.powerFlow)}. Use positive MW/MVAR to export, negative to import.</p>}
+        {selectedObject.type === 'grid-connection' && <label>BP109 circuit type
+          <select disabled={inspectorEditingDisabled} value={selectedObject.engineering?.bp109?.circuitType ?? 'AUTO'} onChange={(event) => updateSymbolBp109(selectedObject.id, { circuitType: event.target.value as CircuitType | 'AUTO' })}>
+            {bp109CircuitTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>}
+        {selectedObject.type === 'grid-connection' && resolveLabelScheme(doc) === 'NG_BP109' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={regenerateLabels}>Regenerate bay labels</button>}
         {selectedObject.type === 'ct' && <p>CT construction: zero-flux core. Ratio: 1000/1. Primary {selectedSummary?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedSummary?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A.</p>}
         {selectedObject.type === 'vt' && <p>VT construction: capacitive VT. Ratio: {vtRatioText(selectedObject)}. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerPolarity}>Swap TX HV/LV</button>}
@@ -1919,6 +2006,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </div>}
         <p>{!hasAllPhases(selectedObject.phaseApplicability) ? `* phase-specific device in single-line view (${selectedObject.phaseApplicability.join(',')})` : 'Device applies to all phases.'}</p>
         {selectedObject.type === 'circuit-breaker' && selectedObject.operation?.lockout && <button className='mimic-v2-btn' onClick={resetSelectedBreakerTrip}>Reset trip lockout</button>}
+      </>}
+      {busbarOnlySelection && <>
+        <h4>Busbar naming ({selectedBusbars.length})</h4>
+        <label>Bar role
+          <select disabled={inspectorEditingDisabled} value={selectedBusbars[0]?.engineering?.busbarRole ?? ''} onChange={(event) => updateSelectedBusbars({ busbarRole: (event.target.value || undefined) as BusbarRole | undefined })}>
+            {busbarRoleOptions.map((option) => <option key={option.value || 'none'} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <p>Assign main or reserve roles to selected busbars. BP109 selector disconnector purpose digits use these roles during auto-labelling.</p>
+        {resolveLabelScheme(doc) === 'NG_BP109' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={regenerateLabels}>Regenerate labels from bus roles</button>}
       </>}
       {(selectedObject || selectedPath) && <>
         <h4>Phases</h4>
@@ -1960,6 +2057,27 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <h4>Event log</h4>
       {doc.operationEvents.slice(-5).map((event) => <p key={event.id}>{event.message}</p>)}
     </aside>}
+    {exportModalOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setExportModalOpen(false)}>
+      <div className='mimic-v2-launch-modal mimic-v2-scenario-menu' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Print / export</h2>
+            <p>Export the current mimic view with all busbars, conductors, symbols, and labels.</p>
+          </div>
+        </header>
+        <label className='mimic-v2-scenario-menu-setting'>
+          Format
+          <select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as DrawingExportFormat)}>
+            {drawingExportOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <p className='mimic-v2-warning-text' style={{ marginTop: 10 }}>SVG preserves vector geometry and text for frame-by-frame animation. PNG exports use the current light/dark theme.</p>
+        <div className='mimic-v2-scenario-menu-actions'>
+          <button className='mimic-v2-btn active' onClick={() => void runDrawingExport()}>Download export</button>
+          <button className='mimic-v2-btn' onClick={() => setExportModalOpen(false)}>Cancel</button>
+        </div>
+      </div>
+    </div>}
     {scenarioMenuOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setScenarioMenuOpen(false)}>
       <div className='mimic-v2-launch-modal mimic-v2-scenario-menu' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>
