@@ -22,6 +22,50 @@ Advanced planned features:
 
 ## How to Build
 
+The Vite frontend lives in `web/`. From the repository root:
+
+```bash
+npm run build
+```
+
+Or from `web/` directly:
+
+```bash
+cd web
+npm install
+npm run build
+```
+
+The production bundle is written to `web/dist/`.
+
+### Cloudflare Pages
+
+The app must be built from a branch that includes the `web/` directory. On GitHub, **`master` has the full app**; **`main` does not include `web/`**, so a Pages project with root directory `web` will fail on `main` with:
+
+`Error: Cannot find cwd: /opt/buildhome/repo/web`
+
+**Recommended Pages settings (either approach):**
+
+**Option A — build from `master` with root directory `web` (current layout):**
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `master` |
+| Root directory | `web` |
+| Build command | `npm ci && npm run build` |
+| Build output directory | `dist` |
+
+**Option B — build from repository root:**
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `master` |
+| Root directory | *(leave empty)* |
+| Build command | `npm run build` |
+| Build output directory | `web/dist` |
+
+`wrangler.toml` files are included at the repo root and in `web/` for Wrangler/Pages tooling.
+
 ## How to Run Locally (Multiplayer MVP)
 
 From the `web/` directory (recommended so the server can reuse the same node_modules):

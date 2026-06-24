@@ -79,11 +79,8 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
     const operation = includeOperationState && shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
       ? operationLabelSvgWorld(instance.symbol, instance.position, display)
       : '';
-    const glyph = symbolGlyphSvg(instance.symbol);
-    const scaledGlyph = display.symbol === 1
-      ? glyph
-      : `<g transform="scale(${display.symbol})">${glyph}</g>`;
-    return `<g transform="translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})">${scaledGlyph}</g>${label}${operation}`;
+    const glyph = symbolGlyphSvg(instance.symbol, display.symbol);
+    return `<g transform="translate(${instance.position.x},${instance.position.y}) rotate(${instance.symbol.rotation})">${glyph}</g>${label}${operation}`;
   }).join('');
 
   const labels = labelMode === 'all'

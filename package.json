@@ -1,1 +1,9 @@
-{"scripts":{"test":"node --test"},"type":"module","devDependencies":{}}
+{
+  "scripts": {
+    "test": "node --test",
+    "build": "npm --prefix web ci && npm --prefix web run build",
+    "build:web": "npm --prefix web run build"
+  },
+  "type": "module",
+  "devDependencies": {}
+}

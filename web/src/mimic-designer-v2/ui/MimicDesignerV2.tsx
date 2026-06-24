@@ -9,6 +9,8 @@ import { downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabe
 import {
   displayScaleFromPercent,
   displayScalePercent,
+  EQUIPMENT_LABEL_STEP,
+  equipmentLabelTextAnchor,
   resolveDisplayScale,
   scaledSize,
   symbolLabelY,
@@ -245,6 +247,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const displayMetrics = useMemo(() => resolveDisplayScale(doc.uiState), [doc.uiState]);
   const busStroke = useCallback((base: number) => scaledSize(base, displayMetrics.busbar), [displayMetrics.busbar]);
   const textSize = useCallback((base: number) => scaledSize(base, displayMetrics.text), [displayMetrics.text]);
+  const symbolStroke = useCallback((base: number) => scaledSize(base, displayMetrics.symbol), [displayMetrics.symbol]);
   const selectedSymbols = doc.objects.symbols.filter((s) => selected.includes(s.id));
   const selectedObject = selectedSymbols[0];
   const selectedPath = doc.objects.conductors.find((path) => selected.includes(path.id)) ?? doc.objects.busbars.find((path) => selected.includes(path.id));
@@ -1642,38 +1645,40 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
 
   const renderSymbolGlyph = (symbol: ElectricalSymbol) => {
     const selectedStroke = selected.includes(symbol.id) ? 'var(--md2-selected)' : 'var(--md2-text)';
-    if (renderMode === 'nodes') return <circle cx={0} cy={0} r={18} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2} />;
-    if (symbol.type === 'cable-sealing-end') return <polygon points={`-14,-13 ${SWITCH_TERMINAL_SPAN},0 -14,13`} fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={2} />;
-    if (symbol.type === 'source') return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='-14,-16 18,0 -14,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={40} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+    const sw = symbolStroke(2);
+    const hingeR = symbolStroke(2.5);
+    if (renderMode === 'nodes') return <circle cx={0} cy={0} r={18} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={sw} />;
+    if (symbol.type === 'cable-sealing-end') return <polygon points={`-14,-13 ${SWITCH_TERMINAL_SPAN},0 -14,13`} fill='var(--md2-canvas-bg)' stroke={selectedStroke} strokeWidth={sw} />;
+    if (symbol.type === 'source') return <g><line x1={-30} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><polygon points='-14,-16 18,0 -14,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={sw}/><line x1={18} y1={0} x2={40} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
     if (symbol.type === 'grid-connection') {
       const exporting = (symbol.powerFlow?.mw ?? 0) >= 0;
       return <g>
-        <line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-16} y2={0} stroke={selectedStroke} strokeWidth={2}/>
-        <circle cx={0} cy={0} r={14} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/>
+        <line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-16} y2={0} stroke={selectedStroke} strokeWidth={sw}/>
+        <circle cx={0} cy={0} r={14} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={sw}/>
         <polygon points={exporting ? '6,-5 16,0 6,5' : '-6,-5 -16,0 -6,5'} fill={selectedStroke}/>
-        <text x={0} y={4} textAnchor='middle' fontSize='9' fill={selectedStroke}>G</text>
-        <line x1={16} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/>
+        <text x={0} y={4} textAnchor='middle' fontSize={symbolStroke(9)} fill={selectedStroke}>G</text>
+        <line x1={16} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/>
       </g>;
     }
-    if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'autotransformer' && <path d='M -1 -11 L 1 11' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'neutral' && <path d='M 0 13 V28 M -8 28 H8 M -5 32 H5' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'tertiary' && <path d='M -10 18 H10 L0 32 Z' fill='none' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'converter' && <text x={0} y={28} textAnchor='middle' fontSize='9' fill={selectedStroke}>Y/Δ</text>} {symbol.symbolVariant === 'phase-shifting' && <path d='M -22 -18 L 22 18 M 12 16 L22 18 L18 8' stroke={selectedStroke} strokeWidth={2} fill='none'/>}</g>;
-    if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'zero-flux' && <text x={0} y={25} textAnchor='middle' fontSize='8' fill={selectedStroke}>ZF</text>}</g>;
-    if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'voltage-divider' ? <><path d='M -10 -5 H10 M -10 5 H10 M 0 -5 V5' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={22} textAnchor='middle' fontSize='8' fill={selectedStroke}>DIV</text></> : <><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>{symbol.symbolVariant === 'cvt' ? 'C' : 'V'}</text></>}<line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'surge-arrester') return <g><line x1={0} y1={-28} x2={0} y2={-12} stroke={selectedStroke} strokeWidth={2}/><path d='M -9 -12 H9 L-9 10 H9' fill='none' stroke={selectedStroke} strokeWidth={2}/><line x1={0} y1={10} x2={0} y2={26} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={26} x2={9} y2={26} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={30} x2={6} y2={30} stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={sw}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={sw}/><line x1={18} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
+    if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={sw}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={sw}/>{symbol.symbolVariant === 'autotransformer' && <path d='M -1 -11 L 1 11' stroke={selectedStroke} strokeWidth={sw}/>} {symbol.symbolVariant === 'neutral' && <path d='M 0 13 V28 M -8 28 H8 M -5 32 H5' stroke={selectedStroke} strokeWidth={sw}/>} {symbol.symbolVariant === 'tertiary' && <path d='M -10 18 H10 L0 32 Z' fill='none' stroke={selectedStroke} strokeWidth={sw}/>} {symbol.symbolVariant === 'converter' && <text x={0} y={28} textAnchor='middle' fontSize={symbolStroke(9)} fill={selectedStroke}>Y/Δ</text>} {symbol.symbolVariant === 'phase-shifting' && <path d='M -22 -18 L 22 18 M 12 16 L22 18 L18 8' stroke={selectedStroke} strokeWidth={sw} fill='none'/>}</g>;
+    if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={sw}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={sw}/>{symbol.symbolVariant === 'zero-flux' && <text x={0} y={25} textAnchor='middle' fontSize={symbolStroke(8)} fill={selectedStroke}>ZF</text>}</g>;
+    if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={sw}/>{symbol.symbolVariant === 'voltage-divider' ? <><path d='M -10 -5 H10 M -10 5 H10 M 0 -5 V5' stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={22} textAnchor='middle' fontSize={symbolStroke(8)} fill={selectedStroke}>DIV</text></> : <><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={9} textAnchor='middle' fontSize={symbolStroke(10)} fill={selectedStroke}>{symbol.symbolVariant === 'cvt' ? 'C' : 'V'}</text></>}<line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={sw}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={sw}/></g>;
+    if (symbol.type === 'surge-arrester') return <g><line x1={0} y1={-28} x2={0} y2={-12} stroke={selectedStroke} strokeWidth={sw}/><path d='M -9 -12 H9 L-9 10 H9' fill='none' stroke={selectedStroke} strokeWidth={sw}/><line x1={0} y1={10} x2={0} y2={26} stroke={selectedStroke} strokeWidth={sw}/><line x1={-9} y1={26} x2={9} y2={26} stroke={selectedStroke} strokeWidth={sw}/><line x1={-6} y1={30} x2={6} y2={30} stroke={selectedStroke} strokeWidth={sw}/></g>;
     if (symbol.type === 'circuit-breaker') {
       const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
       const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
-      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={2}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={2}/><text x={0} y={5} textAnchor='middle' fontSize='14' fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={5} textAnchor='middle' fontSize={symbolStroke(14)} fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
     }
     if (symbol.type === 'disconnector') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
-      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={2.5} fill={selectedStroke}/><circle cx={12} cy={0} r={2.5} fill={selectedStroke}/><line x1={12} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={2}/></g>;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={sw}/><circle cx={-8} cy={0} r={hingeR} fill={selectedStroke}/><circle cx={12} cy={0} r={hingeR} fill={selectedStroke}/><line x1={12} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={sw}/></g>;
     }
     if (symbol.type === 'earth-switch') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
-      return <g><circle cx={0} cy={0} r={2.5} fill={selectedStroke}/><circle cx={0} cy={18} r={2.5} fill={selectedStroke}/><line x1={0} y1={0} x2={closed ? 0 : 13} y2={closed ? 18 : 8} stroke={selectedStroke} strokeWidth={2}/><line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={2}/></g>;
+      return <g><circle cx={0} cy={0} r={hingeR} fill={selectedStroke}/><circle cx={0} cy={18} r={hingeR} fill={selectedStroke}/><line x1={0} y1={0} x2={closed ? 0 : 13} y2={closed ? 18 : 8} stroke={selectedStroke} strokeWidth={sw}/><line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={sw}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={sw}/></g>;
     }
-    return <rect x={-20} y={-14} width={40} height={28} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/>;
+    return <rect x={-20} y={-14} width={40} height={28} fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={sw}/>;
   };
 
   const transformerLabels = (symbol: ElectricalSymbol) => {
@@ -1809,8 +1814,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const selectedVoltageEstimate = selectedFault ? 0 : selectedObject?.voltageLevelKv;
   const selectedBusbars = doc.objects.busbars.filter((busbar) => selected.includes(busbar.id));
   const busbarOnlySelection = selectedBusbars.length > 0 && selected.length === selectedBusbars.length;
-  const equipmentLabelY = (symbol: ElectricalSymbol) => symbolLabelY(symbol, displayMetrics.text);
-  const equipmentLabelStep = textSize(11);
+  const equipmentLabelY = (symbol: ElectricalSymbol) => symbolLabelY(symbol);
+  const equipmentLabelAnchor = (rotation: number) => equipmentLabelTextAnchor(rotation);
 
   const displayScaleControl = (key: keyof DisplayScale, label: string) => {
     const percent = displayScalePercent(displayMetrics[key]);
@@ -1941,19 +1946,17 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {instance.symbol.simulation?.arced && <circle className='mimic-v2-arc-flash' cx={0} cy={0} r={36} fill='none' stroke='var(--md2-warning)' strokeWidth={4} />}
             {instance.phase && (instance.symbol.type === 'source' || instance.symbol.type === 'load' || instance.symbol.type === 'grid-connection' || instance.symbol.type === 'line-end') && <text x={-34} y={4} fontSize={textSize(9)}>{instance.phase}</text>}
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize={textSize(10)} fill='var(--md2-selected)'>3P</text>}
-            {displayMetrics.symbol === 1
-              ? renderSymbolGlyph(instance.symbol)
-              : <g transform={`scale(${displayMetrics.symbol})`}>{renderSymbolGlyph(instance.symbol)}</g>}
+            {renderSymbolGlyph(instance.symbol)}
             {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize={textSize(8)}>{instance.symbol.type.slice(0, 4)}</text>}
-            <text x={0} y={equipmentLabelY(instance.symbol)} textAnchor='middle' fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
-            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={equipmentLabelY(instance.symbol) + equipmentLabelStep} textAnchor='middle' fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol) + equipmentLabelStep})`}>{operationLabel(instance.symbol)}</text>}
+            <text x={0} y={equipmentLabelY(instance.symbol)} textAnchor={equipmentLabelAnchor(instance.symbol.rotation)} fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
+            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={equipmentLabelY(instance.symbol) + EQUIPMENT_LABEL_STEP} textAnchor={equipmentLabelAnchor(instance.symbol.rotation)} fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol) + EQUIPMENT_LABEL_STEP})`}>{operationLabel(instance.symbol)}</text>}
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
             {instance.symbol.terminals.filter((terminal) => !instance.phase || terminal.phaseApplicability.includes(instance.phase)).map((terminal) => {
               const world = terminalWorldPosition(instance.symbol, terminal.id);
               const connected = world ? (terminalByPosition.get(pointKey({ x: Math.round(world.x), y: Math.round(world.y) })) ?? []).length > 1 : false;
-              return <circle key={terminal.id} cx={terminal.offset.x} cy={terminal.offset.y} r={4} fill={busbarConnectedTerminalIds.has(`${instance.symbol.id}:${terminal.id}`) ? 'var(--md2-live)' : connected ? 'var(--md2-selected)' : 'var(--md2-canvas-bg)'} stroke='var(--md2-terminal)' strokeWidth={1.5} />;
+              return <circle key={terminal.id} cx={terminal.offset.x} cy={terminal.offset.y} r={symbolStroke(4)} fill={busbarConnectedTerminalIds.has(`${instance.symbol.id}:${terminal.id}`) ? 'var(--md2-live)' : connected ? 'var(--md2-selected)' : 'var(--md2-canvas-bg)'} stroke='var(--md2-terminal)' strokeWidth={symbolStroke(1.5)} />;
             })}
             {doc.activeView==='single-line' && !hasAllPhases(instance.symbol.phaseApplicability) && <text x={16} y={-16} fontSize='12' fill='var(--md2-warning)'>*</text>}
             <title>{!hasAllPhases(instance.symbol.phaseApplicability) ? `* phase-specific device: ${instance.symbol.phaseApplicability.join(',')}` : 'all phases'}</title>

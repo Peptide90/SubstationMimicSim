@@ -35,8 +35,18 @@ export function symbolLabelBaseY(symbol: ElectricalSymbol): number {
   return 38;
 }
 
-export function symbolLabelY(symbol: ElectricalSymbol, textScale = 1): number {
-  return symbolLabelBaseY(symbol) * textScale;
+export function symbolLabelY(symbol: ElectricalSymbol): number {
+  return symbolLabelBaseY(symbol);
+}
+
+/** Fixed gap between equipment name and operation-state label (pt); not scaled with text size. */
+export const EQUIPMENT_LABEL_STEP = 11;
+
+export function equipmentLabelTextAnchor(rotation: number): 'start' | 'middle' | 'end' {
+  const normalized = ((rotation % 360) + 360) % 360;
+  if (normalized === 90) return 'start';
+  if (normalized === 270) return 'end';
+  return 'middle';
 }
 
 export function displayScalePercent(scale: number): number {
