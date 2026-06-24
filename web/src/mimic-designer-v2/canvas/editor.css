@@ -20,6 +20,7 @@
 .mimic-v2-inspector select, .mimic-v2-tool-group select { background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:5px 6px; }
 .mimic-v2-component-btn { width:100%; display:grid; grid-template-columns:44px 1fr; align-items:center; gap:8px; border:0; background:transparent; color:var(--md2-text); padding:0; text-align:left; cursor:grab; }
 .mimic-v2-component-btn:active { cursor:grabbing; }
+.mimic-v2-component-variant { width:100%; margin-top:6px; }
 .mimic-v2-component-icon { display:inline-grid; place-items:center; width:40px; height:28px; border:1px solid var(--md2-border); border-radius:4px; color:var(--md2-selected); }
 .mimic-v2-component-icon svg { width:36px; height:24px; stroke:currentColor; fill:none; stroke-width:1.8; }
 .mimic-v2-component-icon svg text { fill:currentColor; stroke:none; font-size:8px; font-weight:800; }

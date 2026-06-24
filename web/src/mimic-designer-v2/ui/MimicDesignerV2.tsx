@@ -83,6 +83,37 @@ const busbarRoleOptions: Array<{ value: BusbarRole | ''; label: string }> = [
   { value: 'main-2', label: 'Main bar 2' },
   { value: 'reserve-2', label: 'Reserve bar 2' }
 ];
+
+const componentVariantOptions: Partial<Record<ElectricalSymbol['type'], Array<{ value: string; label: string; unavailableAboveKv?: number; unavailableBelowKv?: number }>>> = {
+  source: [{ value: 'source', label: 'Source' }, { value: 'incomer', label: 'Incomer' }],
+  load: [{ value: 'load', label: 'Load' }, { value: 'feeder', label: 'Feeder' }],
+  vt: [{ value: 'standard', label: 'Standard VT' }, { value: 'cvt', label: 'Capacitive VT (CVT)' }, { value: 'voltage-divider', label: 'Voltage Divider' }],
+  ct: [{ value: 'standard', label: 'Standard CT' }, { value: 'zero-flux', label: 'Zero-flux CT' }],
+  transformer: [
+    { value: 'autotransformer', label: 'Autotransformer' },
+    { value: 'neutral', label: 'Transformer with neutral' },
+    { value: 'tertiary', label: 'Transformer with tertiary' },
+    { value: 'converter', label: 'Converter transformer' },
+    { value: 'phase-shifting', label: 'Phase shifting transformer' }
+  ],
+  'earth-switch': [{ value: 'standard', label: 'Earth Switch' }, { value: 'high-speed', label: 'High Speed Earth Switch' }],
+  'circuit-breaker': [
+    { value: 'gas-insulated', label: 'Gas insulated' },
+    { value: 'vacuum', label: 'Vacuum interrupter', unavailableAboveKv: 66 },
+    { value: 'air-blast', label: 'Air blast', unavailableBelowKv: 132 },
+    { value: 'oil', label: 'Oil', unavailableAboveKv: 132 }
+  ]
+};
+
+const variantLabel = (type: ElectricalSymbol['type'], value?: string) =>
+  componentVariantOptions[type]?.find((option) => option.value === value)?.label ?? value ?? 'Standard';
+
+const isVariantAvailableAtVoltage = (option: { unavailableAboveKv?: number; unavailableBelowKv?: number }, voltageKv?: number) => {
+  if (!voltageKv) return true;
+  if (option.unavailableAboveKv !== undefined && voltageKv > option.unavailableAboveKv) return false;
+  if (option.unavailableBelowKv !== undefined && voltageKv < option.unavailableBelowKv) return false;
+  return true;
+};
 const drawingExportLabelOptions: Array<{ value: DrawingExportLabelMode; label: string }> = [
   { value: 'all', label: 'All equipment labels' },
   { value: 'selected', label: 'Selected equipment only' },
@@ -108,7 +139,7 @@ const isSwitchingDevice = (type: ElectricalSymbol['type']) => type === 'circuit-
 const isGridEndpoint = (type: ElectricalSymbol['type']) => type === 'source' || type === 'grid-connection';
 
 const symbolHitBounds = (type: ElectricalSymbol['type']) => {
-  if (type === 'vt' || type === 'earth-switch') return { x: -24, y: -32, width: 48, height: 72 };
+  if (type === 'vt' || type === 'earth-switch' || type === 'surge-arrester') return { x: -24, y: -32, width: 48, height: 72 };
   if (type === 'transformer') return { x: -44, y: -18, width: 88, height: 36 };
   return { x: -44, y: -22, width: 88, height: 44 };
 };
@@ -155,6 +186,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [selectedPhase, setSelectedPhase] = useState<Phase | undefined>();
   const [selectedVoltage, setSelectedVoltage] = useState<number>(132);
   const [defaultPlacementRotation, setDefaultPlacementRotation] = useState<0 | 90>(0);
+  const [componentVariants, setComponentVariants] = useState<Record<string, string>>({
+    source: 'source',
+    load: 'load',
+    vt: 'standard',
+    ct: 'standard',
+    transformer: 'autotransformer',
+    'earth-switch': 'standard',
+    'circuit-breaker': 'gas-insulated'
+  });
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [draftPath, setDraftPath] = useState<Point[]>([]);
@@ -633,6 +673,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (!template) return null;
     const id = `symbol-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
     const phases = doc.activeView === 'single-line' ? phasesAll : [...template.defaultPhases];
+    const symbolVariant = componentVariants[type] ?? componentVariantOptions[type]?.[0]?.value;
     const terminals = overrideTerminals ?? template.defaultTerminals.map((d, i) => ({
       id: `t-${i}`,
       name: d.name,
@@ -654,7 +695,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       powerFlow: type === 'grid-connection'
         ? { mw: 30, mvar: 10, voltageKv: selectedVoltage, direction: 'forward' }
         : { direction: 'unknown' },
-      engineering: type === 'ct' ? { ctPolarity: 'P1-left' } : type === 'transformer' ? { transformerPolarity: 'hv-left', hasTertiary: false, transformerExpansion: 'single-symbol' } : undefined,
+      symbolVariant,
+      engineering: type === 'ct'
+        ? { ctPolarity: 'P1-left', ctRatio: '1000/1' }
+        : type === 'vt'
+          ? { vtRatio: `${Math.round((selectedVoltage * 1000) / 110)}/1` }
+          : type === 'circuit-breaker'
+            ? { insulationType: variantLabel(type, symbolVariant) }
+            : type === 'transformer'
+              ? { transformerPolarity: 'hv-left', hasTertiary: symbolVariant === 'tertiary', transformerExpansion: 'single-symbol' }
+              : undefined,
       simulation: {},
       operation: {
         sourceOn: isGridEndpoint(type) ? true : undefined,
@@ -663,7 +713,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       },
       viewMetadata: { 'single-line': { visible: true }, 'three-phase': { visible: true } }
     };
-  }, [defaultPlacementRotation, doc.activeView, selectedVoltage]);
+  }, [componentVariants, defaultPlacementRotation, doc.activeView, selectedVoltage]);
 
   const operateState = useMemo(() => deriveOperationState(doc, topology), [doc, topology]);
   const simulationState = useMemo(() => deriveSimulationState(doc, topology, operateState), [doc, topology, operateState]);
@@ -1390,6 +1440,21 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     engineering: { ...symbol.engineering, ctPolarity: symbol.engineering?.ctPolarity === 'P1-right' ? 'P1-left' : 'P1-right' }
   }));
 
+  const setSelectedSymbolVariant = (value: string) => updateSelectedSymbol((symbol) => ({
+    ...symbol,
+    symbolVariant: value,
+    engineering: {
+      ...symbol.engineering,
+      hasTertiary: symbol.type === 'transformer' ? value === 'tertiary' || symbol.engineering?.hasTertiary : symbol.engineering?.hasTertiary,
+      insulationType: symbol.type === 'circuit-breaker' ? variantLabel(symbol.type, value) : symbol.engineering?.insulationType
+    }
+  }));
+
+  const setSelectedEngineeringField = (field: 'ctRatio' | 'vtRatio' | 'insulationType', value: string) => updateSelectedSymbol((symbol) => ({
+    ...symbol,
+    engineering: { ...symbol.engineering, [field]: value }
+  }));
+
   const toggleTransformerPolarity = () => updateSelectedSymbol((symbol) => ({
     ...symbol,
     engineering: { ...symbol.engineering, transformerPolarity: symbol.engineering?.transformerPolarity === 'hv-right' ? 'hv-left' : 'hv-right' }
@@ -1591,9 +1656,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </g>;
     }
     if (symbol.type === 'load' || symbol.type === 'line-end') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-18} y2={0} stroke={selectedStroke} strokeWidth={2}/><polygon points='18,-16 -18,0 18,16' fill='var(--md2-symbol-bg)' stroke={selectedStroke} strokeWidth={2}/><line x1={18} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/></g>;
-    if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>V</text><line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'transformer') return <g><circle cx={-9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={9} cy={0} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'autotransformer' && <path d='M -1 -11 L 1 11' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'neutral' && <path d='M 0 13 V28 M -8 28 H8 M -5 32 H5' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'tertiary' && <path d='M -10 18 H10 L0 32 Z' fill='none' stroke={selectedStroke} strokeWidth={2}/>} {symbol.symbolVariant === 'converter' && <text x={0} y={28} textAnchor='middle' fontSize='9' fill={selectedStroke}>Y/Δ</text>} {symbol.symbolVariant === 'phase-shifting' && <path d='M -22 -18 L 22 18 M 12 16 L22 18 L18 8' stroke={selectedStroke} strokeWidth={2} fill='none'/>}</g>;
+    if (symbol.type === 'ct') return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={2}/><circle cx={-8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/><circle cx={8} cy={0} r={11} fill='none' stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'zero-flux' && <text x={0} y={25} textAnchor='middle' fontSize='8' fill={selectedStroke}>ZF</text>}</g>;
+    if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={2}/>{symbol.symbolVariant === 'voltage-divider' ? <><path d='M -10 -5 H10 M -10 5 H10 M 0 -5 V5' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={22} textAnchor='middle' fontSize='8' fill={selectedStroke}>DIV</text></> : <><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={2}/><text x={0} y={9} textAnchor='middle' fontSize='10' fill={selectedStroke}>{symbol.symbolVariant === 'cvt' ? 'C' : 'V'}</text></>}<line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={2}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={2}/></g>;
+    if (symbol.type === 'surge-arrester') return <g><line x1={0} y1={-28} x2={0} y2={-12} stroke={selectedStroke} strokeWidth={2}/><path d='M -9 -12 H9 L-9 10 H9' fill='none' stroke={selectedStroke} strokeWidth={2}/><line x1={0} y1={10} x2={0} y2={26} stroke={selectedStroke} strokeWidth={2}/><line x1={-9} y1={26} x2={9} y2={26} stroke={selectedStroke} strokeWidth={2}/><line x1={-6} y1={30} x2={6} y2={30} stroke={selectedStroke} strokeWidth={2}/></g>;
     if (symbol.type === 'circuit-breaker') {
       const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
       const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
@@ -1722,6 +1788,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (type === 'circuit-breaker') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='3' y1='14' x2='13' y2='14'/><rect x='13' y='7' width='14' height='14'/><text x='17' y='18'>O</text><line x1='27' y1='14' x2='37' y2='14'/></svg>;
     if (type === 'disconnector') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='3' y1='14' x2='16' y2='14'/><line x1='16' y1='14' x2='28' y2='7'/><circle cx='16' cy='14' r='2'/><circle cx='30' cy='14' r='2'/><line x1='30' y1='14' x2='37' y2='14'/></svg>;
     if (type === 'earth-switch') return <svg viewBox='0 0 40 28' aria-hidden='true'><line x1='4' y1='10' x2='24' y2='10'/><line x1='24' y1='10' x2='24' y2='20'/><line x1='17' y1='20' x2='31' y2='20'/><line x1='19' y1='23' x2='29' y2='23'/><line x1='21' y1='26' x2='27' y2='26'/></svg>;
+    if (type === 'surge-arrester') return <svg viewBox='0 0 40 34' aria-hidden='true'><line x1='20' y1='2' x2='20' y2='8'/><path d='M 12 8 H 28 L 12 22 H 28'/><line x1='20' y1='22' x2='20' y2='28'/><line x1='12' y1='28' x2='28' y2='28'/><line x1='15' y1='31' x2='25' y2='31'/></svg>;
     if (type === 'cable-sealing-end') return <svg viewBox='0 0 40 28' aria-hidden='true'><polygon points='8,4 32,14 8,24'/></svg>;
     return <svg viewBox='0 0 40 28' aria-hidden='true'><rect x='8' y='7' width='24' height='14'/></svg>;
   };
@@ -1784,6 +1851,22 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <span className='mimic-v2-component-icon'>{componentGlyph(s.type)}</span>
             <span>{s.displayName}</span>
           </button>
+          {componentVariantOptions[s.type] && <select
+            className='mimic-v2-component-variant'
+            aria-label={`${s.displayName} default variant`}
+            value={componentVariants[s.type] ?? componentVariantOptions[s.type]?.[0]?.value}
+            onChange={(event) => setComponentVariants((prev) => ({ ...prev, [s.type]: event.target.value }))}
+          >
+            {componentVariantOptions[s.type]?.map((option) => {
+              const available = isVariantAvailableAtVoltage(option, selectedVoltage);
+              const reason = option.unavailableAboveKv !== undefined
+                ? `Unavailable above ${option.unavailableAboveKv}kV`
+                : option.unavailableBelowKv !== undefined
+                  ? `Unavailable below ${option.unavailableBelowKv}kV`
+                  : '';
+              return <option key={option.value} value={option.value} disabled={!available}>{option.label}{available ? '' : ` (${reason})`}</option>;
+            })}
+          </select>}
         </div>
       )}
       <h4 className='mimic-v2-sidebar-subhead'>Examples</h4>
@@ -1916,8 +1999,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {selectedObject && <p>{selectedObject.type.toUpperCase()} / phases {selectedObject.phaseApplicability.join(', ')} / {selectedVoltageEstimate ?? 'n/a'}kV</p>}
           {selectedPath && <p>{selectedPath.type === 'busbar-segment' ? 'BUSBAR' : 'CONDUCTOR'} / phases {selectedPath.phaseApplicability.join(', ')} / {selectedPath.voltageLevelKv ?? 'n/a'}kV</p>}
           {selectedObject?.type === 'source' && <p>Source output: {formatPowerStatistic(selectedObject.powerFlow)}.</p>}
-          {selectedObject?.type === 'ct' && <p>CT indication: primary {selectedDiagnostic?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedDiagnostic?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A / ratio 1000/1 / construction zero-flux core.</p>}
-          {selectedObject?.type === 'vt' && <p>VT indication: {selectedFault ? '0.0kV primary, abnormal reference detected' : `${selectedObject.voltageLevelKv ?? selectedDiagnostic?.aggregate.voltageKv ?? 'n/a'}kV primary, 110V secondary`} / ratio {vtRatioText(selectedObject)} / construction capacitive VT.</p>}
+          {selectedObject?.type === 'ct' && <p>CT indication: primary {selectedDiagnostic?.aggregate.currentA?.toFixed(0) ?? '0'}A / ratio {selectedObject.engineering?.ctRatio ?? '1000/1'} / construction {variantLabel('ct', selectedObject.symbolVariant)}.</p>}
+          {selectedObject?.type === 'vt' && <p>VT indication: {selectedFault ? '0.0kV primary, abnormal reference detected' : `${selectedObject.voltageLevelKv ?? selectedDiagnostic?.aggregate.voltageKv ?? 'n/a'}kV primary, 110V secondary`} / ratio {selectedObject.engineering?.vtRatio ?? vtRatioText(selectedObject)} / construction {variantLabel('vt', selectedObject.symbolVariant)}.</p>}
           {selectedObject?.operation?.switchState && <p>Switch state: {selectedObject.operation.switchState}{selectedObject.operation.tripped ? ' / tripped' : ''}{selectedObject.operation.lockout ? ' / lockout' : ''}</p>}
           {selectedObject?.type === 'circuit-breaker' && selectedObject.operation?.lockout && <button className='mimic-v2-chip' onClick={resetSelectedBreakerTrip}>Reset trip lockout</button>}
           {selectedObject?.simulation?.arced && <p className='mimic-v2-warning-text'>Arc damage detected on this device.</p>}
@@ -2077,8 +2160,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           </select>
         </label>}
         {selectedObject.type === 'grid-connection' && resolveLabelScheme(doc) === 'NG_BP109' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={regenerateLabels}>Regenerate bay labels</button>}
-        {selectedObject.type === 'ct' && <p>CT construction: zero-flux core. Ratio: 1000/1. Primary {selectedSummary?.aggregate.currentA?.toFixed(0) ?? '0'}A / secondary {((selectedSummary?.aggregate.currentA ?? 0) / 1000).toFixed(2)}A.</p>}
-        {selectedObject.type === 'vt' && <p>VT construction: capacitive VT. Ratio: {vtRatioText(selectedObject)}. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
+        {componentVariantOptions[selectedObject.type] && <label>Component variant
+          <select disabled={inspectorEditingDisabled} value={selectedObject.symbolVariant ?? componentVariantOptions[selectedObject.type]?.[0]?.value} onChange={(event) => setSelectedSymbolVariant(event.target.value)}>
+            {componentVariantOptions[selectedObject.type]?.map((option) => <option key={option.value} value={option.value} disabled={!isVariantAvailableAtVoltage(option, selectedObject.voltageLevelKv)}>{option.label}</option>)}
+          </select>
+        </label>}
+        {selectedObject.type === 'ct' && <label>CT ratio <input disabled={inspectorEditingDisabled} value={selectedObject.engineering?.ctRatio ?? '1000/1'} onChange={(event) => setSelectedEngineeringField('ctRatio', event.target.value)} /></label>}
+        {selectedObject.type === 'ct' && <p>CT construction: {variantLabel('ct', selectedObject.symbolVariant)}. Ratio: {selectedObject.engineering?.ctRatio ?? '1000/1'}. Primary {selectedSummary?.aggregate.currentA?.toFixed(0) ?? '0'}A.</p>}
+        {selectedObject.type === 'vt' && <label>VT ratio <input disabled={inspectorEditingDisabled} value={selectedObject.engineering?.vtRatio ?? vtRatioText(selectedObject)} onChange={(event) => setSelectedEngineeringField('vtRatio', event.target.value)} /></label>}
+        {selectedObject.type === 'vt' && <p>VT construction: {variantLabel('vt', selectedObject.symbolVariant)}. Ratio: {selectedObject.engineering?.vtRatio ?? vtRatioText(selectedObject)}. Primary {selectedObject.voltageLevelKv ?? selectedSummary?.aggregate.voltageKv ?? 'n/a'}kV / secondary 110V.</p>}
+        {selectedObject.type === 'circuit-breaker' && <label>Breaker insulation / interrupter <input disabled={inspectorEditingDisabled} value={selectedObject.engineering?.insulationType ?? variantLabel('circuit-breaker', selectedObject.symbolVariant)} onChange={(event) => setSelectedEngineeringField('insulationType', event.target.value)} /></label>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerPolarity}>Swap TX HV/LV</button>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerTertiary}>{selectedObject.engineering?.hasTertiary ? 'Remove tertiary' : 'Add tertiary'}</button>}
         {selectedObject.type === 'transformer' && <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={toggleTransformerExpansion}>{selectedObject.engineering?.transformerExpansion === 'three-phase-expanded' ? 'Single schematic symbol' : 'Three-phase expanded'}</button>}

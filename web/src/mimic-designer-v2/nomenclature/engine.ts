@@ -17,6 +17,7 @@ const TYPE_PREFIX: Record<ElectricalSymbol['type'], string> = {
   'circuit-breaker': 'CB',
   disconnector: 'DS',
   'earth-switch': 'ES',
+  'surge-arrester': 'SA',
   transformer: 'T',
   vt: 'VT',
   ct: 'CT',
@@ -30,6 +31,7 @@ function symbolKind(type: ElectricalSymbol['type']): string {
   if (type === 'circuit-breaker') return 'cb';
   if (type === 'disconnector') return 'ds';
   if (type === 'earth-switch') return 'es';
+  if (type === 'surge-arrester') return 'surge-arrester';
   if (type === 'transformer') return 'tx';
   if (type === 'vt') return 'vt';
   if (type === 'ct') return 'ct';

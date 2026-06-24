@@ -474,6 +474,7 @@ export interface ElectricalSymbol extends BaseDrawingObject {
     | 'circuit-breaker'
     | 'disconnector'
     | 'earth-switch'
+    | 'surge-arrester'
     | 'transformer'
     | 'vt'
     | 'ct'
@@ -488,6 +489,9 @@ export interface ElectricalSymbol extends BaseDrawingObject {
     hasTertiary?: boolean;
     tertiaryVoltageKv?: number;
     transformerExpansion?: 'single-symbol' | 'three-phase-expanded';
+    ctRatio?: string;
+    vtRatio?: string;
+    insulationType?: string;
     bp109?: Bp109LabelHints & { circuitType?: string };
     busbarRole?: BusbarRole;
   };

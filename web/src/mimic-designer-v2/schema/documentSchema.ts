@@ -21,9 +21,12 @@ function defaultOperation(type: ElectricalSymbol['type'], existing: ElectricalSy
 }
 
 function defaultEngineering(symbol: ElectricalSymbol): ElectricalSymbol['engineering'] {
-  if (symbol.type === 'ct') return { ctPolarity: symbol.engineering?.ctPolarity ?? 'P1-left' };
+  if (symbol.type === 'ct') return { ...symbol.engineering, ctPolarity: symbol.engineering?.ctPolarity ?? 'P1-left', ctRatio: symbol.engineering?.ctRatio ?? '1000/1' };
+  if (symbol.type === 'vt') return { ...symbol.engineering, vtRatio: symbol.engineering?.vtRatio ?? `${Math.round(((symbol.voltageLevelKv ?? 132) * 1000) / 110)}/1` };
+  if (symbol.type === 'circuit-breaker') return { ...symbol.engineering, insulationType: symbol.engineering?.insulationType ?? symbol.symbolVariant };
   if (symbol.type === 'transformer') {
     return {
+      ...symbol.engineering,
       transformerPolarity: symbol.engineering?.transformerPolarity ?? 'hv-left',
       hasTertiary: symbol.engineering?.hasTertiary ?? symbol.terminals.some((terminal) => terminal.name === 'tertiary'),
       tertiaryVoltageKv: symbol.engineering?.tertiaryVoltageKv,

@@ -12,9 +12,12 @@ export interface SymbolTemplate {
 
 export const SYMBOL_LIBRARY: SymbolTemplate[] = [
   { type: 'grid-connection', displayName: 'Grid Connection', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'grid', x: SWITCH_TERMINAL_SPAN, y: 0 }] },
+  { type: 'source', displayName: 'Source / Incomer', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'out', x: SWITCH_TERMINAL_SPAN, y: 0 }] },
+  { type: 'load', displayName: 'Load / Feeder', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: -SWITCH_TERMINAL_SPAN, y: 0 }] },
   { type: 'circuit-breaker', displayName: 'Circuit Breaker', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: -SWITCH_TERMINAL_SPAN, y: 0 }, { name: 'out', x: SWITCH_TERMINAL_SPAN, y: 0 }] },
   { type: 'disconnector', displayName: 'Disconnector', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: -SWITCH_TERMINAL_SPAN, y: 0 }, { name: 'out', x: SWITCH_TERMINAL_SPAN, y: 0 }] },
   { type: 'earth-switch', displayName: 'Earth Switch', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: 0, y: 0 }] },
+  { type: 'surge-arrester', displayName: 'Surge Arrester', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'line', x: 0, y: -20 }] },
   { type: 'transformer', displayName: 'Transformer', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'hv', x: -40, y: 0 }, { name: 'lv', x: 40, y: 0 }] },
   { type: 'vt', displayName: 'Voltage Transformer (VT)', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'tap', x: 0, y: 20 }] },
   { type: 'ct', displayName: 'Current Transformer (CT)', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: -20, y: 0 }, { name: 'out', x: 20, y: 0 }] },
@@ -24,7 +27,4 @@ export const SYMBOL_LIBRARY: SymbolTemplate[] = [
 ];
 
 /** Teaching shortcuts kept out of the main palette. */
-export const POWER_EXAMPLE_SYMBOLS: SymbolTemplate[] = [
-  { type: 'source', displayName: 'Source / Incomer', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'out', x: 40, y: 0 }] },
-  { type: 'load', displayName: 'Load / Feeder', defaultPhases: ['A', 'B', 'C'], defaultTerminals: [{ name: 'in', x: -40, y: 0 }] }
-];
+export const POWER_EXAMPLE_SYMBOLS: SymbolTemplate[] = [];
