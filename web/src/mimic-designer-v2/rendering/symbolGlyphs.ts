@@ -8,7 +8,7 @@ import {
   type DisplayScale,
   equipmentLabelTextAnchor,
   scaledSize,
-  symbolLabelY
+  equipmentLabelOffsetY
 } from './displayMetrics';
 
 const stroke = '#0f172a';
@@ -55,12 +55,12 @@ export function symbolGlyphSvg(symbol: ElectricalSymbol, symbolScale = 1): strin
   return `<rect x="-20" y="-14" width="40" height="28" fill="${bg}" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
 }
 
-export function symbolLabelOffset(symbol: ElectricalSymbol): Point {
-  return rotatePoint({ x: 0, y: symbolLabelY(symbol) }, symbol.rotation);
+export function symbolLabelOffset(symbol: ElectricalSymbol, textScale = DEFAULT_DISPLAY_SCALE.text): Point {
+  return rotatePoint({ x: 0, y: equipmentLabelOffsetY(symbol, symbol.rotation, textScale) }, symbol.rotation);
 }
 
-export function symbolLabelWorldPosition(symbol: ElectricalSymbol, position: Point): Point {
-  const offset = symbolLabelOffset(symbol);
+export function symbolLabelWorldPosition(symbol: ElectricalSymbol, position: Point, textScale = DEFAULT_DISPLAY_SCALE.text): Point {
+  const offset = symbolLabelOffset(symbol, textScale);
   return { x: position.x + offset.x, y: position.y + offset.y };
 }
 
@@ -77,7 +77,7 @@ export function symbolLabelSvgWorld(
   display: DisplayScale = DEFAULT_DISPLAY_SCALE
 ): string {
   if (!text) return '';
-  const anchor = symbolLabelWorldPosition(symbol, position);
+  const anchor = symbolLabelWorldPosition(symbol, position, display.text);
   return `<text ${equipmentLabelSvgAttributes(symbol, anchor, scaledSize(8, display.text))}>${escapeXml(text)}</text>`;
 }
 
@@ -89,7 +89,7 @@ export function operationLabelSvgWorld(symbol: ElectricalSymbol, position: Point
     state = symbol.operation?.sourceOn === false ? 'Off' : 'On';
   }
   if (!state) return '';
-  const base = symbolLabelWorldPosition(symbol, position);
+  const base = symbolLabelWorldPosition(symbol, position, display.text);
   const anchor = rotatePoint({ x: 0, y: EQUIPMENT_LABEL_STEP }, symbol.rotation);
   const operationAnchor = { x: base.x + anchor.x, y: base.y + anchor.y };
   return `<text ${equipmentLabelSvgAttributes(symbol, operationAnchor, scaledSize(8, display.text))}>${state}</text>`;

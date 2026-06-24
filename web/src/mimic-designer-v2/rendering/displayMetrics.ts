@@ -39,13 +39,37 @@ export function symbolLabelY(symbol: ElectricalSymbol): number {
   return symbolLabelBaseY(symbol);
 }
 
+/** Base equipment-label font size (pt) before display text scaling. */
+export const EQUIPMENT_LABEL_BASE_FONT = 8;
+
 /** Fixed gap between equipment name and operation-state label (pt); not scaled with text size. */
 export const EQUIPMENT_LABEL_STEP = 11;
 
+export function isSideEquipmentLabel(rotation: number): boolean {
+  const normalized = ((rotation % 360) + 360) % 360;
+  return normalized === 90 || normalized === 270;
+}
+
+/** Extra label offset on side-placed equipment as font size grows. */
+export function equipmentLabelSideTextPadding(textScale: number): number {
+  return Math.max(0, scaledSize(EQUIPMENT_LABEL_BASE_FONT, textScale) - EQUIPMENT_LABEL_BASE_FONT);
+}
+
+export function equipmentLabelOffsetY(symbol: ElectricalSymbol, rotation: number, textScale = 1): number {
+  const side = isSideEquipmentLabel(rotation);
+  let base = symbolLabelBaseY(symbol);
+  if (side && (symbol.type === 'earth-switch' || symbol.type === 'surge-arrester' || symbol.type === 'vt')) {
+    base = Math.max(base, 58);
+  }
+  if (!side) return base;
+  return base + equipmentLabelSideTextPadding(textScale);
+}
+
 export function equipmentLabelTextAnchor(rotation: number): 'start' | 'middle' | 'end' {
   const normalized = ((rotation % 360) + 360) % 360;
-  if (normalized === 90) return 'start';
-  if (normalized === 270) return 'end';
+  // Rotation 90 places the label to the left: pin the text edge nearest the symbol.
+  if (normalized === 90) return 'end';
+  if (normalized === 270) return 'start';
   return 'middle';
 }
 

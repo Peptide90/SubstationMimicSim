@@ -10,10 +10,10 @@ import {
   displayScaleFromPercent,
   displayScalePercent,
   EQUIPMENT_LABEL_STEP,
+  equipmentLabelOffsetY,
   equipmentLabelTextAnchor,
   resolveDisplayScale,
   scaledSize,
-  symbolLabelY,
   type DisplayScale
 } from '../rendering/displayMetrics';
 import { loadDocument } from '../storage/documentStore';
@@ -1814,7 +1814,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const selectedVoltageEstimate = selectedFault ? 0 : selectedObject?.voltageLevelKv;
   const selectedBusbars = doc.objects.busbars.filter((busbar) => selected.includes(busbar.id));
   const busbarOnlySelection = selectedBusbars.length > 0 && selected.length === selectedBusbars.length;
-  const equipmentLabelY = (symbol: ElectricalSymbol) => symbolLabelY(symbol);
+  const equipmentLabelY = (symbol: ElectricalSymbol) => equipmentLabelOffsetY(symbol, symbol.rotation, displayMetrics.text);
   const equipmentLabelAnchor = (rotation: number) => equipmentLabelTextAnchor(rotation);
 
   const displayScaleControl = (key: keyof DisplayScale, label: string) => {
@@ -1956,7 +1956,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {instance.symbol.terminals.filter((terminal) => !instance.phase || terminal.phaseApplicability.includes(instance.phase)).map((terminal) => {
               const world = terminalWorldPosition(instance.symbol, terminal.id);
               const connected = world ? (terminalByPosition.get(pointKey({ x: Math.round(world.x), y: Math.round(world.y) })) ?? []).length > 1 : false;
-              return <circle key={terminal.id} cx={terminal.offset.x} cy={terminal.offset.y} r={symbolStroke(4)} fill={busbarConnectedTerminalIds.has(`${instance.symbol.id}:${terminal.id}`) ? 'var(--md2-live)' : connected ? 'var(--md2-selected)' : 'var(--md2-canvas-bg)'} stroke='var(--md2-terminal)' strokeWidth={symbolStroke(1.5)} />;
+              return <circle key={terminal.id} cx={terminal.offset.x} cy={terminal.offset.y} r={symbolStroke(4)} fill={busbarConnectedTerminalIds.has(`${instance.symbol.id}:${terminal.id}`) ? 'var(--md2-busbar)' : connected ? 'var(--md2-selected)' : 'var(--md2-canvas-bg)'} stroke={busbarConnectedTerminalIds.has(`${instance.symbol.id}:${terminal.id}`) ? 'var(--md2-busbar)' : 'var(--md2-terminal)'} strokeWidth={symbolStroke(1.5)} />;
             })}
             {doc.activeView==='single-line' && !hasAllPhases(instance.symbol.phaseApplicability) && <text x={16} y={-16} fontSize='12' fill='var(--md2-warning)'>*</text>}
             <title>{!hasAllPhases(instance.symbol.phaseApplicability) ? `* phase-specific device: ${instance.symbol.phaseApplicability.join(',')}` : 'all phases'}</title>
