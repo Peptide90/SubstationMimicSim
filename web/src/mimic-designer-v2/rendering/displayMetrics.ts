@@ -30,7 +30,7 @@ export function scaledSize(base: number, scale: number): number {
 }
 
 export function symbolLabelBaseY(symbol: ElectricalSymbol): number {
-  if (symbol.type === 'earth-switch' || symbol.type === 'vt') return 52;
+  if (symbol.type === 'earth-switch' || symbol.type === 'vt' || symbol.type === 'surge-arrester') return 52;
   if (symbol.type === 'ct') return 44;
   return 38;
 }
