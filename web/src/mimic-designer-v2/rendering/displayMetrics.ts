@@ -65,6 +65,10 @@ export function equipmentLabelOffsetY(symbol: ElectricalSymbol, rotation: number
   return base + equipmentLabelSideTextPadding(textScale);
 }
 
+export function equipmentLabelRowStep(textScale: number): number {
+  return scaledSize(EQUIPMENT_LABEL_BASE_FONT, textScale) * 1.35;
+}
+
 export function equipmentLabelTextAnchor(rotation: number): 'start' | 'middle' | 'end' {
   const normalized = ((rotation % 360) + 360) % 360;
   // Rotation 90 places the label to the left: pin the text edge nearest the symbol.

@@ -5,12 +5,21 @@ import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
 import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
-import { downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
+import { downloadAnimatedSequenceExport, downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
+import {
+  addStep,
+  createSequence,
+  deleteStep,
+  duplicateStep,
+  moveStep,
+  totalDuration,
+  type AnimationSequence
+} from '../animation/sequence';
 import {
   displayScaleFromPercent,
   displayScalePercent,
-  EQUIPMENT_LABEL_STEP,
   equipmentLabelOffsetY,
+  equipmentLabelRowStep,
   equipmentLabelTextAnchor,
   resolveDisplayScale,
   scaledSize,
@@ -228,6 +237,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
   const [escapeMenuOpen, setEscapeMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [sequenceModalOpen, setSequenceModalOpen] = useState(false);
+  const [activeSequence, setActiveSequence] = useState<AnimationSequence>(() => createSequence());
   const [exportFormat, setExportFormat] = useState<DrawingExportFormat>('svg');
   const [exportLabelMode, setExportLabelMode] = useState<DrawingExportLabelMode>('all');
   const [scenarioOutcome, setScenarioOutcome] = useState<ScenarioOutcome>(null);
@@ -1037,6 +1048,25 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setExportModalOpen(true);
   };
 
+  const openSequenceModal = () => {
+    setActiveSequence((prev) => (prev.steps.length ? prev : createSequence(`${doc.name} sequence`)));
+    setSequenceModalOpen(true);
+  };
+
+  const recordOperationEventsAsSteps = () => {
+    let sequence = createSequence(`${doc.name} sequence`);
+    doc.operationEvents.slice(-24).forEach((event) => {
+      sequence = addStep(sequence, {
+        name: event.message,
+        actionType: 'wait',
+        targetId: event.targetObjectId ?? null,
+        eventDurationSeconds: 1,
+        delayAfterSeconds: 0.25
+      });
+    });
+    setActiveSequence(sequence);
+  };
+
   const onSymbolMouseDown = (event: React.MouseEvent<SVGGElement>, symbol: ElectricalSymbol, phase?: Phase) => {
     event.stopPropagation();
     setSelectedPhase(phase);
@@ -1553,6 +1583,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           setExportModalOpen(false);
           return;
         }
+        if (sequenceModalOpen) {
+          event.preventDefault();
+          setSequenceModalOpen(false);
+          return;
+        }
         if (escapeMenuOpen) {
           event.preventDefault();
           setEscapeMenuOpen(false);
@@ -1598,7 +1633,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [commit, deleteDisabled, doc, escapeMenuOpen, exportModalOpen, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
+  }, [commit, deleteDisabled, doc, escapeMenuOpen, exportModalOpen, sequenceModalOpen, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
 
   useEffect(() => {
     if (!learningVisibility.showThreePhase && doc.activeView === 'three-phase') setDoc((prev) => ({ ...prev, activeView: 'single-line' }));
@@ -1816,6 +1851,22 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const busbarOnlySelection = selectedBusbars.length > 0 && selected.length === selectedBusbars.length;
   const equipmentLabelY = (symbol: ElectricalSymbol) => equipmentLabelOffsetY(symbol, symbol.rotation, displayMetrics.text);
   const equipmentLabelAnchor = (rotation: number) => equipmentLabelTextAnchor(rotation);
+  const equipmentLabelLineStep = equipmentLabelRowStep(displayMetrics.text);
+
+  const renderEquipmentLabels = (symbol: ElectricalSymbol) => {
+    const labelY = equipmentLabelY(symbol);
+    const textAnchor = equipmentLabelAnchor(symbol.rotation);
+    const fontSize = textSize(8);
+    const name = symbol.label?.text ?? '';
+    const operation = mode === 'operate' ? operationLabel(symbol) : null;
+    if (!name && !operation) return null;
+    return <g transform={`translate(0 ${labelY})`}>
+      <g transform={symbol.rotation ? `rotate(${-symbol.rotation})` : undefined}>
+        {name && <text x={0} y={0} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize}>{name}</text>}
+        {operation && <text x={0} y={equipmentLabelLineStep} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize}>{operation}</text>}
+      </g>
+    </g>;
+  };
 
   const displayScaleControl = (key: keyof DisplayScale, label: string) => {
     const percent = displayScalePercent(displayMetrics[key]);
@@ -1948,8 +1999,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {instance.symbol.engineering?.transformerExpansion === 'three-phase-expanded' && doc.activeView === 'single-line' && <text x={18} y={-18} fontSize={textSize(10)} fill='var(--md2-selected)'>3P</text>}
             {renderSymbolGlyph(instance.symbol)}
             {renderMode === 'nodes' && <text x={0} y={4} textAnchor='middle' fontSize={textSize(8)}>{instance.symbol.type.slice(0, 4)}</text>}
-            <text x={0} y={equipmentLabelY(instance.symbol)} textAnchor={equipmentLabelAnchor(instance.symbol.rotation)} fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol)})`}>{instance.symbol.label?.text ?? ''}</text>
-            {mode === 'operate' && operationLabel(instance.symbol) && <text x={0} y={equipmentLabelY(instance.symbol) + EQUIPMENT_LABEL_STEP} textAnchor={equipmentLabelAnchor(instance.symbol.rotation)} fontSize={textSize(8)} transform={`rotate(${-instance.symbol.rotation} 0 ${equipmentLabelY(instance.symbol) + EQUIPMENT_LABEL_STEP})`}>{operationLabel(instance.symbol)}</text>}
+            {renderEquipmentLabels(instance.symbol)}
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
@@ -2249,6 +2299,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             <button className='mimic-v2-btn' onClick={() => { saveCurrentDrawing(); setEscapeMenuOpen(false); }}>Save</button>
             <button className='mimic-v2-btn' onClick={() => { saveCurrentDrawingAs(); setEscapeMenuOpen(false); }}>Save as</button>
             <button className='mimic-v2-btn' onClick={() => { openExportModal(); setEscapeMenuOpen(false); }}>Print / export</button>
+            <button className='mimic-v2-btn' onClick={() => { openSequenceModal(); setEscapeMenuOpen(false); }}>Animated sequence</button>
             {onRequestMenu && <button className='mimic-v2-btn' onClick={() => { setEscapeMenuOpen(false); onRequestMenu(); }}>Main menu</button>}
           </div>
         </section>
@@ -2292,10 +2343,56 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {drawingExportFormatOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <p className='mimic-v2-warning-text' style={{ marginTop: 10 }}>SVG preserves vector geometry and text for frame-by-frame animation. PNG exports use the current light/dark theme.</p>
+        <p className='mimic-v2-warning-text' style={{ marginTop: 10 }}>SVG exports use the current energisation state, live busbar colouring, and animated flow lines. PNG exports use the current light/dark theme.</p>
         <div className='mimic-v2-scenario-menu-actions'>
           <button className='mimic-v2-btn active' onClick={() => void runDrawingExport()}>Download export</button>
           <button className='mimic-v2-btn' onClick={() => setExportModalOpen(false)}>Cancel</button>
+        </div>
+      </div>
+    </div>}
+    {sequenceModalOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setSequenceModalOpen(false)}>
+      <div className='mimic-v2-launch-modal mimic-v2-scenario-menu' onMouseDown={(event) => event.stopPropagation()}>
+        <header className='mimic-v2-library-header'>
+          <div>
+            <h2>Animated sequence</h2>
+            <p>Build a step list and export an SVG with energisation flow animation and event captions.</p>
+          </div>
+        </header>
+        <label className='mimic-v2-scenario-menu-setting'>
+          Sequence name
+          <input value={activeSequence.name} onChange={(event) => setActiveSequence((prev) => ({ ...prev, name: event.target.value }))} />
+        </label>
+        <label className='mimic-v2-scenario-menu-setting'>
+          <span>Show event captions in export</span>
+          <input type='checkbox' checked={activeSequence.settings.showEventCaptions} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, showEventCaptions: event.target.checked } }))} />
+        </label>
+        <label className='mimic-v2-scenario-menu-setting'>
+          <span>Animate live busbar flow</span>
+          <input type='checkbox' checked={activeSequence.settings.trimLineEnergisation} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, trimLineEnergisation: event.target.checked } }))} />
+        </label>
+        <p className='mimic-v2-escape-menu-hint'>Duration: {totalDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s)</p>
+        <div className='mimic-v2-scenario-menu-actions'>
+          <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => addStep(prev, { name: 'Wait', actionType: 'wait' }))}>Add wait step</button>
+          <button className='mimic-v2-btn' onClick={recordOperationEventsAsSteps}>Import from event log</button>
+        </div>
+        <div className='mimic-v2-manager-card' style={{ maxHeight: 220, overflow: 'auto' }}>
+          {activeSequence.steps.length === 0 && <p>No steps yet. Add steps or import recent operations from the event log.</p>}
+          {activeSequence.steps.map((step, index) => <div key={step.id} className='mimic-v2-event-row'>
+            <strong>{index + 1}. {step.name}</strong>
+            <div className='mimic-v2-scenario-menu-actions' style={{ marginTop: 6 }}>
+              <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => moveStep(prev, step.id, -1))}>Up</button>
+              <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => moveStep(prev, step.id, 1))}>Down</button>
+              <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => duplicateStep(prev, step.id))}>Copy</button>
+              <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => deleteStep(prev, step.id))}>Delete</button>
+            </div>
+          </div>)}
+        </div>
+        <div className='mimic-v2-scenario-menu-actions'>
+          <button className='mimic-v2-btn active' onClick={() => {
+            downloadAnimatedSequenceExport(doc, activeSequence, { theme, labelMode: exportLabelMode, selectedObjectIds: selected, displayScale: displayMetrics });
+            setSequenceModalOpen(false);
+          }}>Download animated SVG</button>
+          <button className='mimic-v2-btn' onClick={() => setSequenceModalOpen(false)}>Close</button>
         </div>
       </div>
     </div>}
