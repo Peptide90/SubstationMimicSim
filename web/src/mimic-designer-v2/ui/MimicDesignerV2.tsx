@@ -31,6 +31,7 @@ import { deriveOperationState, operateDevice } from '../topology/operation';
 import { computePowerFlow, MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../schema/documentSchema';
 import { addFault, clearFault, createFault, expireTransientFaults } from '../faults/faults';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from '../rendering/phaseExpansion';
+import { busbarJoinMarkers } from '../rendering/busbarJoinMarkers';
 import { deriveSimulationState, mergePhaseValues } from '../simulation/powerFlow';
 import { powerEndpointLabel } from '../simulation/powerRoles';
 import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTemplateIntoDrawing, type DrawingTemplate } from '../templates';
@@ -252,6 +253,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const panRef = useRef<Point | null>(null);
 
   const topology = useMemo(() => extractTopology(doc), [doc]);
+  const busbarJoinPoints = useMemo(() => busbarJoinMarkers(topology), [topology]);
   const renderedSymbols = useMemo(() => renderSymbolsForView(doc), [doc]);
   const renderedConductors = useMemo(() => renderConductorsForView(doc), [doc]);
   const renderedBusbars = useMemo(() => renderBusbarsForView(doc), [doc]);
@@ -1983,6 +1985,18 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {instance.phase && <text x={instance.vertices[0].x - 18} y={instance.vertices[0].y + 4} fontSize={textSize(9)}>{instance.phase}</text>}
             {overlayMode === 'power' && flowForObjectPhase(instance.canonicalId, instance.phase)?.mw !== undefined && <text x={instance.vertices[Math.floor(instance.vertices.length / 2)].x} y={instance.vertices[Math.floor(instance.vertices.length / 2)].y - 8} fontSize={textSize(8)}>{flowForObjectPhase(instance.canonicalId, instance.phase)?.mw?.toFixed(1)}MW {flowForObjectPhase(instance.canonicalId, instance.phase)?.direction === 'reverse' ? '<' : '>'}</text>}
           </g>)}
+          {busbarJoinPoints.map((point, index) => (
+            <circle
+              key={`busbar-join-${index}`}
+              cx={point.x}
+              cy={point.y}
+              r={Math.max(3, busStroke(2.75))}
+              fill='var(--md2-busbar)'
+              stroke='var(--md2-canvas-bg)'
+              strokeWidth={Math.max(1, busStroke(0.9))}
+              pointerEvents='none'
+            />
+          ))}
           {renderedConductors.map((instance) => <g key={instance.id}>
             <polyline points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='transparent' strokeWidth={16} onMouseDown={(event) => onPathMouseDown(event, instance.canonicalId, instance.phase)} />
             {focusObjectIds.has(instance.canonicalId) && <polyline className='mimic-v2-focus-stroke' points={instance.vertices.map((v) => `${v.x},${v.y}`).join(' ')} fill='none' stroke='var(--md2-selected)' strokeWidth={12} strokeLinecap='round' pointerEvents='none' />}

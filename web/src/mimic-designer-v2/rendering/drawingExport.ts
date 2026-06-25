@@ -4,6 +4,7 @@ import { totalDuration } from '../animation/sequence';
 import { extractTopology } from '../topology/extractTopology';
 import { deriveOperationState } from '../topology/operation';
 import { resolveDisplayScale, scaledSize, type DisplayScale } from './displayMetrics';
+import { busbarJoinMarkers } from './busbarJoinMarkers';
 import { exportLineStateForPath } from './exportLineState';
 import { EXPORT_FONT_FAMILY, exportLineStroke, exportThemeColors } from './exportTheme';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from './phaseExpansion';
@@ -105,6 +106,9 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   const bounds = drawingBounds(doc);
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
+  const joinMarkers = busbarJoinMarkers(topology)
+    .map((point) => `<circle cx="${point.x}" cy="${point.y}" r="${Math.max(3, scaledSize(2.75, display.busbar))}" fill="${colors.busbar}" stroke="${colors.background}" stroke-width="${Math.max(1, scaledSize(0.9, display.busbar))}"/>`)
+    .join('');
 
   const busbars = renderBusbarsForView(doc).map((instance) =>
     busbarSvg(instance, colors, display, operateState, topology, animateEnergization)
@@ -137,7 +141,7 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${width} ${height}" width="${Math.round(width)}" height="${Math.round(height)}">
   <rect x="${bounds.minX}" y="${bounds.minY}" width="${width}" height="${height}" fill="${colors.background}"/>
-  <g font-family="${EXPORT_FONT_FAMILY}">${busbars}${conductors}${symbols}${labels}${annotations}</g>
+  <g font-family="${EXPORT_FONT_FAMILY}">${busbars}${joinMarkers}${conductors}${symbols}${labels}${annotations}</g>
 </svg>`;
 }
 
