@@ -16,6 +16,7 @@
   --md2-selected: #0078d4;
   --md2-selected-fill: rgba(0, 120, 212, 0.14);
   --md2-live: #20a05b;
+  --md2-open: #dc2626;
   --md2-earth: #b7791f;
   --md2-deenergised: #7b8794;
   --md2-warning: #cf4d2c;
@@ -44,6 +45,7 @@
   --md2-selected: #60a5fa;
   --md2-selected-fill: rgba(96, 165, 250, 0.18);
   --md2-live: #4ade80;
+  --md2-open: #f87171;
   --md2-earth: #f59e0b;
   --md2-deenergised: #94a3b8;
   --md2-warning: #fb7185;

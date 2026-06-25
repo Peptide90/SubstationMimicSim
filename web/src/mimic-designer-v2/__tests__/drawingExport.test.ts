@@ -44,11 +44,41 @@ describe('drawingExport', () => {
     expect(svg).toContain('X135');
   });
 
-  it('builds animated sequence SVG with captions and energisation animation', () => {
-    const sequence = addStep(createSequence('Test sequence'), { name: 'Close breaker', actionType: 'wait' });
+  it('renders energised paths as a separate overlay layer', () => {
+    const svg = buildDrawingExportSvg(doc, { theme: 'light', labelMode: 'all', showEnergizedPaths: true });
+    expect(svg).toContain('id="energized-overlay"');
+    expect(svg).toContain('id="drawing-base"');
+  });
+
+  it('builds animated sequence SVG with timed frames and event log', () => {
+    const sequence = addStep(createSequence('Test sequence'), {
+      name: 'circuit breaker - X135 - closed',
+      actionType: 'close-circuit-breaker',
+      targetId: 'cb-1'
+    });
     const svg = buildAnimatedSequenceExportSvg(doc, sequence, { theme: 'light', labelMode: 'all' });
     expect(svg).toContain('Animated Sequence');
-    expect(svg).toContain('Close breaker');
-    expect(svg).toContain('<animate attributeName="opacity"');
+    expect(svg).toContain('id="sequence-frames"');
+    expect(svg).toContain('id="sequence-event-log"');
+    expect(svg).toContain('[0.0s]');
+    expect(svg).toContain('circuit breaker - X135 - closed');
+    expect(svg).toContain('<set attributeName="opacity"');
+  });
+
+  it('supports many sequence steps without stacked caption overlap', () => {
+    let sequence = createSequence('Long sequence');
+    for (let index = 0; index < 16; index += 1) {
+      sequence = addStep(sequence, {
+        name: `disconnector - X10${index} - closed`,
+        actionType: 'wait',
+        eventDurationSeconds: 0.5,
+        delayAfterSeconds: 0.1
+      });
+    }
+    const svg = buildAnimatedSequenceExportSvg(doc, sequence, { theme: 'light', labelMode: 'none' });
+    expect(svg).toContain('steps: 16');
+    expect((svg.match(/id="sequence-event-log"/g) ?? []).length).toBe(1);
+    expect((svg.match(/\[0\.0s\]/g) ?? []).length).toBe(1);
+    expect((svg.match(/\[9\.0s\]/g) ?? []).length).toBe(1);
   });
 });

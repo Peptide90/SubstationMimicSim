@@ -7,6 +7,7 @@ export interface ExportThemeColors {
   text: string;
   mutedText: string;
   live: string;
+  open: string;
   earth: string;
   warning: string;
   symbolStroke: string;
@@ -22,6 +23,7 @@ export function exportThemeColors(theme: 'light' | 'dark'): ExportThemeColors {
       text: '#f8fafc',
       mutedText: '#94a3b8',
       live: '#4ade80',
+      open: '#f87171',
       earth: '#f59e0b',
       warning: '#fb7185',
       symbolStroke: '#f8fafc',
@@ -35,6 +37,7 @@ export function exportThemeColors(theme: 'light' | 'dark'): ExportThemeColors {
     text: '#0f172a',
     mutedText: '#64748b',
     live: '#20a05b',
+    open: '#dc2626',
     earth: '#b7791f',
     warning: '#cf4d2c',
     symbolStroke: '#0f172a',

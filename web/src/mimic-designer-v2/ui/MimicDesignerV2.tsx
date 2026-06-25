@@ -6,6 +6,7 @@ import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../../app/labeling/schemes';
 import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
 import { downloadAnimatedSequenceExport, downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
+import { resolveSwitchgearVisualState } from '../rendering/switchgearVisualState';
 import {
   addStep,
   createSequence,
@@ -13,7 +14,9 @@ import {
   duplicateStep,
   moveStep,
   totalDuration,
-  type AnimationSequence
+  updateStep,
+  type AnimationSequence,
+  type SequenceActionType
 } from '../animation/sequence';
 import {
   displayScaleFromPercent,
@@ -242,6 +245,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [activeSequence, setActiveSequence] = useState<AnimationSequence>(() => createSequence());
   const [exportFormat, setExportFormat] = useState<DrawingExportFormat>('svg');
   const [exportLabelMode, setExportLabelMode] = useState<DrawingExportLabelMode>('all');
+  const [exportShowEnergizedPaths, setExportShowEnergizedPaths] = useState(true);
+  const [exportAnimateEnergizedPaths, setExportAnimateEnergizedPaths] = useState(false);
   const [scenarioOutcome, setScenarioOutcome] = useState<ScenarioOutcome>(null);
   const [scenarioLaunchPackage, setScenarioLaunchPackage] = useState<ScenarioPackage | null>(() => initialPlatformView === 'challenge' || initialPlatformView === 'lesson' ? builtInScenarioPackages.find((pkg) => pkg.scenario.mode === initialPlatformView) ?? builtInScenarioPackages[0] ?? null : null);
   const [scenarioCatalogueOpen, setScenarioCatalogueOpen] = useState(initialPlatformView === 'scenarios' || initialPlatformView === 'challenge' || initialPlatformView === 'lesson');
@@ -1040,7 +1045,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       theme,
       labelMode: exportLabelMode,
       selectedObjectIds: selected,
-      displayScale: displayMetrics
+      displayScale: displayMetrics,
+      showEnergizedPaths: exportFormat === 'svg' ? exportShowEnergizedPaths : false,
+      animateEnergizedPaths: exportFormat === 'svg' ? exportAnimateEnergizedPaths : false
     });
     setExportModalOpen(false);
   };
@@ -1074,15 +1081,32 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     return `${typeLabel} - ${nameLabel} - ${eventActionLabel(event)}`;
   };
 
+  const sequenceActionTypeFromEvent = (event: OperationEvent, symbol?: ElectricalSymbol): SequenceActionType => {
+    const action = eventActionLabel(event);
+    const type = symbol?.type;
+    if (action === 'closed') {
+      if (type === 'circuit-breaker') return 'close-circuit-breaker';
+      if (type === 'disconnector') return 'close-disconnector';
+      if (type === 'earth-switch') return 'close-earth-switch';
+    }
+    if (action === 'open') {
+      if (type === 'circuit-breaker') return 'open-circuit-breaker';
+      if (type === 'disconnector') return 'open-disconnector';
+      if (type === 'earth-switch') return 'open-earth-switch';
+    }
+    return 'operate-switchgear';
+  };
+
   const recordOperationEventsAsSteps = () => {
     let sequence = createSequence(`${doc.name} sequence`);
     doc.operationEvents.slice(-24).forEach((event) => {
+      const symbol = event.targetObjectId ? doc.objects.symbols.find((item) => item.id === event.targetObjectId) : undefined;
       sequence = addStep(sequence, {
         name: sequenceStepNameFromEvent(event),
-        actionType: 'wait',
+        actionType: sequenceActionTypeFromEvent(event, symbol),
         targetId: event.targetObjectId ?? null,
-        eventDurationSeconds: 1,
-        delayAfterSeconds: 0.25
+        eventDurationSeconds: sequence.settings.defaultEventDuration,
+        delayAfterSeconds: sequence.settings.defaultDelayAfter
       });
     });
     setActiveSequence(sequence);
@@ -1722,13 +1746,29 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (symbol.type === 'vt') return <g><line x1={0} y1={-26} x2={0} y2={-8} stroke={selectedStroke} strokeWidth={sw}/>{symbol.symbolVariant === 'voltage-divider' ? <><path d='M -10 -5 H10 M -10 5 H10 M 0 -5 V5' stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={22} textAnchor='middle' fontSize={symbolStroke(8)} fill={selectedStroke}>DIV</text></> : <><circle cx={0} cy={5} r={13} fill='none' stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={9} textAnchor='middle' fontSize={symbolStroke(10)} fill={selectedStroke}>{symbol.symbolVariant === 'cvt' ? 'C' : 'V'}</text></>}<line x1={0} y1={18} x2={0} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-9} y1={28} x2={9} y2={28} stroke={selectedStroke} strokeWidth={sw}/><line x1={-6} y1={32} x2={6} y2={32} stroke={selectedStroke} strokeWidth={sw}/><line x1={-3} y1={36} x2={3} y2={36} stroke={selectedStroke} strokeWidth={sw}/></g>;
     if (symbol.type === 'surge-arrester') return <g><line x1={0} y1={-28} x2={0} y2={-12} stroke={selectedStroke} strokeWidth={sw}/><path d='M -9 -12 H9 L-9 10 H9' fill='none' stroke={selectedStroke} strokeWidth={sw}/><line x1={0} y1={10} x2={0} y2={26} stroke={selectedStroke} strokeWidth={sw}/><line x1={-9} y1={26} x2={9} y2={26} stroke={selectedStroke} strokeWidth={sw}/><line x1={-6} y1={30} x2={6} y2={30} stroke={selectedStroke} strokeWidth={sw}/></g>;
     if (symbol.type === 'circuit-breaker') {
-      const fill = symbol.operation?.tripped ? 'var(--md2-warning)' : symbol.operation?.switchState === 'closed' ? 'var(--md2-live)' : 'var(--md2-symbol-bg)';
+      const visual = resolveSwitchgearVisualState(symbol, topology, operateState) ?? 'open';
+      const fill = visual === 'tripped'
+        ? 'var(--md2-warning)'
+        : visual === 'open'
+          ? 'var(--md2-open)'
+          : visual === 'closed-live'
+            ? 'var(--md2-live)'
+            : 'var(--md2-symbol-bg)';
       const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
-      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={5} textAnchor='middle' fontSize={symbolStroke(14)} fontWeight={800} fill={selectedStroke}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
+      const textFill = visual === 'open' || visual === 'closed-live' ? 'var(--md2-active-text)' : selectedStroke;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={5} textAnchor='middle' fontSize={symbolStroke(14)} fontWeight={800} fill={textFill}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
     }
     if (symbol.type === 'disconnector') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
-      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={sw}/><circle cx={-8} cy={0} r={hingeR} fill={selectedStroke}/><circle cx={12} cy={0} r={hingeR} fill={selectedStroke}/><line x1={12} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={selectedStroke} strokeWidth={sw}/></g>;
+      const visual = resolveSwitchgearVisualState(symbol, topology, operateState) ?? 'open';
+      const bladeColor = visual === 'open'
+        ? 'var(--md2-open)'
+        : visual === 'closed-live'
+          ? 'var(--md2-live)'
+          : visual === 'tripped'
+            ? 'var(--md2-warning)'
+            : selectedStroke;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-8} y2={0} stroke={selectedStroke} strokeWidth={sw}/><circle cx={-8} cy={0} r={hingeR} fill={selectedStroke}/><circle cx={12} cy={0} r={hingeR} fill={selectedStroke}/><line x1={12} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/><line x1={-8} y1={0} x2={closed ? 12 : 7} y2={closed ? 0 : -13} stroke={bladeColor} strokeWidth={sw}/></g>;
     }
     if (symbol.type === 'earth-switch') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
@@ -2383,7 +2423,21 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {drawingExportFormatOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <p className='mimic-v2-warning-text' style={{ marginTop: 10 }}>SVG exports use the current energisation state, live busbar colouring, and animated flow lines. PNG exports use the current light/dark theme.</p>
+        {exportFormat === 'svg' && <>
+          <label className='mimic-v2-scenario-menu-setting'>
+            <span>Show energised paths (overlay)</span>
+            <input type='checkbox' checked={exportShowEnergizedPaths} onChange={(event) => setExportShowEnergizedPaths(event.target.checked)} />
+          </label>
+          <label className='mimic-v2-scenario-menu-setting'>
+            <span>Animate energised paths</span>
+            <input type='checkbox' checked={exportAnimateEnergizedPaths} disabled={!exportShowEnergizedPaths} onChange={(event) => setExportAnimateEnergizedPaths(event.target.checked)} />
+          </label>
+        </>}
+        <p className='mimic-v2-escape-menu-hint' style={{ marginTop: 10 }}>
+          {exportFormat === 'svg'
+            ? 'SVG exports use the current light/dark theme. Energised paths render as a green overlay above base busbars so trim lines stay clean.'
+            : 'PNG exports use the current light/dark theme.'}
+        </p>
         <div className='mimic-v2-scenario-menu-actions'>
           <button className='mimic-v2-btn active' onClick={() => void runDrawingExport()}>Download export</button>
           <button className='mimic-v2-btn' onClick={() => setExportModalOpen(false)}>Cancel</button>
@@ -2403,23 +2457,34 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <input value={activeSequence.name} onChange={(event) => setActiveSequence((prev) => ({ ...prev, name: event.target.value }))} />
         </label>
         <label className='mimic-v2-scenario-menu-setting'>
-          <span>Show event captions in export</span>
+          <span>Show event log in export</span>
           <input type='checkbox' checked={activeSequence.settings.showEventCaptions} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, showEventCaptions: event.target.checked } }))} />
         </label>
         <label className='mimic-v2-scenario-menu-setting'>
-          <span>Animate live busbar flow</span>
-          <input type='checkbox' checked={activeSequence.settings.trimLineEnergisation} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, trimLineEnergisation: event.target.checked } }))} />
+          <span>Show energised paths (overlay)</span>
+          <input type='checkbox' checked={activeSequence.settings.showEnergizedPaths ?? true} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, showEnergizedPaths: event.target.checked } }))} />
         </label>
-        <p className='mimic-v2-escape-menu-hint'>Duration: {totalDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s)</p>
+        <label className='mimic-v2-scenario-menu-setting'>
+          <span>Animate energised paths</span>
+          <input type='checkbox' checked={activeSequence.settings.animateEnergizedPaths ?? true} disabled={!(activeSequence.settings.showEnergizedPaths ?? true)} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, animateEnergizedPaths: event.target.checked } }))} />
+        </label>
+        <p className='mimic-v2-escape-menu-hint'>Duration: {totalDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s). Each step can include an optional wait after the action via “Wait after”. Replay applies from the drawing&apos;s current switch positions.</p>
         <div className='mimic-v2-scenario-menu-actions'>
-          <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => addStep(prev, { name: 'Wait', actionType: 'wait' }))}>Add wait step</button>
           <button className='mimic-v2-btn' onClick={recordOperationEventsAsSteps}>Import from event log</button>
         </div>
-        <div className='mimic-v2-manager-card' style={{ maxHeight: 220, overflow: 'auto' }}>
-          {activeSequence.steps.length === 0 && <p>No steps yet. Add steps or import recent operations from the event log.</p>}
+        <div className='mimic-v2-manager-card' style={{ maxHeight: 280, overflow: 'auto' }}>
+          {activeSequence.steps.length === 0 && <p>No steps yet. Import recent operations from the event log.</p>}
           {activeSequence.steps.map((step, index) => <div key={step.id} className='mimic-v2-event-row'>
             <strong>{index + 1}. {step.name}</strong>
-            <div className='mimic-v2-scenario-menu-actions' style={{ marginTop: 6 }}>
+            <div className='mimic-v2-scenario-menu-actions' style={{ marginTop: 6, flexWrap: 'wrap', gap: 8 }}>
+              <label className='mimic-v2-scenario-menu-setting' style={{ marginBottom: 0 }}>
+                Duration (s)
+                <input type='number' min={0} step={0.25} value={step.eventDurationSeconds} onChange={(event) => setActiveSequence((prev) => updateStep(prev, step.id, { eventDurationSeconds: Math.max(0, Number(event.target.value) || 0) }))} />
+              </label>
+              <label className='mimic-v2-scenario-menu-setting' style={{ marginBottom: 0 }}>
+                Wait after (s)
+                <input type='number' min={0} step={0.25} value={step.delayAfterSeconds} onChange={(event) => setActiveSequence((prev) => updateStep(prev, step.id, { delayAfterSeconds: Math.max(0, Number(event.target.value) || 0) }))} />
+              </label>
               <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => moveStep(prev, step.id, -1))}>Up</button>
               <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => moveStep(prev, step.id, 1))}>Down</button>
               <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => duplicateStep(prev, step.id))}>Copy</button>

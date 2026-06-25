@@ -26,7 +26,10 @@ export interface AnimationSequenceSettings {
   showEventCaptions: boolean;
   showCallouts: boolean;
   highlightOperatedLabels: boolean;
+  /** @deprecated Use showEnergizedPaths */
   trimLineEnergisation: boolean;
+  showEnergizedPaths: boolean;
+  animateEnergizedPaths: boolean;
   includeEventLogOverlay: boolean;
   includeGrid: boolean;
   theme: 'current' | 'light' | 'dark';
@@ -65,7 +68,9 @@ export const DEFAULT_ANIMATION_SETTINGS: AnimationSequenceSettings = {
   showCallouts: true,
   highlightOperatedLabels: true,
   trimLineEnergisation: true,
-  includeEventLogOverlay: false,
+  showEnergizedPaths: true,
+  animateEnergizedPaths: true,
+  includeEventLogOverlay: true,
   includeGrid: false,
   theme: 'current',
   trimDirection: 'automatic',

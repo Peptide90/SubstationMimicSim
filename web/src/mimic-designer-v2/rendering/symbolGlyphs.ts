@@ -12,18 +12,59 @@ import {
   scaledSize
 } from './displayMetrics';
 import { EXPORT_FONT_FAMILY } from './exportTheme';
+import type { SwitchgearVisualState } from './switchgearVisualState';
+import { defaultSwitchgearVisualState } from './switchgearVisualState';
 
 const stroke = '#0f172a';
 const live = '#16a34a';
+const openColor = '#dc2626';
 const warning = '#f59e0b';
 const bg = '#ffffff';
+
+export interface SymbolGlyphPalette {
+  stroke?: string;
+  live?: string;
+  open?: string;
+  warning?: string;
+  bg?: string;
+}
+
+function palette(colors: SymbolGlyphPalette = {}) {
+  return {
+    stroke: colors.stroke ?? stroke,
+    live: colors.live ?? live,
+    open: colors.open ?? openColor,
+    warning: colors.warning ?? warning,
+    bg: colors.bg ?? bg
+  };
+}
+
+function breakerFill(state: SwitchgearVisualState, colors: ReturnType<typeof palette>): string {
+  if (state === 'tripped') return colors.warning;
+  if (state === 'open') return colors.open;
+  if (state === 'closed-live') return colors.live;
+  return colors.bg;
+}
+
+function bladeStroke(state: SwitchgearVisualState, colors: ReturnType<typeof palette>): string {
+  if (state === 'open') return colors.open;
+  if (state === 'closed-live') return colors.live;
+  if (state === 'tripped') return colors.warning;
+  return colors.stroke;
+}
 
 function escapeXml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-export function symbolGlyphSvg(symbol: ElectricalSymbol, symbolScale = 1): string {
-  const selectedStroke = stroke;
+export function symbolGlyphSvg(
+  symbol: ElectricalSymbol,
+  symbolScale = 1,
+  switchgearState?: SwitchgearVisualState,
+  colors: SymbolGlyphPalette = {}
+): string {
+  const selectedStroke = palette(colors).stroke;
+  const tone = palette(colors);
   const w = (value: number) => scaledSize(value, symbolScale);
   const strokeW = w(2);
   if (symbol.type === 'cable-sealing-end') return `<polygon points="-14,-13 ${SWITCH_TERMINAL_SPAN},0 -14,13" fill="${bg}" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
@@ -40,14 +81,18 @@ export function symbolGlyphSvg(symbol: ElectricalSymbol, symbolScale = 1): strin
     : `<line x1="0" y1="-26" x2="0" y2="-8" stroke="${selectedStroke}" stroke-width="${strokeW}"/><circle cx="0" cy="5" r="13" fill="none" stroke="${selectedStroke}" stroke-width="${strokeW}"/><text x="0" y="9" text-anchor="middle" font-size="${w(10)}" fill="${selectedStroke}">${symbol.symbolVariant === 'cvt' ? 'C' : 'V'}</text><line x1="0" y1="18" x2="0" y2="28" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-9" y1="28" x2="9" y2="28" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-6" y1="32" x2="6" y2="32" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-3" y1="36" x2="3" y2="36" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
   if (symbol.type === 'surge-arrester') return `<line x1="0" y1="-28" x2="0" y2="-12" stroke="${selectedStroke}" stroke-width="${strokeW}"/><path d="M -9 -12 H9 L-9 10 H9" fill="none" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="0" y1="10" x2="0" y2="26" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-9" y1="26" x2="9" y2="26" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-6" y1="30" x2="6" y2="30" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
   if (symbol.type === 'circuit-breaker') {
-    const fill = symbol.operation?.tripped ? warning : symbol.operation?.switchState === 'closed' ? live : bg;
-    const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
-    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-14" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><rect x="-14" y="-14" width="28" height="28" fill="${fill}" stroke="${selectedStroke}" stroke-width="${strokeW}"/><text x="0" y="5" text-anchor="middle" font-size="${w(14)}" font-weight="800" fill="${selectedStroke}">${stateText}</text><line x1="14" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
+    const visual = switchgearState ?? defaultSwitchgearVisualState(symbol);
+    const fill = breakerFill(visual, tone);
+    const stateText = visual === 'tripped' ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
+    const textFill = visual === 'open' || visual === 'closed-live' ? '#ffffff' : selectedStroke;
+    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-14" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><rect x="-14" y="-14" width="28" height="28" fill="${fill}" stroke="${selectedStroke}" stroke-width="${strokeW}"/><text x="0" y="5" text-anchor="middle" font-size="${w(14)}" font-weight="800" fill="${textFill}">${stateText}</text><line x1="14" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
   }
   if (symbol.type === 'disconnector') {
     const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
+    const visual = switchgearState ?? defaultSwitchgearVisualState(symbol);
+    const bladeColor = bladeStroke(visual, tone);
     const hingeR = w(2.5);
-    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-8" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><circle cx="-8" cy="0" r="${hingeR}" fill="${selectedStroke}"/><circle cx="12" cy="0" r="${hingeR}" fill="${selectedStroke}"/><line x1="12" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-8" y1="0" x2="${closed ? 12 : 7}" y2="${closed ? 0 : -13}" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
+    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-8" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><circle cx="-8" cy="0" r="${hingeR}" fill="${selectedStroke}"/><circle cx="12" cy="0" r="${hingeR}" fill="${selectedStroke}"/><line x1="12" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><line x1="-8" y1="0" x2="${closed ? 12 : 7}" y2="${closed ? 0 : -13}" stroke="${bladeColor}" stroke-width="${strokeW}"/>`;
   }
   if (symbol.type === 'earth-switch') {
     const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
