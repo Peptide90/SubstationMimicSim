@@ -3,6 +3,7 @@ import { addStep, createSequence } from '../animation/sequence';
 import type { ElectricalSymbol } from '../drawing/model';
 import { migrateDrawingDocument } from '../schema/documentSchema';
 import { buildAnimatedSequenceExportSvg, buildDrawingExportSvg } from '../rendering/drawingExport';
+import { SEQUENCE_INTRO_SECONDS } from '../animation/sequenceSimulation';
 
 const symbol = (patch: Partial<ElectricalSymbol> & Pick<ElectricalSymbol, 'id' | 'type' | 'position' | 'terminals'>): ElectricalSymbol => ({
   rotation: 90,
@@ -50,19 +51,30 @@ describe('drawingExport', () => {
     expect(svg).toContain('id="drawing-base"');
   });
 
-  it('builds animated sequence SVG with timed frames and event log', () => {
+  it('builds animated sequence SVG with timed frames and event log below drawing', () => {
+    const closedDoc = migrateDrawingDocument({
+      ...doc,
+      objects: {
+        ...doc.objects,
+        symbols: doc.objects.symbols.map((item) => ({
+          ...item,
+          operation: { ...item.operation, switchState: 'closed' as const }
+        }))
+      }
+    })!;
     const sequence = addStep(createSequence('Test sequence'), {
       name: 'circuit breaker - X135 - closed',
       actionType: 'close-circuit-breaker',
       targetId: 'cb-1'
     });
-    const svg = buildAnimatedSequenceExportSvg(doc, sequence, { theme: 'light', labelMode: 'all' });
+    const svg = buildAnimatedSequenceExportSvg(closedDoc, sequence, { theme: 'light', labelMode: 'all' });
     expect(svg).toContain('Animated Sequence');
     expect(svg).toContain('id="sequence-frames"');
     expect(svg).toContain('id="sequence-event-log"');
-    expect(svg).toContain('[0.0s]');
+    expect(svg).toContain(`[${SEQUENCE_INTRO_SECONDS.toFixed(1)}s]`);
     expect(svg).toContain('circuit breaker - X135 - closed');
-    expect(svg).toContain('<set attributeName="opacity"');
+    expect(svg).toContain('fill="freeze"');
+    expect(svg).not.toContain('repeatCount="indefinite"');
   });
 
   it('supports many sequence steps without stacked caption overlap', () => {
@@ -78,7 +90,7 @@ describe('drawingExport', () => {
     const svg = buildAnimatedSequenceExportSvg(doc, sequence, { theme: 'light', labelMode: 'none' });
     expect(svg).toContain('steps: 16');
     expect((svg.match(/id="sequence-event-log"/g) ?? []).length).toBe(1);
-    expect((svg.match(/\[0\.0s\]/g) ?? []).length).toBe(1);
-    expect((svg.match(/\[9\.0s\]/g) ?? []).length).toBe(1);
+    expect((svg.match(/\[0\.0s\]/g) ?? []).length).toBe(0);
+    expect((svg.match(/\[9\.[0-9]s\]/g) ?? []).length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -1,7 +1,6 @@
 import type { DrawingDocument, Point } from '../drawing/model';
 import type { AnimationSequence } from '../animation/sequence';
-import { totalDuration } from '../animation/sequence';
-import { buildSequenceSnapshots } from '../animation/sequenceSimulation';
+import { buildSequenceSnapshots, sequenceExportDuration, type SequenceSnapshot } from '../animation/sequenceSimulation';
 import { extractTopology } from '../topology/extractTopology';
 import { deriveOperationState } from '../topology/operation';
 import { resolveDisplayScale, scaledSize, type DisplayScale } from './displayMetrics';
@@ -9,7 +8,7 @@ import { busbarJoinMarkers } from './busbarJoinMarkers';
 import { exportLineStateForPath } from './exportLineState';
 import { EXPORT_FONT_FAMILY, exportThemeColors } from './exportTheme';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from './phaseExpansion';
-import { buildSequenceEventLogOverlay } from './sequenceEventLog';
+import { buildSequenceEventLogOverlay, SEQUENCE_LOG_BAND_HEIGHT } from './sequenceEventLog';
 import { symbolGlyphSvg, symbolLabelsSvgLocal } from './symbolGlyphs';
 import { resolveSwitchgearVisualState } from './switchgearVisualState';
 
@@ -63,21 +62,46 @@ function shouldLabelSymbol(canonicalId: string, labelMode: DrawingExportLabelMod
   return true;
 }
 
-function energizationAnimation(duration = 2): string {
-  return `<animate attributeName="stroke-dashoffset" values="36;0" dur="${duration}s" repeatCount="indefinite"/>`;
+function energizationProgressAnimation(duration: number, beginSeconds: number): string {
+  return `<animate attributeName="stroke-dashoffset" from="36" to="0" dur="${duration}s" begin="${beginSeconds}s" fill="freeze"/>`;
 }
 
-function visibilityWindow(beginSeconds: number, endSeconds: number, isFirst: boolean): string {
+function visibilityWindow(beginSeconds: number, endSeconds: number, isFirst: boolean, isLast: boolean): string {
+  const hide = isLast
+    ? ''
+    : `<set attributeName="opacity" to="0" begin="${endSeconds}s" fill="freeze"/>`;
   if (isFirst) {
-    return `<set attributeName="opacity" to="0" begin="${endSeconds}s"/>`;
+    return hide;
   }
-  return `<set attributeName="opacity" to="1" begin="${beginSeconds}s"/><set attributeName="opacity" to="0" begin="${endSeconds}s"/>`;
+  return `<set attributeName="opacity" to="1" begin="${beginSeconds}s" fill="freeze"/>${hide}`;
 }
 
-function wrapTimedLayer(content: string, beginSeconds: number, endSeconds: number, isFirst: boolean): string {
+function wrapTimedLayer(
+  content: string,
+  beginSeconds: number,
+  endSeconds: number,
+  isFirst: boolean,
+  isLast: boolean
+): string {
   if (!content) return '';
   const opacity = isFirst ? 1 : 0;
-  return `<g opacity="${opacity}">${visibilityWindow(beginSeconds, endSeconds, isFirst)}${content}</g>`;
+  return `<g opacity="${opacity}">${visibilityWindow(beginSeconds, endSeconds, isFirst, isLast)}${content}</g>`;
+}
+
+function livePathIds(doc: DrawingDocument, topology: ReturnType<typeof extractTopology>): Set<string> {
+  const operateState = deriveOperationState(doc, topology);
+  const ids = new Set<string>();
+  renderBusbarsForView(doc).forEach((instance) => {
+    if (exportLineStateForPath(instance.canonicalId, topology, operateState) === 'live') {
+      ids.add(`bus:${instance.canonicalId}`);
+    }
+  });
+  renderConductorsForView(doc).forEach((instance) => {
+    if (exportLineStateForPath(instance.canonicalId, topology, operateState) === 'live') {
+      ids.add(`con:${instance.canonicalId}`);
+    }
+  });
+  return ids;
 }
 
 function busbarBaseSvg(
@@ -97,16 +121,15 @@ function busbarEnergizedOverlaySvg(
   instance: ReturnType<typeof renderBusbarsForView>[number],
   colors: ReturnType<typeof exportThemeColors>,
   display: DisplayScale,
-  operateState: ReturnType<typeof deriveOperationState>,
-  topology: ReturnType<typeof extractTopology>,
-  animate: boolean
+  mode: 'static' | 'progress',
+  progressBegin = 0,
+  progressDuration = 1
 ): string {
-  const state = exportLineStateForPath(instance.canonicalId, topology, operateState);
-  if (state !== 'live') return '';
   const strokeWidth = scaledSize(instance.path.width || 7, display.busbar);
-  const dash = animate ? ' stroke-dasharray="24 12"' : '';
-  const animation = animate ? energizationAnimation() : '';
-  return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="round"${dash}>${animation}</polyline>`;
+  if (mode === 'static') {
+    return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="round"/>`;
+  }
+  return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="round" stroke-dasharray="24 12" stroke-dashoffset="36">${energizationProgressAnimation(progressDuration, progressBegin)}</polyline>`;
 }
 
 function conductorBaseSvg(
@@ -124,15 +147,15 @@ function conductorBaseSvg(
 function conductorEnergizedOverlaySvg(
   instance: ReturnType<typeof renderConductorsForView>[number],
   colors: ReturnType<typeof exportThemeColors>,
-  operateState: ReturnType<typeof deriveOperationState>,
-  topology: ReturnType<typeof extractTopology>,
-  animate: boolean
+  mode: 'static' | 'progress',
+  progressBegin = 0,
+  progressDuration = 1
 ): string {
-  const state = exportLineStateForPath(instance.canonicalId, topology, operateState);
-  if (state !== 'live') return '';
-  const dashStyle = animate ? '24 12' : (instance.path.conductorStyle === 'overhead-line' ? '0' : '18 10');
-  const animation = animate ? energizationAnimation(2.5) : '';
-  return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="3" stroke-dasharray="${dashStyle}" stroke-linecap="round">${animation}</polyline>`;
+  const dashStyle = instance.path.conductorStyle === 'overhead-line' ? '0' : '24 12';
+  if (mode === 'static') {
+    return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="3" stroke-dasharray="${dashStyle}" stroke-linecap="round"/>`;
+  }
+  return `<polyline points="${polyline(instance.vertices)}" fill="none" stroke="${colors.live}" stroke-width="3" stroke-dasharray="24 12" stroke-linecap="round" stroke-dashoffset="36">${energizationProgressAnimation(progressDuration, progressBegin)}</polyline>`;
 }
 
 function buildSymbolsSvg(
@@ -163,17 +186,45 @@ function buildSymbolsSvg(
 
 function buildEnergizedOverlayContent(
   doc: DrawingDocument,
+  previousDoc: DrawingDocument | null,
   colors: ReturnType<typeof exportThemeColors>,
   display: DisplayScale,
-  animate: boolean
+  animateProgress: boolean,
+  progressBegin: number,
+  progressDuration: number
 ): string {
   const topology = extractTopology(doc);
   const operateState = deriveOperationState(doc, topology);
-  return `${renderBusbarsForView(doc).map((instance) =>
-    busbarEnergizedOverlaySvg(instance, colors, display, operateState, topology, animate)
-  ).join('')}${renderConductorsForView(doc).map((instance) =>
-    conductorEnergizedOverlaySvg(instance, colors, operateState, topology, animate)
-  ).join('')}`;
+  const previousLive = previousDoc ? livePathIds(previousDoc, topology) : new Set<string>();
+
+  const busbars = renderBusbarsForView(doc).flatMap((instance) => {
+    if (exportLineStateForPath(instance.canonicalId, topology, operateState) !== 'live') return [];
+    const key = `bus:${instance.canonicalId}`;
+    const isNew = animateProgress && !previousLive.has(key);
+    return [busbarEnergizedOverlaySvg(
+      instance,
+      colors,
+      display,
+      isNew ? 'progress' : 'static',
+      progressBegin,
+      progressDuration
+    )];
+  }).join('');
+
+  const conductors = renderConductorsForView(doc).flatMap((instance) => {
+    if (exportLineStateForPath(instance.canonicalId, topology, operateState) !== 'live') return [];
+    const key = `con:${instance.canonicalId}`;
+    const isNew = animateProgress && !previousLive.has(key);
+    return [conductorEnergizedOverlaySvg(
+      instance,
+      colors,
+      isNew ? 'progress' : 'static',
+      progressBegin,
+      progressDuration
+    )];
+  }).join('');
+
+  return `${busbars}${conductors}`;
 }
 
 function buildLabelsAndAnnotations(
@@ -199,7 +250,8 @@ function buildLabelsAndAnnotations(
 }
 
 function buildSequenceFrameContent(
-  doc: DrawingDocument,
+  snapshot: SequenceSnapshot,
+  sequence: AnimationSequence,
   colors: ReturnType<typeof exportThemeColors>,
   display: DisplayScale,
   labelMode: DrawingExportLabelMode,
@@ -208,8 +260,16 @@ function buildSequenceFrameContent(
   showEnergizedPaths: boolean,
   animateEnergizedPaths: boolean
 ): string {
+  const doc = snapshot.doc;
   const topology = extractTopology(doc);
   const operateState = deriveOperationState(doc, topology);
+  const enabledSteps = sequence.steps.filter((step) => step.enabled);
+  const step = snapshot.stepIndex >= 0 ? enabledSteps[snapshot.stepIndex] : undefined;
+  const progressDuration = step
+    ? Math.min(step.eventDurationSeconds, sequence.settings.busbarEnergisationDuration)
+  : sequence.settings.busbarEnergisationDuration;
+  const animateProgress = animateEnergizedPaths && snapshot.stepIndex >= 0;
+
   const busbars = renderBusbarsForView(doc).map((instance) =>
     busbarBaseSvg(instance, colors, display, operateState, topology)
   ).join('');
@@ -217,7 +277,17 @@ function buildSequenceFrameContent(
     conductorBaseSvg(instance, colors, operateState, topology)
   ).join('');
   const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState);
-  const energized = showEnergizedPaths ? buildEnergizedOverlayContent(doc, colors, display, animateEnergizedPaths) : '';
+  const energized = showEnergizedPaths
+    ? buildEnergizedOverlayContent(
+      doc,
+      snapshot.previousDoc,
+      colors,
+      display,
+      animateProgress,
+      snapshot.beginSeconds,
+      Math.max(0.25, progressDuration)
+    )
+    : '';
   return `${busbars}${conductors}${symbols}${energized}`;
 }
 
@@ -228,7 +298,6 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   const selectedObjectIds = new Set(options.selectedObjectIds ?? []);
   const display = options.displayScale ?? resolveDisplayScale(doc.uiState);
   const showEnergizedPaths = options.showEnergizedPaths ?? false;
-  const animateEnergizedPaths = options.animateEnergizedPaths ?? false;
   const colors = exportThemeColors(theme);
   const topology = extractTopology(doc);
   const operateState = deriveOperationState(doc, topology);
@@ -248,7 +317,7 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   ).join('');
 
   const energizedOverlay = showEnergizedPaths
-    ? `<g id="energized-overlay">${buildEnergizedOverlayContent(doc, colors, display, animateEnergizedPaths)}</g>`
+    ? `<g id="energized-overlay">${buildEnergizedOverlayContent(doc, null, colors, display, false, 0, 0)}</g>`
     : '';
 
   const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState);
@@ -267,7 +336,7 @@ export function buildAnimatedSequenceExportSvg(
   sequence: AnimationSequence,
   options: DrawingExportOptions = {}
 ): string {
-  const duration = totalDuration(sequence);
+  const duration = sequenceExportDuration(sequence);
   const theme = options.theme ?? (sequence.settings.theme === 'current' ? 'light' : sequence.settings.theme);
   const includeOperationState = options.includeOperationState ?? true;
   const labelMode = options.labelMode ?? 'all';
@@ -278,17 +347,20 @@ export function buildAnimatedSequenceExportSvg(
   const colors = exportThemeColors(theme);
   const bounds = drawingBounds(doc);
   const width = bounds.maxX - bounds.minX;
-  const height = bounds.maxY - bounds.minY;
+  const drawingHeight = bounds.maxY - bounds.minY;
+  const exportHeight = drawingHeight + SEQUENCE_LOG_BAND_HEIGHT;
   const topology = extractTopology(doc);
   const joinMarkers = busbarJoinMarkers(topology)
     .map((point) => `<circle cx="${point.x}" cy="${point.y}" r="${Math.max(3, scaledSize(2.75, display.busbar))}" fill="${colors.busbar}" stroke="${colors.background}" stroke-width="${Math.max(1, scaledSize(0.9, display.busbar))}"/>`)
     .join('');
   const { labels, annotations } = buildLabelsAndAnnotations(doc, colors, display, labelMode, selectedObjectIds);
   const snapshots = buildSequenceSnapshots(doc, sequence);
+  const lastIndex = snapshots.length - 1;
   const frames = snapshots.map((snapshot, index) =>
     wrapTimedLayer(
       buildSequenceFrameContent(
-        snapshot.doc,
+        snapshot,
+        sequence,
         colors,
         display,
         labelMode,
@@ -299,7 +371,8 @@ export function buildAnimatedSequenceExportSvg(
       ),
       snapshot.beginSeconds,
       snapshot.endSeconds,
-      index === 0
+      index === 0,
+      index === lastIndex
     )
   ).join('');
   const eventLog = buildSequenceEventLogOverlay(sequence, bounds, theme);
@@ -308,8 +381,8 @@ export function buildAnimatedSequenceExportSvg(
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 ${comment}
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${width} ${height}" width="${Math.round(width)}" height="${Math.round(height)}">
-  <rect x="${bounds.minX}" y="${bounds.minY}" width="${width}" height="${height}" fill="${colors.background}"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${width} ${exportHeight}" width="${Math.round(width)}" height="${Math.round(exportHeight)}">
+  <rect x="${bounds.minX}" y="${bounds.minY}" width="${width}" height="${exportHeight}" fill="${colors.background}"/>
   <g id="drawing-static" font-family="${EXPORT_FONT_FAMILY}">${joinMarkers}${labels}${annotations}</g>
   <g id="sequence-frames">${frames}</g>
   ${eventLog}

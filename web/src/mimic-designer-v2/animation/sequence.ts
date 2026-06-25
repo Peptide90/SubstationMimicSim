@@ -117,7 +117,20 @@ export function createStep(input: Partial<AnimationSequenceStep> = {}, sequenceS
 }
 
 export function totalDuration(sequence: AnimationSequence): number {
-  return sequence.steps.filter((step) => step.enabled).reduce((sum, step) => sum + step.eventDurationSeconds + step.delayAfterSeconds, 0);
+  const enabledSteps = sequence.steps.filter((step) => step.enabled);
+  if (!enabledSteps.length) return 0;
+  return enabledSteps.reduce((sum, step) => sum + step.eventDurationSeconds + step.delayAfterSeconds, 0);
+}
+
+export function applyDefaultTimingToAllSteps(sequence: AnimationSequence): AnimationSequence {
+  return {
+    ...sequence,
+    steps: sequence.steps.map((step) => ({
+      ...step,
+      eventDurationSeconds: sequence.settings.defaultEventDuration,
+      delayAfterSeconds: sequence.settings.defaultDelayAfter
+    }))
+  };
 }
 
 export function addStep(sequence: AnimationSequence, input: Partial<AnimationSequenceStep> = {}): AnimationSequence {
