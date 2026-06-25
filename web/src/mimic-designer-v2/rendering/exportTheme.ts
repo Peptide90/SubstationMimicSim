@@ -1,4 +1,4 @@
-export const EXPORT_FONT_FAMILY = '"Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+export const EXPORT_FONT_FAMILY = 'Segoe UI, system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
 
 export interface ExportThemeColors {
   background: string;

@@ -1055,11 +1055,30 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setSequenceModalOpen(true);
   };
 
+  const eventActionLabel = (event: OperationEvent) => {
+    const message = event.message.toLowerCase();
+    if (message.includes(' tripped')) return 'tripped';
+    if (message.includes(' arced')) return 'arced';
+    if (message.includes('interlocked')) return 'interlocked';
+    if (message.includes('lockout')) return 'lockout';
+    if (message.includes('toggled')) return 'toggled';
+    if (message.includes(' closed') || message.endsWith('closed')) return 'closed';
+    if (message.includes(' open') || message.endsWith('open')) return 'open';
+    return event.message;
+  };
+
+  const sequenceStepNameFromEvent = (event: OperationEvent) => {
+    const symbol = event.targetObjectId ? doc.objects.symbols.find((item) => item.id === event.targetObjectId) : undefined;
+    const typeLabel = symbol?.type ? symbol.type.replaceAll('-', ' ') : 'event';
+    const nameLabel = symbol?.label?.text ?? event.targetObjectId ?? 'system';
+    return `${typeLabel} - ${nameLabel} - ${eventActionLabel(event)}`;
+  };
+
   const recordOperationEventsAsSteps = () => {
     let sequence = createSequence(`${doc.name} sequence`);
     doc.operationEvents.slice(-24).forEach((event) => {
       sequence = addStep(sequence, {
-        name: event.message,
+        name: sequenceStepNameFromEvent(event),
         actionType: 'wait',
         targetId: event.targetObjectId ?? null,
         eventDurationSeconds: 1,
@@ -1779,6 +1798,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     .slice(-80);
 
   const eventTime = (timestamp: string) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const clearOperationEvents = () => {
+    setDoc((prev) => ({ ...prev, operationEvents: [] }));
+    setDirty(true);
+  };
   const formatPowerStatistic = (flow?: PowerFlowMetadata) => {
     const mw = flow?.mw ?? 0;
     if (learningTier === 'Junior') {
@@ -2077,16 +2100,19 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       {mode === 'operate' && <section className='mimic-v2-event-log' aria-label='Operational event log'>
         <header>
           <strong>Event Log</strong>
-          <select value={eventLogFilter} onChange={(event) => setEventLogFilter(event.target.value as ScenarioEventSeverity | 'all')} title='Filter event log'>
-            <option value='all'>All</option>
-            <option value='operation'>Operation</option>
-            <option value='warning'>Warning</option>
-            <option value='protection'>Protection</option>
-            <option value='alarm'>Alarm</option>
-            <option value='fault'>Fault</option>
-            <option value='scenario'>Scenario</option>
-            <option value='info'>Info</option>
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={eventLogFilter} onChange={(event) => setEventLogFilter(event.target.value as ScenarioEventSeverity | 'all')} title='Filter event log'>
+              <option value='all'>All</option>
+              <option value='operation'>Operation</option>
+              <option value='warning'>Warning</option>
+              <option value='protection'>Protection</option>
+              <option value='alarm'>Alarm</option>
+              <option value='fault'>Fault</option>
+              <option value='scenario'>Scenario</option>
+              <option value='info'>Info</option>
+            </select>
+            <button className='mimic-v2-chip' onClick={clearOperationEvents} disabled={!doc.operationEvents.length}>Clear</button>
+          </div>
         </header>
         <div className='mimic-v2-event-log-list'>
           {filteredOperationEvents.length ? filteredOperationEvents.map(({ event, severity }) => <button key={event.id} className={`mimic-v2-event-row ${severity}`} onClick={() => event.targetObjectId && setSelected([event.targetObjectId])}>

@@ -40,6 +40,7 @@ describe('drawingExport', () => {
     const svg = buildDrawingExportSvg(doc, { theme: 'light', labelMode: 'all' });
     expect(svg).toContain('rotate(-90)');
     expect(svg).toContain('Segoe UI');
+    expect(svg).not.toContain('font-family=""');
     expect(svg).toContain('X135');
   });
 
