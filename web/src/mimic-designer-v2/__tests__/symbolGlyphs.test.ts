@@ -28,6 +28,8 @@ describe('symbolGlyphSvg', () => {
     const liveSvg = symbolGlyphSvg(cb({ operation: { switchState: 'closed' } }), 1, 'closed-live');
     expect(openSvg).toContain('fill="#dc2626"');
     expect(liveSvg).toContain('fill="#16a34a"');
+    expect(liveSvg).toContain('dominant-baseline="middle"');
+    expect(liveSvg).toContain('Segoe UI');
   });
 
   it('colors disconnector blades red when open and green when live', () => {

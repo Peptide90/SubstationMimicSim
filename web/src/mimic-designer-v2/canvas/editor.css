@@ -68,6 +68,11 @@
 .mimic-v2-launch-grid p { margin:6px 0; color:var(--md2-muted-text); font-size:12px; }
 .mimic-v2-launch-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); }
 .mimic-v2-scenario-menu { width:min(360px, calc(100vw - 36px)); }
+.mimic-v2-sequence-modal.mimic-v2-scenario-menu { width:min(1320px, calc(100vw - 20px)); }
+.mimic-v2-sequence-modal { height:min(94vh, calc(100vh - 20px)); max-height:min(94vh, calc(100vh - 20px)); display:flex; flex-direction:column; overflow:hidden; }
+.mimic-v2-sequence-modal .mimic-v2-sequence-settings { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:8px 16px; }
+.mimic-v2-sequence-modal .mimic-v2-sequence-steps { flex:1 1 auto; min-height:280px; max-height:none; overflow:auto; margin-top:10px; }
+.mimic-v2-sequence-modal > .mimic-v2-scenario-menu-actions:last-of-type { flex-direction:row; justify-content:flex-end; margin-top:auto; padding-top:12px; }
 .mimic-v2-escape-menu { width:min(420px, calc(100vw - 36px)); }
 .mimic-v2-escape-menu-section { margin-top:14px; padding-top:12px; border-top:1px solid var(--md2-border); }
 .mimic-v2-escape-menu-section h3 { margin:0 0 10px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--md2-muted-text); }

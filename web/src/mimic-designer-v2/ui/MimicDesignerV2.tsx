@@ -27,8 +27,10 @@ import {
   equipmentLabelTextAnchor,
   resolveDisplayScale,
   scaledSize,
+  TEXT_DISPLAY_SCALE_DEFAULT,
   type DisplayScale
 } from '../rendering/displayMetrics';
+import { EXPORT_FONT_FAMILY } from '../rendering/exportTheme';
 import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
 import { deriveOperationState, operateDevice } from '../topology/operation';
@@ -1019,7 +1021,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   };
 
   const updateDisplayScale = (key: keyof DisplayScale, percent: number) => {
-    const value = displayScaleFromPercent(percent);
+    const value = displayScaleFromPercent(percent, key);
     setDoc((prev) => ({
       ...prev,
       uiState: {
@@ -1035,7 +1037,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       ...prev,
       uiState: {
         ...prev.uiState,
-        displayScale: { busbar: 1, text: 1, symbol: 1 }
+        displayScale: { busbar: 1, text: TEXT_DISPLAY_SCALE_DEFAULT, symbol: 1 }
       }
     }));
     setDirty(true);
@@ -1757,7 +1759,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             : 'var(--md2-symbol-bg)';
       const stateText = symbol.operation?.tripped ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
       const textFill = visual === 'open' || visual === 'closed-live' ? 'var(--md2-active-text)' : selectedStroke;
-      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={sw}/><text x={0} y={5} textAnchor='middle' fontSize={symbolStroke(14)} fontWeight={800} fill={textFill}>{stateText}</text><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
+      return <g><line x1={-SWITCH_TERMINAL_SPAN} y1={0} x2={-14} y2={0} stroke={selectedStroke} strokeWidth={sw}/><rect x={-14} y={-14} width={28} height={28} fill={fill} stroke={selectedStroke} strokeWidth={sw}/><g transform={symbol.rotation ? `rotate(${-symbol.rotation})` : undefined}><text x={0} y={0} textAnchor='middle' dominantBaseline='middle' fontSize={symbolStroke(14)} fontWeight={800} fontFamily={EXPORT_FONT_FAMILY} fill={textFill}>{stateText}</text></g><line x1={14} y1={0} x2={SWITCH_TERMINAL_SPAN} y2={0} stroke={selectedStroke} strokeWidth={sw}/></g>;
     }
     if (symbol.type === 'disconnector') {
       const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
@@ -1928,29 +1930,32 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (!name && !operation) return null;
     return <g transform={`translate(0 ${labelY})`}>
       <g transform={symbol.rotation ? `rotate(${-symbol.rotation})` : undefined}>
-        {name && <text x={0} y={0} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize}>{name}</text>}
-        {operation && <text x={0} y={equipmentLabelLineStep} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize}>{operation}</text>}
+        {name && <text x={0} y={0} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize} fontWeight={700} fontFamily={EXPORT_FONT_FAMILY}>{name}</text>}
+        {operation && <text x={0} y={equipmentLabelLineStep} textAnchor={textAnchor} dominantBaseline='middle' fontSize={fontSize} fontWeight={700} fontFamily={EXPORT_FONT_FAMILY}>{operation}</text>}
       </g>
     </g>;
   };
 
   const displayScaleControl = (key: keyof DisplayScale, label: string) => {
-    const percent = displayScalePercent(displayMetrics[key]);
+    const limits = key === 'text'
+      ? { min: 200, max: 600, step: 25 }
+      : { min: 50, max: 300, step: 5 };
+    const percent = displayScalePercent(displayMetrics[key], key);
     return <label key={key} className='mimic-v2-display-scale-row'>
       <span>{label}</span>
       <input
         type='range'
-        min={50}
-        max={300}
-        step={5}
+        min={limits.min}
+        max={limits.max}
+        step={limits.step}
         value={percent}
         onChange={(event) => updateDisplayScale(key, Number(event.target.value))}
       />
       <input
         type='number'
-        min={50}
-        max={300}
-        step={5}
+        min={limits.min}
+        max={limits.max}
+        step={limits.step}
         value={percent}
         onChange={(event) => updateDisplayScale(key, Number(event.target.value))}
       />
@@ -2446,13 +2451,14 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </div>
     </div>}
     {sequenceModalOpen && <div className='mimic-v2-modal-backdrop' onMouseDown={() => setSequenceModalOpen(false)}>
-      <div className='mimic-v2-launch-modal mimic-v2-scenario-menu' onMouseDown={(event) => event.stopPropagation()}>
+      <div className='mimic-v2-launch-modal mimic-v2-scenario-menu mimic-v2-sequence-modal' onMouseDown={(event) => event.stopPropagation()}>
         <header className='mimic-v2-library-header'>
           <div>
             <h2>Animated sequence</h2>
             <p>Build a step list and export an SVG with energisation flow animation and event captions.</p>
           </div>
         </header>
+        <div className='mimic-v2-sequence-settings'>
         <label className='mimic-v2-scenario-menu-setting'>
           Sequence name
           <input value={activeSequence.name} onChange={(event) => setActiveSequence((prev) => ({ ...prev, name: event.target.value }))} />
@@ -2481,12 +2487,13 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <span>Animate energisation progress</span>
           <input type='checkbox' checked={activeSequence.settings.animateEnergizedPaths ?? true} disabled={!(activeSequence.settings.showEnergizedPaths ?? true)} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, animateEnergizedPaths: event.target.checked } }))} />
         </label>
+        </div>
         <p className='mimic-v2-escape-menu-hint'>Export duration: {sequenceExportDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s). Imported steps use the default duration and wait above; use “Apply default timing to all steps” after changing them.</p>
         <div className='mimic-v2-scenario-menu-actions'>
           <button className='mimic-v2-btn' onClick={recordOperationEventsAsSteps}>Import from event log</button>
           <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => applyDefaultTimingToAllSteps(prev))}>Apply default timing to all steps</button>
         </div>
-        <div className='mimic-v2-manager-card' style={{ maxHeight: 280, overflow: 'auto' }}>
+        <div className='mimic-v2-manager-card mimic-v2-sequence-steps'>
           {activeSequence.steps.length === 0 && <p>No steps yet. Import recent operations from the event log.</p>}
           {activeSequence.steps.map((step, index) => <div key={step.id} className='mimic-v2-event-row'>
             <strong>{index + 1}. {step.name}</strong>

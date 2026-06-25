@@ -85,7 +85,8 @@ export function symbolGlyphSvg(
     const fill = breakerFill(visual, tone);
     const stateText = visual === 'tripped' ? 'T' : symbol.operation?.switchState === 'closed' ? 'X' : 'O';
     const textFill = visual === 'open' || visual === 'closed-live' ? '#ffffff' : selectedStroke;
-    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-14" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><rect x="-14" y="-14" width="28" height="28" fill="${fill}" stroke="${selectedStroke}" stroke-width="${strokeW}"/><text x="0" y="5" text-anchor="middle" font-size="${w(14)}" font-weight="800" fill="${textFill}">${stateText}</text><line x1="14" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
+    const counterRotate = symbol.rotation ? ` transform="rotate(${-symbol.rotation})"` : '';
+    return `<line x1="-${SWITCH_TERMINAL_SPAN}" y1="0" x2="-14" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/><rect x="-14" y="-14" width="28" height="28" fill="${fill}" stroke="${selectedStroke}" stroke-width="${strokeW}"/><g${counterRotate}><text x="0" y="0" text-anchor="middle" dominant-baseline="middle" font-size="${w(14)}" font-weight="800" font-family="${EXPORT_FONT_FAMILY}" fill="${textFill}">${stateText}</text></g><line x1="14" y1="0" x2="${SWITCH_TERMINAL_SPAN}" y2="0" stroke="${selectedStroke}" stroke-width="${strokeW}"/>`;
   }
   if (symbol.type === 'disconnector') {
     const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
@@ -189,10 +190,10 @@ export function symbolLabelsSvgLocal(
     lines.push(`<rect x="${bounds.left}" y="${bounds.top}" width="${width}" height="${height}" fill="none" stroke="${stroke}" stroke-width="1.75" rx="3"/>`);
   }
   if (name) {
-    lines.push(`<text x="0" y="0" text-anchor="${textAnchor}" dominant-baseline="middle" font-size="${fontSize}" font-family="${EXPORT_FONT_FAMILY}" fill="${options.textFill}">${escapeXml(name)}</text>`);
+    lines.push(`<text x="0" y="0" text-anchor="${textAnchor}" dominant-baseline="middle" font-size="${fontSize}" font-weight="700" font-family="${EXPORT_FONT_FAMILY}" fill="${options.textFill}">${escapeXml(name)}</text>`);
   }
   if (operation) {
-    lines.push(`<text x="0" y="${rowStep}" text-anchor="${textAnchor}" dominant-baseline="middle" font-size="${fontSize}" font-family="${EXPORT_FONT_FAMILY}" fill="${options.textFill}">${escapeXml(operation)}</text>`);
+    lines.push(`<text x="0" y="${rowStep}" text-anchor="${textAnchor}" dominant-baseline="middle" font-size="${fontSize}" font-weight="700" font-family="${EXPORT_FONT_FAMILY}" fill="${options.textFill}">${escapeXml(operation)}</text>`);
   }
 
   const counterRotate = symbol.rotation ? ` transform="rotate(${-symbol.rotation})"` : '';
