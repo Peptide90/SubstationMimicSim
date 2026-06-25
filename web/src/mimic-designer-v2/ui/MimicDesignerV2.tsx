@@ -1099,18 +1099,18 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   };
 
   const recordOperationEventsAsSteps = () => {
-    let sequence = createSequence(`${doc.name} sequence`);
-    doc.operationEvents.slice(-24).forEach((event) => {
-      const symbol = event.targetObjectId ? doc.objects.symbols.find((item) => item.id === event.targetObjectId) : undefined;
-      sequence = addStep(sequence, {
-        name: sequenceStepNameFromEvent(event),
-        actionType: sequenceActionTypeFromEvent(event, symbol),
-        targetId: event.targetObjectId ?? null,
-        eventDurationSeconds: sequence.settings.defaultEventDuration,
-        delayAfterSeconds: sequence.settings.defaultDelayAfter
+    setActiveSequence((prev) => {
+      let sequence = createSequence(`${doc.name} sequence`, prev.settings);
+      doc.operationEvents.slice(-24).forEach((event) => {
+        const symbol = event.targetObjectId ? doc.objects.symbols.find((item) => item.id === event.targetObjectId) : undefined;
+        sequence = addStep(sequence, {
+          name: sequenceStepNameFromEvent(event),
+          actionType: sequenceActionTypeFromEvent(event, symbol),
+          targetId: event.targetObjectId ?? null
+        });
       });
+      return sequence;
     });
-    setActiveSequence(sequence);
   };
 
   const onSymbolMouseDown = (event: React.MouseEvent<SVGGElement>, symbol: ElectricalSymbol, phase?: Phase) => {
@@ -2466,6 +2466,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <input type='number' min={0} step={0.25} value={activeSequence.settings.defaultDelayAfter} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, defaultDelayAfter: Math.max(0, Number(event.target.value) || 0) } }))} />
         </label>
         <label className='mimic-v2-scenario-menu-setting'>
+          <span>Highlight operated label</span>
+          <input type='checkbox' checked={activeSequence.settings.highlightOperatedLabels} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, highlightOperatedLabels: event.target.checked } }))} />
+        </label>
+        <label className='mimic-v2-scenario-menu-setting'>
           <span>Show event log in export</span>
           <input type='checkbox' checked={activeSequence.settings.showEventCaptions} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, showEventCaptions: event.target.checked } }))} />
         </label>
@@ -2477,7 +2481,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <span>Animate energisation progress</span>
           <input type='checkbox' checked={activeSequence.settings.animateEnergizedPaths ?? true} disabled={!(activeSequence.settings.showEnergizedPaths ?? true)} onChange={(event) => setActiveSequence((prev) => ({ ...prev, settings: { ...prev.settings, animateEnergizedPaths: event.target.checked } }))} />
         </label>
-        <p className='mimic-v2-escape-menu-hint'>Export duration: {sequenceExportDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s). Replay rewinds imported steps from the current drawing, then plays them forward. Trim animation advances only on newly energised paths.</p>
+        <p className='mimic-v2-escape-menu-hint'>Export duration: {sequenceExportDuration(activeSequence).toFixed(1)}s · {activeSequence.steps.length} step(s). Imported steps use the default duration and wait above; use “Apply default timing to all steps” after changing them.</p>
         <div className='mimic-v2-scenario-menu-actions'>
           <button className='mimic-v2-btn' onClick={recordOperationEventsAsSteps}>Import from event log</button>
           <button className='mimic-v2-btn' onClick={() => setActiveSequence((prev) => applyDefaultTimingToAllSteps(prev))}>Apply default timing to all steps</button>

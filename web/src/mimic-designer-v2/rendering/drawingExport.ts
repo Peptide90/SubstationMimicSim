@@ -9,7 +9,7 @@ import { exportLineStateForPath } from './exportLineState';
 import { EXPORT_FONT_FAMILY, exportThemeColors } from './exportTheme';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from './phaseExpansion';
 import { buildSequenceEventLogOverlay, SEQUENCE_LOG_BAND_HEIGHT } from './sequenceEventLog';
-import { symbolGlyphSvg, symbolLabelsSvgLocal } from './symbolGlyphs';
+import { symbolGlyphSvg, symbolLabelExtentWorldPoints, symbolLabelsSvgLocal } from './symbolGlyphs';
 import { resolveSwitchgearVisualState } from './switchgearVisualState';
 
 export type DrawingExportFormat = 'svg' | '1920x1080' | '2560x1440' | '3840x2160';
@@ -33,7 +33,18 @@ const exportSizes: Record<Exclude<DrawingExportFormat, 'svg'>, { width: number; 
   '3840x2160': { width: 3840, height: 2160 }
 };
 
-export function drawingBounds(doc: DrawingDocument, padding = 80) {
+export interface DrawingBoundsOptions {
+  padding?: number;
+  display?: DisplayScale;
+  includeLabelExtents?: boolean;
+  extraLeft?: number;
+}
+
+export function drawingBounds(doc: DrawingDocument, options: DrawingBoundsOptions | number = {}) {
+  const opts: DrawingBoundsOptions = typeof options === 'number' ? { padding: options } : options;
+  const padding = opts.padding ?? 80;
+  const extraLeft = opts.extraLeft ?? 0;
+  const display = opts.display ?? resolveDisplayScale(doc.uiState);
   const renderedSymbols = renderSymbolsForView(doc);
   const renderedConductors = renderConductorsForView(doc);
   const renderedBusbars = renderBusbarsForView(doc);
@@ -43,9 +54,16 @@ export function drawingBounds(doc: DrawingDocument, padding = 80) {
     ...renderedBusbars.flatMap((path) => path.vertices),
     ...doc.objects.labels.map((label) => label.position)
   ];
+
+  if (opts.includeLabelExtents) {
+    renderedSymbols.forEach((instance) => {
+      points.push(...symbolLabelExtentWorldPoints(instance.symbol, instance.position, display, true));
+    });
+  }
+
   if (!points.length) return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
   return {
-    minX: Math.min(...points.map((point) => point.x)) - padding,
+    minX: Math.min(...points.map((point) => point.x)) - padding - extraLeft,
     minY: Math.min(...points.map((point) => point.y)) - padding,
     maxX: Math.max(...points.map((point) => point.x)) + padding,
     maxY: Math.max(...points.map((point) => point.y)) + padding
@@ -164,13 +182,19 @@ function buildSymbolsSvg(
   display: DisplayScale,
   labelMode: DrawingExportLabelMode,
   selectedObjectIds: Set<string>,
-  includeOperationState: boolean
+  includeOperationState: boolean,
+  highlightSymbolId?: string | null
 ): string {
   const topology = extractTopology(doc);
   const operateState = deriveOperationState(doc, topology);
   return renderSymbolsForView(doc).map((instance) => {
     const labels = shouldLabelSymbol(instance.canonicalId, labelMode, selectedObjectIds)
-      ? symbolLabelsSvgLocal(instance.symbol, display, { textFill: colors.text, includeOperation: includeOperationState })
+      ? symbolLabelsSvgLocal(instance.symbol, display, {
+        textFill: colors.text,
+        includeOperation: includeOperationState,
+        highlightOutline: !!highlightSymbolId && instance.canonicalId === highlightSymbolId,
+        highlightColor: colors.open
+      })
       : '';
     const switchgearState = resolveSwitchgearVisualState(instance.symbol, topology, operateState);
     const glyph = symbolGlyphSvg(instance.symbol, display.symbol, switchgearState, {
@@ -269,6 +293,7 @@ function buildSequenceFrameContent(
     ? Math.min(step.eventDurationSeconds, sequence.settings.busbarEnergisationDuration)
   : sequence.settings.busbarEnergisationDuration;
   const animateProgress = animateEnergizedPaths && snapshot.stepIndex >= 0;
+  const highlightSymbolId = sequence.settings.highlightOperatedLabels && step?.targetId ? step.targetId : null;
 
   const busbars = renderBusbarsForView(doc).map((instance) =>
     busbarBaseSvg(instance, colors, display, operateState, topology)
@@ -276,7 +301,7 @@ function buildSequenceFrameContent(
   const conductors = renderConductorsForView(doc).map((instance) =>
     conductorBaseSvg(instance, colors, operateState, topology)
   ).join('');
-  const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState);
+  const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState, highlightSymbolId);
   const energized = showEnergizedPaths
     ? buildEnergizedOverlayContent(
       doc,
@@ -301,7 +326,7 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
   const colors = exportThemeColors(theme);
   const topology = extractTopology(doc);
   const operateState = deriveOperationState(doc, topology);
-  const bounds = drawingBounds(doc);
+  const bounds = drawingBounds(doc, { display, includeLabelExtents: true, padding: 80 });
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
   const joinMarkers = busbarJoinMarkers(topology)
@@ -320,7 +345,7 @@ export function buildDrawingExportSvg(doc: DrawingDocument, options: DrawingExpo
     ? `<g id="energized-overlay">${buildEnergizedOverlayContent(doc, null, colors, display, false, 0, 0)}</g>`
     : '';
 
-  const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState);
+  const symbols = buildSymbolsSvg(doc, colors, display, labelMode, selectedObjectIds, includeOperationState, null);
   const { labels, annotations } = buildLabelsAndAnnotations(doc, colors, display, labelMode, selectedObjectIds);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -345,7 +370,7 @@ export function buildAnimatedSequenceExportSvg(
   const showEnergized = sequence.settings.showEnergizedPaths ?? sequence.settings.trimLineEnergisation;
   const animateEnergized = sequence.settings.animateEnergizedPaths ?? sequence.settings.trimLineEnergisation;
   const colors = exportThemeColors(theme);
-  const bounds = drawingBounds(doc);
+  const bounds = drawingBounds(doc, { display, includeLabelExtents: true, padding: 80, extraLeft: 28 });
   const width = bounds.maxX - bounds.minX;
   const drawingHeight = bounds.maxY - bounds.minY;
   const exportHeight = drawingHeight + SEQUENCE_LOG_BAND_HEIGHT;

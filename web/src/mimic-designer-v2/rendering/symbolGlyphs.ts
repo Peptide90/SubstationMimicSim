@@ -112,10 +112,64 @@ export function operationLabelText(symbol: ElectricalSymbol): string | undefined
   return undefined;
 }
 
+export function estimateSymbolLabelLocalBounds(
+  symbol: ElectricalSymbol,
+  display: DisplayScale = DEFAULT_DISPLAY_SCALE,
+  includeOperation = true
+): { left: number; right: number; top: number; bottom: number } {
+  const fontSize = scaledSize(EQUIPMENT_LABEL_BASE_FONT, display.text);
+  const rowStep = equipmentLabelRowStep(display.text);
+  const textAnchor = equipmentLabelTextAnchor(symbol.rotation);
+  const name = symbol.label?.text ?? '';
+  const operation = includeOperation ? operationLabelText(symbol) : undefined;
+  const charWidth = fontSize * 0.58;
+  const textWidth = Math.max(name.length * charWidth, operation ? operation.length * charWidth : 0);
+  const lineCount = (name ? 1 : 0) + (operation ? 1 : 0);
+  const pad = 4;
+
+  let left = -textWidth / 2;
+  let right = textWidth / 2;
+  if (textAnchor === 'end') {
+    left = -textWidth;
+    right = 0;
+  } else if (textAnchor === 'start') {
+    left = 0;
+    right = textWidth;
+  }
+
+  const bottom = lineCount > 1 ? rowStep + fontSize * 0.45 : fontSize * 0.45;
+  return {
+    left: left - pad,
+    right: right + pad,
+    top: -fontSize * 0.6 - pad,
+    bottom: bottom + pad
+  };
+}
+
+export function symbolLabelExtentWorldPoints(
+  symbol: ElectricalSymbol,
+  position: Point,
+  display: DisplayScale = DEFAULT_DISPLAY_SCALE,
+  includeOperation = true
+): Point[] {
+  const labelY = equipmentLabelOffsetY(symbol, symbol.rotation, display.text);
+  const bounds = estimateSymbolLabelLocalBounds(symbol, display, includeOperation);
+  const corners = [
+    { x: bounds.left, y: labelY + bounds.top },
+    { x: bounds.right, y: labelY + bounds.top },
+    { x: bounds.left, y: labelY + bounds.bottom },
+    { x: bounds.right, y: labelY + bounds.bottom }
+  ];
+  return corners.map((corner) => {
+    const rotated = rotatePoint(corner, symbol.rotation);
+    return { x: position.x + rotated.x, y: position.y + rotated.y };
+  });
+}
+
 export function symbolLabelsSvgLocal(
   symbol: ElectricalSymbol,
   display: DisplayScale = DEFAULT_DISPLAY_SCALE,
-  options: { textFill: string; includeOperation?: boolean } = { textFill: stroke }
+  options: { textFill: string; includeOperation?: boolean; highlightOutline?: boolean; highlightColor?: string } = { textFill: stroke }
 ): string {
   const textScale = display.text;
   const fontSize = scaledSize(EQUIPMENT_LABEL_BASE_FONT, textScale);
@@ -127,6 +181,13 @@ export function symbolLabelsSvgLocal(
   if (!name && !operation) return '';
 
   const lines: string[] = [];
+  if (options.highlightOutline && (name || operation)) {
+    const bounds = estimateSymbolLabelLocalBounds(symbol, display, !!operation);
+    const width = bounds.right - bounds.left;
+    const height = bounds.bottom - bounds.top;
+    const stroke = options.highlightColor ?? openColor;
+    lines.push(`<rect x="${bounds.left}" y="${bounds.top}" width="${width}" height="${height}" fill="none" stroke="${stroke}" stroke-width="1.75" rx="3"/>`);
+  }
   if (name) {
     lines.push(`<text x="0" y="0" text-anchor="${textAnchor}" dominant-baseline="middle" font-size="${fontSize}" font-family="${EXPORT_FONT_FAMILY}" fill="${options.textFill}">${escapeXml(name)}</text>`);
   }

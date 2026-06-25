@@ -75,6 +75,7 @@ describe('drawingExport', () => {
     expect(svg).toContain('circuit breaker - X135 - closed');
     expect(svg).toContain('fill="freeze"');
     expect(svg).not.toContain('repeatCount="indefinite"');
+    expect(svg).toContain('stroke="#dc2626"');
   });
 
   it('supports many sequence steps without stacked caption overlap', () => {
