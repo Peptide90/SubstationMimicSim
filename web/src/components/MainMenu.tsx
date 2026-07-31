@@ -1,8 +1,16 @@
-import { useState } from "react";
-import type { CSSProperties } from "react";
+import { useMemo, useState } from "react";
 
+import {
+  GAME_CATALOGUE,
+  HUB_PRODUCT_NAME,
+  HUB_TAGLINE,
+  isLaunchableGameId,
+  type LaunchableGameId,
+} from "../app/games/catalogue";
 import { BrandingCluster } from "./BrandingCluster";
 import { ChangelogModal } from "./ChangelogModal";
+import { GameTile } from "./GameTile";
+import "./MainMenu.css";
 
 type Props = {
   buildTag: string;
@@ -13,55 +21,34 @@ type Props = {
 
 export function MainMenu({ buildTag, onStartSolo, onStartChallenges, onStartMultiplayer }: Props) {
   const [changelogOpen, setChangelogOpen] = useState(false);
-  const buttonStyle: CSSProperties = {
-    width: "min(420px, 90vw)",
-    padding: "14px 18px",
-    borderRadius: 10,
-    border: "1px solid #334155",
-    background: "#0f172a",
-    color: "#e2e8f0",
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: "pointer",
-  };
 
+  const launchers = useMemo(
+    (): Record<LaunchableGameId, () => void> => ({
+      mimic: onStartSolo,
+      challenges: onStartChallenges,
+      multiplayer: onStartMultiplayer,
+    }),
+    [onStartSolo, onStartChallenges, onStartMultiplayer]
+  );
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        background: "radial-gradient(circle at top, #0b1220, #060b12 65%)",
-        color: "#e2e8f0",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 20px",
-        gap: 32,
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      <div style={{ textAlign: "center", display: "grid", gap: 10 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 0.5 }}>Substation Mimic</div>
-        <div style={{ fontSize: 14, color: "#94a3b8" }}>
-          Choose a mode to begin building and simulating your substation.
-        </div>
+    <div className="hub-menu">
+      <header className="hub-menu__hero">
+        <h1 className="hub-menu__title">{HUB_PRODUCT_NAME}</h1>
+        <p className="hub-menu__tagline">{HUB_TAGLINE}</p>
+      </header>
+
+      <div className="hub-menu__gallery" role="list">
+        {GAME_CATALOGUE.map((game) => (
+          <GameTile
+            key={game.id}
+            game={game}
+            onPlay={isLaunchableGameId(game.id) ? launchers[game.id] : undefined}
+          />
+        ))}
       </div>
 
-      <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
-        <button style={buttonStyle} onClick={onStartSolo}>
-          Solo: Mimic Designer V2
-        </button>
-        <button style={buttonStyle} onClick={onStartChallenges}>
-          Solo: Substation Builder Challenges
-        </button>
-        <button style={buttonStyle} onClick={onStartMultiplayer}>
-          Multiplayer Grid Game
-        </button>
-      </div>
-
-      <div style={{ position: "absolute", bottom: 24, left: 0, right: 0 }}>
+      <div className="hub-menu__footer">
         <BrandingCluster
           buildTag={buildTag}
           variant="footer"

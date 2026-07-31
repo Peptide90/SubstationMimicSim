@@ -52,7 +52,7 @@ export function ChangelogModal({ open, onClose }: Props) {
               Changelog
             </h2>
             <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 13 }}>
-              Release notes for Substation Mimic.
+              Release notes for The Electric Brit's Grid Games.
             </div>
           </div>
           <button

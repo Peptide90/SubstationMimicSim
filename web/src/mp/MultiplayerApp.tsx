@@ -135,7 +135,7 @@ export function MultiplayerApp({ onExit }: Props) {
         }}
       >
         <div style={{ display: "grid" }}>
-          <strong>The Electric Brit&apos;s Grid Game</strong>
+          <strong>The Electric Brit&apos;s Grid Games</strong>
           <span style={{ color: "#94a3b8", fontSize: 12 }}>
             Status: {connected ? "Connected" : "Disconnected"}
             {roomState ? ` • Room ${roomState.code}` : ""}

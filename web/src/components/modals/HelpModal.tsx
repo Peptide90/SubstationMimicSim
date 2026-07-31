@@ -7,7 +7,7 @@ type Props = {
   children?: ReactNode;
 };
 
-export function HelpModal({ open, title = "How to use Substation Mimic", onClose, children }: Props) {
+export function HelpModal({ open, title = "How to use Grid Games", onClose, children }: Props) {
   if (!open) return null;
 
   return (

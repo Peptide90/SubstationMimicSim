@@ -1,6 +1,8 @@
 # Substation Mimic Sim
 
-This project was started by Jordan Taylor (@TheElectricBrit) as an educational resource for creation high voltage single line mimic diagrams for use in teaching and media production.
+This project was started by Jordan Taylor (@TheElectricBrit) as an educational resource for creating high voltage single line mimic diagrams for use in teaching and media production.
+
+The live hub is **The Electric Brit's Grid Games** (Substation 2D Sim is one of several modes). See [docs/ROADMAP.md](docs/ROADMAP.md) for current priorities.
 
 You can access the live version online here:
 
@@ -19,6 +21,8 @@ Advanced planned features:
 - [ ] Automatic labelling of equipment (toggleable and schema selector e.g. BP109, IEC, etc)
 - [ ] Better control panel UI/UX
 - [ ] Control panel event log (SCADA like)
+
+> Many checklist items above are partially or fully delivered in Substation 2D Sim / challenges. Prefer [docs/ROADMAP.md](docs/ROADMAP.md) for forward-looking work (hub, multiplayer, operator mode).
 
 ## How to Build
 
