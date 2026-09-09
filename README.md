@@ -6,23 +6,52 @@ The live hub is **The Electric Brit's Grid Games** (Substation 2D Sim is one of 
 
 You can access the live version online here:
 
-Planned features include:
+This repository holds **The Electric Brit's Grid Games** hub and its flagship mode,
+**Substation 2D Sim** — a single-line mimic designer, power-system simulator and teaching
+platform. Draw a substation, operate it, watch protection respond, and export the whole
+thing as an animated diagram for video.
 
-- [ ] Drag and Drop component library
-- [ ] System for connecting components
-- [ ] Component state changing by clicking
-- [ ] Simple power flow simulation from source to load with respect to component state
+See **[docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md)** for where this is going, and
+[docs/ROADMAP.md](docs/ROADMAP.md) for hub and multiplayer decisions.
 
-Advanced planned features:
+## What it does today
 
-- [ ] Interlocking rules to have sequence of operation of switchgear
-- [ ] Tagging to allow group operation of equipment
-- [ ] Library of example mimics
-- [ ] Automatic labelling of equipment (toggleable and schema selector e.g. BP109, IEC, etc)
-- [ ] Better control panel UI/UX
-- [ ] Control panel event log (SCADA like)
+**Drawing**
+- Drag-and-drop symbol library, orthogonal busbar and conductor drafting, snapping
+- Single-line and three-phase views of the same document
+- Substation templates: single busbar, double busbar, breaker-and-a-half, mesh corner
+- Automatic BP109 nomenclature inference, with manual labels preserved
+- SVG and PNG export, print view
 
-> Many checklist items above are partially or fully delivered in Substation 2D Sim / challenges. Prefer [docs/ROADMAP.md](docs/ROADMAP.md) for forward-looking work (hub, multiplayer, operator mode).
+**Simulation**
+- Topology extraction, islanding and energisation tracing
+- Per-phase power flow, voltage and current values, thermal state
+- Earthing, live/earth conflict detection, arc and interlock refusal on illegal operations
+- Faults: phase-earth, phase-phase, three-phase, transient, high-impedance, hot joints
+- Protection relays: functions, inputs, outputs, zones, breaker-fail and intertrip
+- SCADA-style operational event log
+
+**Teaching**
+- Five learning tiers (Junior → Commissioning Engineer) that adapt vocabulary,
+  visible systems, tooling and operational strictness
+- Scenario runner with objectives, timed events, tiered hints, replay log and scoring
+- Built-in lessons, challenges and sandbox templates
+
+**Animation**
+- Step sequencer for switching operations with per-step timing
+- Animated SVG export for use in videos
+
+## Known gaps
+
+Tracked in [docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md):
+
+- The protection engine is far richer than the UI exposes (the relay input/output
+  manager panels are currently disabled in the build)
+- Scenarios can grade *operating* a drawing but not *building* one
+- No switching instruction sheets or isolation tagging yet — the content for these is
+  quarantined in `web/src/legacy/challenges/` awaiting a port
+- Animation has no camera or annotation keyframes
+- Lessons must be authored in code rather than in the app
 
 ## How to Build
 

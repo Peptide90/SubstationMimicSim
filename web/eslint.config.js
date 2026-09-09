@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // src/legacy is quarantined reference material awaiting a port, not live code.
+  // See src/legacy/challenges/README.md and docs/PLATFORM-PLAN.md (Phase 1).
+  globalIgnores(['dist', 'src/legacy']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

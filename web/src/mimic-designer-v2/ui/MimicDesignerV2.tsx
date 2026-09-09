@@ -3,8 +3,8 @@ import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, F
 import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
-import { LABEL_SCHEMES } from '../../app/labeling/schemes';
-import type { BusbarRole, CircuitType, LabelScheme } from '../../app/labeling/types';
+import { LABEL_SCHEMES } from '../nomenclature/labelSchemes';
+import type { BusbarRole, CircuitType, LabelScheme } from '../nomenclature/labelTypes';
 import { downloadAnimatedSequenceExport, downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
 import { resolveSwitchgearVisualState } from '../rendering/switchgearVisualState';
 import {
@@ -48,7 +48,7 @@ import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage 
 import { deleteScenarioPackage, duplicateScenario, listScenarioPackages, saveScenarioPackage } from '../scenarios/scenarioStore';
 import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScenario, startScenario, tickScenario } from '../scenarios/runner';
 import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTier, isScenarioAvailableForTier, learnMore, learningTierOrder, learningTiers, tierBadgeForScenario } from '../learning';
-import { loadChallengeProgress } from '../../app/challenges/storage';
+import { loadChallengeProgress } from '../persistence/progressStore';
 import '../theme/tokens.css';
 import '../canvas/editor.css';
 
