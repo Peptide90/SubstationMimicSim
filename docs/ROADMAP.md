@@ -5,6 +5,8 @@ Hub product: **The Electric Brit's Grid Games** (`gridgame.electricbrit.co.uk`).
 
 This document consolidates planning that previously lived only in architecture notes, a stale README checklist, and unmerged PR branches.
 
+> **Forward planning has moved to [PLATFORM-PLAN.md](./PLATFORM-PLAN.md)** — workbench architecture, tiered protection, animation studio and content authoring. This document remains the record of hub and multiplayer decisions.
+
 ---
 
 ## Priority status
