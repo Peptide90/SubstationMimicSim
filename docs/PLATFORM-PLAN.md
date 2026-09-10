@@ -100,7 +100,7 @@ the same document format.
 
 ## 3. Plan
 
-### Phase 0 — Clear the ground (~1 week)
+### Phase 0 — Clear the ground — **done**
 
 Nothing else on this list is pleasant until this is done.
 
@@ -113,9 +113,12 @@ Nothing else on this list is pleasant until this is done.
 4. Add CI: typecheck, lint, test, build on push. (Open PR #8 may already cover this.)
 5. Update the README checklist — most of it shipped; it currently undersells the project badly.
 
-**Exit:** one editor in the tree, green CI, honest README.
+**Exit:** one editor in the tree, green CI, honest README. *Delivered: the legacy React Flow
+editor and ~4,000 lines of unreachable code removed, bundle down from 736 kB to 493 kB (gzip
+213 kB to 139 kB), challenge content quarantined under `web/src/legacy/challenges/`, root
+`npm test` fixed, CI added.*
 
-### Phase 1 — Split the workbench and absorb the challenge content (~3-4 weeks)
+### Phase 1 — Split the workbench and absorb the challenge content — **in progress**
 
 The enabling refactor. Behaviour-preserving, and the highest-leverage work in this plan.
 
@@ -123,8 +126,11 @@ The enabling refactor. Behaviour-preserving, and the highest-leverage work in th
    dependency) with typed actions. The component stops owning the document.
 2. Extract panels into `workbenches/{draw,operate,protect,study,studio}/`, each a real module
    with its own panel set. Target: no file over ~400 lines.
-3. Promote workbench to a first-class concept alongside tier — a `WorkbenchId × LearningTier`
-   matrix resolving to visible panels, tools and vocabulary. Absorbs `featureVisibility.ts`.
+3. **Done.** Workbench is now a first-class concept alongside tier: `workbenches/` holds the
+   registry, the `WorkbenchId × LearningTier` resolver and its tests, and the shell renders a
+   workbench switcher driving panels, tools and canvas mode. `protection/tripNarrative.ts` is
+   the first teaching surface added as a *file* rather than an edit to the shell — a
+   tier-appropriate account of the most recent trip, reachable from every tier.
 4. **Extend the scenario model** to cover what `ChallengeApp` could do and V2 cannot: build
    objectives, switching instruction sheets, isolation tags, scoring, resilience probes.
    Port the six legacy tutorials/levels onto it, then delete `app/challenges/`.
@@ -211,8 +217,8 @@ and 4 are genuinely independent — but given your content-first answer, **run P
 Phase 2**, and treat Phase 3 as the pleasant interleave when you want to make something rather
 than build something.
 
-Suggested order: **0 → 1 → 4 → 2 → 3**, with Phase 3's timeline UI pulled forward if a video
-deadline demands it.
+Suggested order: **0 → 1 → 4 → 2 → 3** (see decision 6.2), with Phase 3's timeline UI pulled
+forward if a video deadline demands it.
 
 ## 5. Naming
 
@@ -222,13 +228,73 @@ are modes within it, not products. Under Grid Games, "Substation 2D Sim" is a fi
 for the platform as a whole — and one more rename should wait until Phase 1 has settled what
 the thing actually is.
 
-## 6. Open questions
+## 6. Decisions
 
-- **Realism ceiling.** Is this always a teaching abstraction, or do you eventually want real
-  impedances and fault-level calculation? It changes how much `powerFlow.ts` must grow, and it
-  is much cheaper to decide before Phase 2 than during it.
-- **Assessment.** Does a learner's progress need to be recorded for an instructor to review —
-  scores, attempts, a marking view? That is a server, and it should be scoped alongside the
-  existing multiplayer work rather than bolted on later.
-- **Classroom multiplayer.** Still deferred in ROADMAP.md. Phase 1's shared document store is
-  what would make it tractable; worth revisiting once that lands.
+The questions this plan opened are answered here. Each is settled enough to build against;
+where a decision has a cost, the cost is stated rather than hidden.
+
+### 6.1 Protection depth — tiered, all the way up
+
+**Decided:** tiered from a single trip-and-alarm account through settings and curves to
+coordination, discrimination, intertrips, blocking, inhibit and lockout. Where a drawing is
+shown, **it is simplified to only what is modelled.**
+
+That last clause is the binding constraint, and it is the useful one. A scheme diagram that
+draws a contact the simulation does not evaluate teaches a learner something false and can
+never be debugged. So: every element rendered in a protection diagram maps to a simulated
+object, or it is not drawn. Where the model lacks something the picture needs, the model gains
+it first. This makes Phase 2 partly an engine task, not only a UI task.
+
+The tier ladder is now expressed in code, in `workbenches/registry.ts` and
+`protection/tripNarrative.ts`, and pinned by tests asserting that depth increases with tier and
+that the plain-language account is never removed.
+
+### 6.2 Audience — content-first, tier-agnostic
+
+**Decided:** no single audience drives the roadmap. The priority is the authoring tooling that
+lets content be made for any tier without a code change, which moves **Phase 4 ahead of
+Phase 2**.
+
+The consequence to accept: protection depth arrives later than it otherwise would. The
+compensation is that when it arrives, lessons for it can be written without a commit — and the
+trip narrative already gives every tier something true in the meantime.
+
+### 6.3 Video — keyframes, annotations and camera movement
+
+**Decided:** export is adequate; the gap is direction, not encoding. Phase 3 builds a timeline
+with camera keyframes and an annotation track. **In-browser video capture is explicitly
+dropped** — OBS pointed at a keyframed, annotated animation produces a better clip for a
+fraction of the work, and reintroducing a capture pipeline later costs nothing that this
+decision forecloses.
+
+### 6.4 Realism ceiling — a teaching abstraction, held honest
+
+**Decided:** this is a teaching tool, not a study package. It does not need load flow
+convergence, sequence components or fault-level calculation, and it should not pretend to.
+
+The rule that keeps that honest is the same one as 6.1: **the tool may simplify, but it must
+not lie.** A displayed number must come from something modelled. Where a tier needs a figure
+the engine cannot honestly produce, the answer is to show less, not to fabricate a plausible
+value.
+
+`simulation/powerFlow.ts` therefore grows only where a teaching surface demands it — Phase 2's
+time-current curves need fault current at a point, which is the first real pressure on this
+boundary and should be met with a documented, deliberately simple model rather than a silent
+approximation.
+
+### 6.5 Assessment — local now, server only when someone asks
+
+**Decided:** progress stays per-learner in the browser (`persistence/progressStore.ts`), and
+lesson packs carry results out as files. No accounts, no telemetry, no instructor dashboard for
+now.
+
+An instructor marking view is a server, and a server for schoolchildren's work is a data
+protection commitment, not a feature. If classroom use makes it necessary, it should be scoped
+together with the deferred multiplayer server rather than grown separately — and the privacy
+draft noted in ROADMAP.md becomes a prerequisite, not an afterthought.
+
+### 6.6 Classroom multiplayer — still deferred, now cheaper
+
+**Unchanged, but reassessed.** Multiplayer stays deferred. Phase 1's shared document store is
+the thing that would make it tractable; revisit once that has landed rather than before.
+
