@@ -1,8 +1,11 @@
-import type { DrawingDocument, OperationEvent, ScenarioDefinition, ScenarioEvent, ScenarioObjective, ScenarioReplayStep } from '../drawing/model';
+import type { DrawingDocument, ElectricalSymbol, OperationEvent, ScenarioDefinition, ScenarioEvent, ScenarioObjective, ScenarioReplayStep } from '../drawing/model';
 import { addFault } from '../faults/faults';
 import { migrateDrawingDocument } from '../schema/documentSchema';
 import { deriveOperationState } from '../topology/operation';
 import { extractTopology } from '../topology/extractTopology';
+import { taggedSymbols } from '../safety/isolation';
+import { bayBuilt, includesComponents, physicallyConnected } from './buildObjectives';
+import { advanceSwitchingSheets, progressFor, sheetComplete } from './switchingSheet';
 
 export interface ScenarioRunResult {
   doc: DrawingDocument;
@@ -82,10 +85,14 @@ export function tickScenario(doc: DrawingDocument, scenario: ScenarioDefinition,
   return evaluateScenario(nextDoc, nextScenario, messages);
 }
 
-export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinition, priorMessages: string[] = []): ScenarioRunResult {
+export function evaluateScenario(doc: DrawingDocument, inputScenario: ScenarioDefinition, priorMessages: string[] = []): ScenarioRunResult {
   const topology = extractTopology(doc);
   const operation = deriveOperationState(doc, topology);
-  const objectives = scenario.objectives.map((objective) => evaluateObjective(objective, doc, operation, topology, scenario));
+  const scenario = advanceSwitchingSheets(inputScenario, doc);
+  const objectives = applyLatchesAndRequirements(
+    scenario.objectives,
+    scenario.objectives.map((objective) => evaluateObjective(objective, doc, operation, topology, scenario))
+  );
   const liveEarthConflict = operation.faultNodeIds.size > 0 || operation.faultBranchIds.size > 0;
   const damaged = doc.objects.symbols.some((symbol) => symbol.simulation?.damaged);
   const wrongOperations = scenario.wrongOperationCount ?? 0;
@@ -103,7 +110,11 @@ export function evaluateScenario(doc: DrawingDocument, scenario: ScenarioDefinit
     objectives.every((objective) => objective.completed) &&
     (!successRules.requireNoLiveEarthConflict || !liveEarthConflict) &&
     (!successRules.requireVoltageSegregation || (operation.voltageConflictNodeIds.size === 0 && operation.voltageConflictBranchIds.size === 0));
-  const progressedScenario = progressTeachingStep({ ...scenario, objectives }, doc, operation, topology);
+  const stepped = progressTeachingSteps({ ...scenario, objectives }, doc, operation, topology);
+  const triggered = fireCurrentStepEvent(doc, stepped);
+  doc = triggered.doc;
+  const progressedScenario = triggered.scenario;
+  if (triggered.message) priorMessages = [...priorMessages, triggered.message];
   const scoring = scoreScenario(progressedScenario, success, failed);
   const activeHint = progressedScenario.teachingSteps?.[progressedScenario.currentStepIndex ?? 0]?.body ?? objectives.find((objective) => !objective.completed && !objective.failed)?.hint;
   return {
@@ -177,27 +188,75 @@ function addLog(doc: DrawingDocument, message: string, now: number) {
   return { ...doc, operationEvents: [...doc.operationEvents, { id: `event-${now}-${Math.floor(Math.random() * 9999)}`, timestamp: new Date(now).toISOString(), message }] };
 }
 
+function isLive(targetId: string, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>): boolean {
+  const branchLive = topology.branches.some((branch) => branch.objectId === targetId && operation.liveBranchIds.has(branch.id));
+  const terminalLive = topology.terminals
+    .filter((terminal) => terminal.parentObjectId === targetId)
+    .flatMap((terminal) => terminal.connectedNodeIds)
+    .some((nodeId) => operation.liveNodeIds.has(nodeId));
+  return branchLive || terminalLive;
+}
+
+function isEarthed(targetId: string, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>): boolean {
+  const branchEarthed = topology.branches.some((branch) => branch.objectId === targetId && operation.earthedBranchIds.has(branch.id));
+  const terminalEarthed = topology.terminals
+    .filter((terminal) => terminal.parentObjectId === targetId)
+    .flatMap((terminal) => terminal.connectedNodeIds)
+    .some((nodeId) => operation.earthedNodeIds.has(nodeId));
+  return branchEarthed || terminalEarthed;
+}
+
 function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>, scenario: ScenarioDefinition): ScenarioObjective {
-  const targetId = objective.targetObjectId;
-  if (!targetId) return objective;
-  if (objective.type === 'operate-switchgear') {
-    const symbol = doc.objects.symbols.find((item) => item.id === targetId);
-    return { ...objective, completed: Boolean(symbol && symbol.operation?.switchState === objective.targetState) };
+  // Objectives that grade the whole network, the drawing or a sheet, rather than one target.
+  if (objective.type === 'include-component') {
+    // Fixtures the exercise supplied do not count towards what the learner built.
+    const fixtures = new Set(scenario.restrictions?.lockedObjectIds ?? []);
+    const built = { ...doc, objects: { ...doc.objects, symbols: doc.objects.symbols.filter((symbol) => !fixtures.has(symbol.id)) } };
+    const byType = !objective.componentTypes?.length || includesComponents(built, objective.componentTypes, objective.count ?? 1);
+    const byCount = Object.entries(objective.requiredCounts ?? {}).every(([type, required]) => includesComponents(built, [type as ElectricalSymbol['type']], required ?? 0));
+    return { ...objective, completed: byType && byCount && Boolean(objective.componentTypes?.length || objective.requiredCounts) };
   }
-  if (objective.type === 'energise-target-busbar' || objective.type === 'restore-supply-to-load') {
-    const branchLive = topology.branches.some((branch) => branch.objectId === targetId && operation.liveBranchIds.has(branch.id));
-    const terminalLive = topology.terminals
-      .filter((terminal) => terminal.parentObjectId === targetId)
-      .flatMap((terminal) => terminal.connectedNodeIds)
-      .some((nodeId) => operation.liveNodeIds.has(nodeId));
-    const live = branchLive || terminalLive;
-    return { ...objective, completed: live };
+  if (objective.type === 'complete-switching-sheet') {
+    const sheet = (scenario.switchingSheets ?? []).find((item) => item.id === objective.sheetId);
+    return { ...objective, completed: Boolean(sheet && sheetComplete(sheet, progressFor(scenario, sheet.id))) };
   }
+  if (objective.type === 'tag-isolation') {
+    const kind = objective.isolationKind ?? 'point-of-isolation';
+    if (objective.targetObjectId) {
+      const symbol = doc.objects.symbols.find((item) => item.id === objective.targetObjectId);
+      return { ...objective, completed: symbol?.operation?.isolation?.kind === kind };
+    }
+    const tagged = taggedSymbols(doc, kind).filter((symbol) => !objective.componentTypes?.length || objective.componentTypes.includes(symbol.type));
+    return { ...objective, completed: tagged.length >= (objective.count ?? 1) };
+  }
+
   if (objective.type === 'maintain-no-live-earth-conflict') {
     return { ...objective, completed: operation.faultNodeIds.size === 0 && operation.faultBranchIds.size === 0, failed: operation.faultNodeIds.size > 0 || operation.faultBranchIds.size > 0 };
   }
   if (objective.type === 'avoid-disconnector-under-load') {
     return { ...objective, completed: (scenario.wrongOperationCount ?? 0) === 0, failed: (scenario.wrongOperationCount ?? 0) > 0 };
+  }
+  if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
+  const targetId = objective.targetObjectId;
+  if (!targetId) return objective;
+  if (objective.type === 'connect-between') {
+    return { ...objective, completed: Boolean(objective.secondaryObjectId && physicallyConnected(topology, targetId, objective.secondaryObjectId)) };
+  }
+  if (objective.type === 'build-bay') {
+    return { ...objective, completed: Boolean(objective.secondaryObjectId && bayBuilt(doc, topology, targetId, objective.secondaryObjectId, objective.requiredCounts)) };
+  }
+  if (objective.type === 'isolate-target') {
+    const exists = [...doc.objects.symbols, ...doc.objects.conductors, ...doc.objects.busbars].some((item) => item.id === targetId);
+    const dead = exists && !isLive(targetId, operation, topology);
+    const earthedIfRequired = objective.targetState !== 'isolated' || isEarthed(targetId, operation, topology);
+    return { ...objective, completed: dead && earthedIfRequired };
+  }
+  if (objective.type === 'operate-switchgear') {
+    const symbol = doc.objects.symbols.find((item) => item.id === targetId);
+    return { ...objective, completed: Boolean(symbol && symbol.operation?.switchState === objective.targetState) };
+  }
+  if (objective.type === 'energise-target-busbar' || objective.type === 'restore-supply-to-load') {
+    return { ...objective, completed: isLive(targetId, operation, topology) };
   }
   if (objective.type === 'isolate-faulted-section' || objective.type === 'clear-fault-using-breaker') {
     return { ...objective, completed: !doc.faults.some((fault) => fault.active && fault.targetObjectId === targetId) };
@@ -212,8 +271,43 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
     const marked = doc.operationEvents.some((event) => targetIds.includes(event.targetObjectId ?? '') && event.message.toLowerCase().includes('marked') && event.message.toLowerCase().includes('fault'));
     return { ...objective, completed: hot && marked };
   }
-  if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
   return objective;
+}
+
+/** Latched objectives stay complete; objectives with unmet requirements cannot complete. */
+function applyLatchesAndRequirements(previous: ScenarioObjective[], evaluated: ScenarioObjective[]): ScenarioObjective[] {
+  const done = new Map<string, boolean>();
+  return evaluated.map((objective) => {
+    const before = previous.find((item) => item.id === objective.id);
+    const blocked = (objective.requires ?? []).some((id) => !done.get(id));
+    const completed = blocked ? false : Boolean(objective.completed || (objective.latch && before?.completed));
+    done.set(objective.id, completed);
+    return { ...objective, completed };
+  });
+}
+
+/** Advance through every teaching step already satisfied, not just one per evaluation. */
+function progressTeachingSteps(scenario: ScenarioDefinition, doc: DrawingDocument, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>): ScenarioDefinition {
+  let current = scenario;
+  for (let guard = 0; guard < (scenario.teachingSteps?.length ?? 0); guard += 1) {
+    const next = progressTeachingStep(current, doc, operation, topology);
+    if (next.currentStepIndex === current.currentStepIndex) break;
+    current = next;
+  }
+  return current;
+}
+
+/** A teaching step can fire a scenario event when it becomes current — a fault that appears as the lesson reaches it. */
+function fireCurrentStepEvent(doc: DrawingDocument, scenario: ScenarioDefinition, now = Date.now()): { doc: DrawingDocument; scenario: ScenarioDefinition; message?: string } {
+  const step = scenario.teachingSteps?.[scenario.currentStepIndex ?? 0];
+  const event = step?.eventIdToTrigger ? scenario.events?.find((item) => item.id === step.eventIdToTrigger) : undefined;
+  if (!event || event.fired) return { doc, scenario };
+  const applied = applyScenarioEvent(doc, event, now);
+  return {
+    doc: applied.doc,
+    scenario: { ...scenario, events: (scenario.events ?? []).map((item) => item.id === event.id ? { ...item, fired: true } : item) },
+    message: applied.message
+  };
 }
 
 function progressTeachingStep(scenario: ScenarioDefinition, doc: DrawingDocument, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>): ScenarioDefinition {
@@ -229,6 +323,7 @@ function progressTeachingStep(scenario: ScenarioDefinition, doc: DrawingDocument
       const symbol = doc.objects.symbols.find((item) => item.id === targetId);
       return Boolean(symbol && step.expectedState && symbol.operation?.switchState === step.expectedState);
     }
+    if (step.waitFor === 'objective-complete') return Boolean(scenario.objectives.find((objective) => objective.id === step.objectiveId)?.completed);
     if (step.waitFor === 'fault-clearance') return !doc.faults.some((fault) => fault.active && (!targetId || fault.targetObjectId === targetId));
     if (step.waitFor === 'target-energised') {
       const branchLive = topology.branches.some((branch) => branch.objectId === targetId && operation.liveBranchIds.has(branch.id));

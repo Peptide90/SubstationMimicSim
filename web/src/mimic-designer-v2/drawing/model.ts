@@ -286,8 +286,35 @@ export interface ScenarioObjective {
     | 'identify-faulted-component'
     | 'identify-hot-joint'
     | 'explain-protection-trip'
-    | 'maintain-no-live-earth-conflict';
+    | 'maintain-no-live-earth-conflict'
+    // Build objectives: grade constructing a drawing, not just operating one.
+    | 'connect-between'
+    | 'include-component'
+    | 'build-bay'
+    // Safety documentation and switching programmes.
+    | 'tag-isolation'
+    | 'isolate-target'
+    | 'complete-switching-sheet';
   targetObjectId?: string;
+  /** Second endpoint for connect-between and build-bay. */
+  secondaryObjectId?: string;
+  /** Component kinds counted by include-component and tag-isolation. */
+  componentTypes?: ElectricalSymbol['type'][];
+  /** Minimum number required by include-component and tag-isolation. */
+  count?: number;
+  /** Minimum of each kind that must sit on the path between the build-bay endpoints. */
+  requiredCounts?: Partial<Record<ElectricalSymbol['type'], number>>;
+  /** Which kind of tag tag-isolation counts. Defaults to point-of-isolation. */
+  isolationKind?: IsolationKind;
+  /** Switching sheet that complete-switching-sheet grades. */
+  sheetId?: string;
+  /**
+   * Once achieved, stays achieved. Lets a scenario grade a sequence — energise,
+   * then isolate — where both states can never hold at the same moment.
+   */
+  latch?: boolean;
+  /** Objective ids that must already be complete before this one can complete. Reference earlier objectives. */
+  requires?: string[];
   targetTopologyNodeId?: string;
   targetTopologyBranchId?: string;
   targetState?: 'open' | 'closed' | 'live' | 'dead' | 'isolated' | 'cleared' | 'identified';
@@ -341,6 +368,8 @@ export interface ScenarioRestrictions {
   allowedTools?: string[];
   allowedComponentTypes?: ElectricalSymbol['type'][];
   allowedOperationObjectIds?: string[];
+  /** Fixtures a build exercise provides: the learner cannot move or delete them. */
+  lockedObjectIds?: string[];
 }
 
 export interface ScenarioTeachingStep {
@@ -348,7 +377,9 @@ export interface ScenarioTeachingStep {
   title: string;
   body: string;
   targetObjectId?: string;
-  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'manual';
+  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'objective-complete' | 'manual';
+  /** For waitFor 'objective-complete': the objective whose completion advances this step. */
+  objectiveId?: string;
   expectedObjectId?: string;
   expectedState?: 'open' | 'closed' | 'live' | 'dead' | 'cleared';
   pauseSimulation?: boolean;
@@ -385,6 +416,60 @@ export interface ScenarioReplayStep {
   message: string;
 }
 
+/**
+ * Safety documentation on a switching device, following UK practice.
+ *
+ * - A point of isolation locks a disconnector or breaker OPEN and carries a
+ *   caution notice. While applied the device cannot be closed.
+ * - A point of earthing locks an earth switch CLOSED. While applied the earth
+ *   cannot be removed.
+ */
+export type IsolationKind = 'point-of-isolation' | 'point-of-earthing';
+
+export interface IsolationTag {
+  kind: IsolationKind;
+  appliedAt: string;
+}
+
+/** Verbs on a switching instruction sheet, as a control engineer would issue them. */
+export type SwitchingVerb =
+  | 'open'
+  | 'close'
+  | 'check-open'
+  | 'check-closed'
+  | 'open-lock-caution'
+  | 'check-open-lock-caution'
+  | 'close-earth'
+  | 'close-earth-lock'
+  | 'open-earth'
+  | 'remove-lock-caution';
+
+/** Colours read off a line end and reported back to control to prove the right circuit. */
+export type LineEndColour = 'red' | 'yellow' | 'blue' | 'green' | 'black';
+
+export interface SwitchingInstruction {
+  id: string;
+  verb: SwitchingVerb;
+  targetObjectId: string;
+  notes?: string;
+  /** The learner must read something off the equipment and report it before this line completes. */
+  report?: { kind: 'line-end-colours'; targetObjectId: string };
+}
+
+export interface SwitchingSheet {
+  id: string;
+  title: string;
+  instructions: SwitchingInstruction[];
+  /** The colour sequence actually painted at each line end, keyed by object id. */
+  lineEndColours?: Record<string, LineEndColour[]>;
+}
+
+export interface SwitchingInstructionProgress {
+  instructionId: string;
+  confirmedAt: string;
+  atMs: number;
+}
+
 export interface ScenarioDefinition {
   id: string;
   name: string;
@@ -413,6 +498,10 @@ export interface ScenarioDefinition {
   activeView?: ViewMode | 'thermal' | 'topology';
   objectives: ScenarioObjective[];
   tierObjectives?: Partial<Record<LearningTier, ScenarioObjective[]>>;
+  /** Formal switching instruction sheets issued for this scenario. */
+  switchingSheets?: SwitchingSheet[];
+  /** Instructions confirmed so far, per sheet id, in confirmation order. */
+  switchingProgress?: Record<string, SwitchingInstructionProgress[]>;
   events?: ScenarioEvent[];
   successRules?: ScenarioSuccessRules;
   failureRules?: ScenarioSuccessRules;
@@ -462,6 +551,8 @@ export interface BaseDrawingObject {
     tripped?: boolean;
     lockout?: boolean;
     protectionState?: ProtectionRuntimeState;
+    /** Safety documentation applied to the device. See IsolationTag. */
+    isolation?: IsolationTag;
   };
 }
 

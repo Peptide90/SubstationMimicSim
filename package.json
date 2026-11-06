@@ -1,8 +1,10 @@
 {
   "scripts": {
-    "test": "node --test",
+    "test": "npm --prefix web run test",
     "build": "npm --prefix web ci && npm --prefix web run build",
-    "build:web": "npm --prefix web run build"
+    "build:web": "npm --prefix web run build",
+    "typecheck": "npm --prefix web exec tsc -b",
+    "lint": "npm --prefix web run lint"
   },
   "type": "module",
   "devDependencies": {}

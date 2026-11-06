@@ -1,5 +1,5 @@
 import bp109Schema from '../../schemas/labeling/ng-bp109.json';
-import type { BP109Meta, CircuitType, PurposeDigit, VoltageClass } from '../../app/labeling/types';
+import type { BP109Meta, CircuitType, PurposeDigit, VoltageClass } from './labelTypes';
 
 const digitMap = (bp109Schema as { typeMaps?: { digitMap?: Record<string, number> } }).typeMaps?.digitMap ?? {};
 const letterMap = (bp109Schema as { typeMaps?: { letterMap?: Record<string, string> } }).typeMaps?.letterMap ?? {};

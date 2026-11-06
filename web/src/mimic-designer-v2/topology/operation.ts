@@ -1,4 +1,5 @@
 import type { DrawingDocument, ElectricalSymbol, OperationEvent } from '../drawing/model';
+import { isolationBlocksOperation } from '../safety/isolation';
 import { actsAsPowerSource } from '../simulation/powerRoles';
 import type { TopologyGraph } from './types';
 
@@ -27,6 +28,8 @@ export interface OperationResult {
   doc: DrawingDocument;
   state: OperationState;
   reason: string;
+  /** True when the device refused to move: a lock, a lockout or an interlock held it. */
+  refused?: boolean;
 }
 
 const isSwitchingDevice = (type: string) => type === 'circuit-breaker' || type === 'disconnector' || type === 'earth-switch';
@@ -198,6 +201,33 @@ export function deriveOperationState(doc: DrawingDocument, graph: TopologyGraph,
   };
 }
 
+/**
+ * Would operating this disconnector make or break load current?
+ *
+ * Disconnectors may be operated off load — with one side live and no current
+ * flowing, as when isolating a breaker that is already open — but must never
+ * be used to connect or disconnect a load. The test is therefore whether the
+ * operation changes which loads are supplied, not whether a terminal is live.
+ *
+ * Simplification: opening one of two parallel paths changes no load's supply
+ * and so is not flagged, although in practice it does break the share of
+ * current that path carried.
+ */
+export function disconnectorSwitchesLoad(doc: DrawingDocument, graph: TopologyGraph, symbolId: string): boolean {
+  const symbol = doc.objects.symbols.find((item) => item.id === symbolId);
+  if (!symbol || symbol.type !== 'disconnector') return false;
+  const loads = doc.objects.symbols.filter((item) => item.type === 'load');
+  if (!loads.length) return false;
+  const nextState = symbol.operation?.switchState === 'closed' ? 'open' : 'closed';
+  const before = deriveOperationState(doc, graph);
+  const after = deriveOperationState(doc, graph, { symbolId, switchState: nextState });
+  const supplied = (state: OperationState, loadId: string) => graph.terminals
+    .filter((terminal) => terminal.parentObjectId === loadId)
+    .flatMap((terminal) => terminal.connectedNodeIds)
+    .some((nodeId) => state.liveNodeIds.has(nodeId));
+  return loads.some((load) => supplied(before, load.id) !== supplied(after, load.id));
+}
+
 export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbolId: string): OperationResult {
   const symbol = doc.objects.symbols.find((item) => item.id === symbolId);
   if (!symbol) return { doc, state: deriveOperationState(doc, graph), reason: `No device ${symbolId}` };
@@ -206,23 +236,32 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
     return { doc: addOperationEvent(nextDoc, `Grid endpoint ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Grid endpoint ${symbol.id} toggled` };
   }
   if (!isSwitchingDevice(symbol.type)) return { doc, state: deriveOperationState(doc, graph), reason: `${symbol.type} has no operate action` };
+  const locked = isolationBlocksOperation(symbol);
+  if (locked) {
+    return { doc: addOperationEvent(doc, locked, symbol.id, locked, 'alarm'), state: deriveOperationState(doc, graph), reason: locked, refused: true };
+  }
   if (symbol.type === 'circuit-breaker' && symbol.operation?.lockout) {
     const reason = `Breaker ${symbol.id} lockout active: reset trip before operating`;
-    return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
+    return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason, refused: true };
   }
 
   const nextState = symbol.operation?.switchState === 'closed' ? 'open' : 'closed';
+  const current = nextState === 'closed' ? deriveOperationState(doc, graph) : undefined;
   if (symbol.type === 'circuit-breaker' && nextState === 'closed') {
     const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
-    if (trial.faultNodeIds.size > 0) {
+    if (introducesConflict(current!, trial)) {
       const nextDoc = updateOperation(doc, symbol.id, { switchState: 'open', tripped: true, lockout: true, protectionState: 'tripped' });
       const reason = trial.voltageConflictNodeIds.size || trial.voltageConflictBranchIds.size ? `Breaker ${symbol.id} tripped: voltage mismatch` : `Breaker ${symbol.id} tripped: live/earthed conflict`;
       return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason), state: deriveOperationState(nextDoc, graph), reason };
     }
   }
   if (symbol.type === 'earth-switch' && nextState === 'closed') {
-    const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
-    if (trial.faultNodeIds.size > 0 || trial.faultBranchIds.size > 0) {
+    // An earth arcs if the equipment it is being closed onto is live — fault or no fault.
+    const earthingLive = graph.terminals
+      .filter((terminal) => terminal.parentObjectId === symbol.id)
+      .flatMap((terminal) => terminal.connectedNodeIds)
+      .some((nodeId) => current!.liveNodeIds.has(nodeId));
+    if (earthingLive) {
       const nextDoc = markArced(updateOperation(doc, symbol.id, { switchState: 'closed', tripped: false }), symbol.id);
       const reason = `Earth switch ${symbol.id} arced: attempted to earth live equipment`;
       return { doc: addOperationEvent(nextDoc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(nextDoc, graph), reason };
@@ -230,15 +269,30 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
   }
   if (symbol.type === 'disconnector' && nextState === 'closed') {
     const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
-    if (trial.faultNodeIds.size > 0 || trial.faultBranchIds.size > 0) {
+    if (introducesConflict(current!, trial)) {
       const reason = `Disconnector ${symbol.id} interlocked: cannot close onto earthed equipment`;
-      return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
+      return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason, refused: true };
     }
   }
 
   const nextDoc = updateOperation(doc, symbol.id, { switchState: nextState, tripped: false });
   const reason = `${symbol.type} ${symbol.id} ${nextState}`;
   return { doc: addOperationEvent(nextDoc, reason, symbol.id), state: deriveOperationState(nextDoc, graph), reason };
+}
+
+/**
+ * Does closing this device energise earthed equipment, or earth live
+ * equipment, that was not so before? Judging what the operation newly connects
+ * — rather than whether a conflict exists anywhere — means an uncleared fault on
+ * one network cannot block switching on another.
+ */
+function introducesConflict(before: OperationState, after: OperationState): boolean {
+  const newlyLive = [...after.liveNodeIds].filter((nodeId) => !before.liveNodeIds.has(nodeId));
+  const newlyEarthed = [...after.earthedNodeIds].filter((nodeId) => !before.earthedNodeIds.has(nodeId));
+  const newVoltageConflict = [...after.voltageConflictNodeIds].some((nodeId) => !before.voltageConflictNodeIds.has(nodeId));
+  return newVoltageConflict
+    || newlyLive.some((nodeId) => after.earthedNodeIds.has(nodeId))
+    || newlyEarthed.some((nodeId) => after.liveNodeIds.has(nodeId));
 }
 
 function updateOperation(doc: DrawingDocument, symbolId: string, patch: ElectricalSymbol['operation']): DrawingDocument {

@@ -1,6 +1,7 @@
 import type { FaultMetadata, ScenarioDefinition } from '../drawing/model';
 import { builtInExamples, builtInTemplates } from '../templates';
 import { createScenarioFromDrawing, makeScenarioEvent, type ScenarioPackage } from './packageScenario';
+import { portedScenarioPackages } from './portedChallenges';
 
 const now = () => new Date().toISOString();
 
@@ -193,7 +194,9 @@ export const builtInScenarioPackages: ScenarioPackage[] = [
     objectives: [
       { id: 'relay-trip', text: 'Inspect how protection trips the breaker', type: 'explain-protection-trip', targetObjectId: 'fault-prot-relay', hint: 'The relay watches inputs and sends the trip action to the breaker.' }
     ]
-  })
+  }),
+  // Builder Challenges content, re-authored for this engine.
+  ...portedScenarioPackages()
 ].filter(Boolean) as ScenarioPackage[];
 
 function scenarioFromExample(exampleId: string, patch: Partial<ScenarioDefinition>): ScenarioPackage {

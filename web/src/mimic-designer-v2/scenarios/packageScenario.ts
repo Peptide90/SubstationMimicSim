@@ -54,6 +54,8 @@ export function createScenarioFromDrawing(doc: DrawingDocument, patch: Partial<S
     successRules: patch.successRules ?? { requireNoLiveEarthConflict: true, requireVoltageSegregation: true },
     failureRules: patch.failureRules ?? { requireNoLiveEarthConflict: true, requireVoltageSegregation: true, maxWrongOperations: 3 },
     expectedSolution: patch.expectedSolution ?? [],
+    switchingSheets: patch.switchingSheets ?? [],
+    switchingProgress: {},
     replayLog: [],
     wrongOperationCount: 0,
     currentHintIndex: 0

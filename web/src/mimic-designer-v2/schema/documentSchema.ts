@@ -16,7 +16,8 @@ function defaultOperation(type: ElectricalSymbol['type'], existing: ElectricalSy
     perPhaseSwitchState: existing.perPhaseSwitchState ?? {},
     tripped: existing.tripped ?? false,
     lockout: existing.lockout ?? existing.tripped ?? false,
-    protectionState: existing.protectionState ?? 'idle'
+    protectionState: existing.protectionState ?? 'idle',
+    isolation: existing.isolation
   };
 }
 
@@ -304,7 +305,9 @@ function migrateScenario(scenario: ScenarioDefinition): ScenarioDefinition {
     expectedSolution: scenario.expectedSolution ?? [],
     replayLog: scenario.replayLog ?? [],
     wrongOperationCount: scenario.wrongOperationCount ?? 0,
-    currentHintIndex: scenario.currentHintIndex ?? 0
+    currentHintIndex: scenario.currentHintIndex ?? 0,
+    switchingSheets: scenario.switchingSheets ?? [],
+    switchingProgress: scenario.switchingProgress ?? {}
   };
 }
 

@@ -1,13 +1,13 @@
 import type { DrawingDocument, ElectricalSymbol, Phase } from '../drawing/model';
-import type { LabelScheme } from '../../app/labeling/types';
+import type { LabelScheme } from './labelTypes';
 import { inferBp109MetaForDocument, isBp109AnchorSymbol, labelFromBp109Meta } from './inferBp109V2';
 import { parseBp109Label } from './parseBp109';
-import { voltageClassFromKv } from '../../app/labeling/bp109';
+import { voltageClassFromKv } from './bp109';
 import {
   ansiFunctionForKind,
   computeAnsiIecLabel,
   defaultAnsiIecMeta
-} from '../../app/labeling/bp109';
+} from './bp109';
 
 const TYPE_PREFIX: Record<ElectricalSymbol['type'], string> = {
   source: 'IN',

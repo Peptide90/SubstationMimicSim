@@ -1,7 +1,7 @@
 import type { DrawingDocument, ElectricalSymbol } from '../drawing/model';
 import { extractTopology } from '../topology/extractTopology';
-import { computeBp109Label, defaultPurposeDigit, schemaDefaultPrefix, voltageClassFromKv } from '../../app/labeling/bp109';
-import type { BusbarRole, BP109Meta, CircuitType, Prefix, PurposeDigit } from '../../app/labeling/types';
+import { computeBp109Label, defaultPurposeDigit, schemaDefaultPrefix, voltageClassFromKv } from './bp109';
+import type { BusbarRole, BP109Meta, CircuitType, Prefix, PurposeDigit } from './labelTypes';
 import { parseBp109Label, parseLineCircuitNumber } from './parseBp109';
 
 const SWITCH_TYPES = new Set<ElectricalSymbol['type']>(['circuit-breaker', 'disconnector', 'earth-switch']);
