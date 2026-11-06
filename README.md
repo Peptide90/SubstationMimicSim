@@ -37,6 +37,16 @@ See **[docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md)** for where this is going, 
 - Scenario runner with objectives, timed events, tiered hints, replay log and scoring
 - Built-in lessons, challenges and sandbox templates
 
+**Switching and safety**
+- Switching instruction sheets worked strictly in order, with readback of checks and
+  line-end colours, and out-of-sequence operations recorded
+- Points of isolation (locked open, caution notice) and points of earthing (locked closed)
+- Build exercises graded on what the learner constructed, not just how they operate it
+
+**Authoring**
+- In-app scenario editor with live validation, "try it" as a learner, and shareable
+  lesson-pack files
+
 **Animation**
 - Step sequencer for switching operations with per-step timing
 - Animated SVG export for use in videos
@@ -47,11 +57,8 @@ Tracked in [docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md):
 
 - The protection engine is far richer than the UI exposes (the relay input/output
   manager panels are currently disabled in the build)
-- Scenarios can grade *operating* a drawing but not *building* one
-- No switching instruction sheets or isolation tagging yet — the content for these is
-  quarantined in `web/src/legacy/challenges/` awaiting a port
 - Animation has no camera or annotation keyframes
-- Lessons must be authored in code rather than in the app
+- Timed scenario events are not yet editable in the scenario editor
 
 ## How to Build
 

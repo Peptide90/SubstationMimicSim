@@ -184,3 +184,39 @@
 .mimic-v2-sheet-complete { color:#15803d; font-weight:700; margin:8px 0 0; }
 .mimic-v2-sheet-message { margin:8px 0 0; font-weight:600; }
 .mimic-v2-line-end-colours { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+
+/* Scenario editor (Study workbench). */
+.mimic-v2-inspector.authoring { width:min(520px, 46vw); flex:0 0 min(520px, 46vw); overflow-y:auto; }
+.mimic-v2-scenario-editor { display:grid; gap:8px; font-size:12px; }
+.mimic-v2-scenario-editor header { display:grid; gap:6px; }
+.mimic-v2-editor-title { font-size:15px; font-weight:700; padding:4px 6px; border:1px solid var(--md2-border); border-radius:4px; background:var(--md2-input-bg); color:var(--md2-text); }
+.mimic-v2-editor-status { margin:0; font-weight:600; }
+.mimic-v2-editor-status.error { color:#b91c1c; }
+.mimic-v2-editor-status.warning { color:#b45309; }
+.mimic-v2-editor-status.ok { color:#15803d; }
+.mimic-v2-editor-tabs { display:flex; flex-wrap:wrap; gap:4px; }
+.mimic-v2-editor-body { display:grid; gap:8px; }
+.mimic-v2-editor-body label { display:grid; gap:3px; }
+.mimic-v2-editor-body textarea { min-height:48px; resize:vertical; }
+.mimic-v2-editor-body input, .mimic-v2-editor-body select, .mimic-v2-editor-body textarea { background:var(--md2-input-bg); color:var(--md2-text); border:1px solid var(--md2-border); border-radius:4px; padding:4px 6px; font:inherit; }
+.mimic-v2-editor-body h5 { margin:6px 0 0; }
+.mimic-v2-editor-hint { margin:0; color:var(--md2-muted-text); }
+.mimic-v2-editor-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:6px; }
+.mimic-v2-editor-card { border:1px solid var(--md2-border); border-radius:6px; padding:8px; display:grid; gap:6px; }
+.mimic-v2-editor-card-head { display:flex; gap:4px; align-items:center; }
+.mimic-v2-editor-card-head input { flex:1; min-width:0; }
+.mimic-v2-editor-checks { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; }
+.mimic-v2-editor-checks > span { font-weight:700; width:100%; }
+.mimic-v2-editor-checks label { display:flex; gap:4px; align-items:center; }
+.mimic-v2-editor-checks input[type='number'] { width:56px; }
+.mimic-v2-picker { display:flex; gap:4px; }
+.mimic-v2-picker select { flex:1; min-width:0; }
+.mimic-v2-editor-lines { margin:0; padding-left:18px; display:grid; gap:8px; }
+.mimic-v2-editor-lines li { display:grid; gap:4px; }
+.mimic-v2-editor-lines label { display:flex; gap:4px; align-items:center; }
+.mimic-v2-editor-colours { display:grid; gap:4px; }
+.mimic-v2-issue-list { margin:0; padding-left:16px; display:grid; gap:2px; }
+.mimic-v2-issue-list li.error { color:#b91c1c; }
+.mimic-v2-issue-list li.warning { color:#b45309; }
+.mimic-v2-scenario-editor input[type='checkbox'] { width:auto; flex:0 0 auto; padding:0; margin:0; }
+.mimic-v2-scenario-editor label:has(> input[type='checkbox']) { display:flex; gap:6px; align-items:center; }

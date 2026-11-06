@@ -122,8 +122,10 @@ editor and ~4,000 lines of unreachable code removed, bundle down from 736 kB to 
 
 The enabling refactor. Behaviour-preserving, and the highest-leverage work in this plan.
 
-1. Lift document state out of `MimicDesignerV2.tsx` into a store (`zustand` is already a
-   dependency) with typed actions. The component stops owning the document.
+1. **Started.** Scenario authoring state now lives in a zustand store
+   (`authoring/store.ts`) whose every change goes through pure, tested functions. The
+   document itself is still owned by `MimicDesignerV2.tsx`; moving it out is the
+   remaining step, and should follow the same pattern.
 2. Extract panels into `workbenches/{draw,operate,protect,study,studio}/`, each a real module
    with its own panel set. Target: no file over ~400 lines.
 3. **Done.** Workbench is now a first-class concept alongside tier: `workbenches/` holds the
@@ -211,7 +213,7 @@ a WebM encoder over a plain one, and it is a fraction of the work.
 **Exit:** a switching sequence can be filmed with camera moves and callouts, straight from the
 document that models it.
 
-### Phase 4 — Content authoring (~4 weeks) — *your stated priority*
+### Phase 4 — Content authoring — **core delivered**
 
 Content-first, tier-agnostic. The point of this phase is that **you stop needing a code change
 to publish a lesson.**
@@ -228,6 +230,18 @@ to publish a lesson.**
    station transformers, GIS-specific and switch-disconnector variants.
 
 **Exit:** a lesson is a file you author and share, not a commit.
+
+*Delivered:* an in-app scenario editor (Study workbench → "New scenario from this drawing")
+covering overview and tier explanations side by side, objectives with type-specific
+fields, teaching steps, switching sheets with line-end colours, and build-exercise rules
+(fixtures and palette). Targets are picked from the diagram. A validator explains every
+mistake that would make a scenario unplayable or misleading, and gaps in tier coverage.
+"Try it" plays the scenario as a learner and returns to the editor with the drawing
+restored. Lesson packs export and import as files. The `window.prompt` authoring chain
+is gone.
+
+*Still to do:* authoring timed events in the editor (the old prompt remains for those),
+a content library browser (item 4), and the symbol library expansion (item 5).
 
 ---
 

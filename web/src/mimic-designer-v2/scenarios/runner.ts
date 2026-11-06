@@ -207,7 +207,7 @@ function isEarthed(targetId: string, operation: ReturnType<typeof deriveOperatio
 }
 
 function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, operation: ReturnType<typeof deriveOperationState>, topology: ReturnType<typeof extractTopology>, scenario: ScenarioDefinition): ScenarioObjective {
-  // Objectives that grade the drawing as a whole, or a sheet, rather than one target.
+  // Objectives that grade the whole network, the drawing or a sheet, rather than one target.
   if (objective.type === 'include-component') {
     // Fixtures the exercise supplied do not count towards what the learner built.
     const fixtures = new Set(scenario.restrictions?.lockedObjectIds ?? []);
@@ -230,6 +230,13 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
     return { ...objective, completed: tagged.length >= (objective.count ?? 1) };
   }
 
+  if (objective.type === 'maintain-no-live-earth-conflict') {
+    return { ...objective, completed: operation.faultNodeIds.size === 0 && operation.faultBranchIds.size === 0, failed: operation.faultNodeIds.size > 0 || operation.faultBranchIds.size > 0 };
+  }
+  if (objective.type === 'avoid-disconnector-under-load') {
+    return { ...objective, completed: (scenario.wrongOperationCount ?? 0) === 0, failed: (scenario.wrongOperationCount ?? 0) > 0 };
+  }
+  if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
   const targetId = objective.targetObjectId;
   if (!targetId) return objective;
   if (objective.type === 'connect-between') {
@@ -251,12 +258,6 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
   if (objective.type === 'energise-target-busbar' || objective.type === 'restore-supply-to-load') {
     return { ...objective, completed: isLive(targetId, operation, topology) };
   }
-  if (objective.type === 'maintain-no-live-earth-conflict') {
-    return { ...objective, completed: operation.faultNodeIds.size === 0 && operation.faultBranchIds.size === 0, failed: operation.faultNodeIds.size > 0 || operation.faultBranchIds.size > 0 };
-  }
-  if (objective.type === 'avoid-disconnector-under-load') {
-    return { ...objective, completed: (scenario.wrongOperationCount ?? 0) === 0, failed: (scenario.wrongOperationCount ?? 0) > 0 };
-  }
   if (objective.type === 'isolate-faulted-section' || objective.type === 'clear-fault-using-breaker') {
     return { ...objective, completed: !doc.faults.some((fault) => fault.active && fault.targetObjectId === targetId) };
   }
@@ -270,7 +271,6 @@ function evaluateObjective(objective: ScenarioObjective, doc: DrawingDocument, o
     const marked = doc.operationEvents.some((event) => targetIds.includes(event.targetObjectId ?? '') && event.message.toLowerCase().includes('marked') && event.message.toLowerCase().includes('fault'));
     return { ...objective, completed: hot && marked };
   }
-  if (objective.type === 'explain-protection-trip') return { ...objective, completed: doc.relays.some((relay) => relay.state === 'tripped') };
   return objective;
 }
 

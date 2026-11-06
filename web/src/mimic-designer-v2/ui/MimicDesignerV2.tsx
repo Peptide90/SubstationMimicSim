@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, IsolationKind, LearningTier, LineEndColour, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioDefinition, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, IsolationKind, LearningTier, LineEndColour, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioDefinition, ScenarioEventSeverity, ScenarioEventType, ScenarioMode } from '../drawing/model';
 import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
@@ -45,7 +45,7 @@ import { builtInExamples, builtInTemplates, createDrawingFromTemplate, insertTem
 import { activeDrawingId, deleteDrawing, duplicateDrawing, listDrawings, loadDrawing, renameDrawing, saveDraft, saveDrawing, saveDrawingAs, type DrawingSummary } from '../persistence/drawingStore';
 import { downloadDrawingJson, exportDrawingJson, importDrawingJson } from '../persistence/importExport';
 import { builtInScenarioPackages } from '../scenarios/builtInScenarios';
-import { createScenarioFromDrawing, type ScenarioPackage, updateScenarioPackage } from '../scenarios/packageScenario';
+import { type ScenarioPackage, updateScenarioPackage } from '../scenarios/packageScenario';
 import { deleteScenarioPackage, duplicateScenario, listScenarioPackages, saveScenarioPackage } from '../scenarios/scenarioStore';
 import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScenario, startScenario, tickScenario } from '../scenarios/runner';
 import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTier, isScenarioAvailableForTier, learnMore, learningTierOrder, learningTiers, tierBadgeForScenario } from '../learning';
@@ -55,6 +55,8 @@ import { applyIsolation, removeIsolation } from '../safety/isolation';
 import { activeSheet, checkSequence, confirmReadback, progressFor } from '../scenarios/switchingSheet';
 import { IsolationBadge, IsolationControls } from './panels/IsolationControls';
 import { SwitchingSheetPanel } from './panels/SwitchingSheetPanel';
+import { ScenarioEditor } from './panels/ScenarioEditor';
+import { exportLessonPack, importLessonPack, newScenarioDraft, useScenarioAuthoring } from '../authoring';
 import { fitCamera } from './camera';
 import type { WorkbenchId } from '../workbenches';
 import { loadChallengeProgress } from '../persistence/progressStore';
@@ -253,6 +255,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
   const [sheetMessage, setSheetMessage] = useState<string | undefined>();
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
+  const authoringDraft = useScenarioAuthoring((state) => state.draft);
+  const openAuthoring = useScenarioAuthoring((state) => state.open);
+  const markAuthoringSaved = useScenarioAuthoring((state) => state.markSaved);
+  /** The author's drawing, kept safe while they try their scenario as a learner. */
+  const [authoringReturnDoc, setAuthoringReturnDoc] = useState<DrawingDocument | null>(null);
   const [escapeMenuOpen, setEscapeMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [sequenceModalOpen, setSequenceModalOpen] = useState(false);
@@ -435,16 +442,63 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     file.text().then(importJsonText);
   };
 
-  const saveCurrentAsScenario = () => {
-    const name = window.prompt('Scenario title', `${doc.name} scenario`);
-    if (!name) return;
-    const description = window.prompt('Scenario description', doc.description ?? '') ?? '';
-    const learningObjective = window.prompt('Primary learning objective', 'Operate the schematic safely and complete the objectives.') ?? '';
-    const pkg = createScenarioFromDrawing(doc, { name, description, learningObjectives: [learningObjective], tags: doc.tags, difficulty: 'intro' });
-    saveScenarioPackage(pkg);
-    setActiveScenarioPackage(pkg);
+  const startAuthoring = (pkg?: ScenarioPackage) => {
+    if (pkg) {
+      replaceDocument(migrateDrawingDocument(pkg.drawing)!, { dirty: false });
+      openAuthoring(pkg.scenario, pkg.id);
+    } else {
+      openAuthoring(newScenarioDraft(doc));
+    }
+    setManagerView('scenario');
+  };
+
+  const saveAuthoredScenario = (pkg: ScenarioPackage) => {
+    const id = useScenarioAuthoring.getState().sourcePackageId ?? pkg.id;
+    const saved = saveScenarioPackage({ ...pkg, id, scenario: { ...pkg.scenario, id } });
+    markAuthoringSaved(saved.id);
     refreshScenarioPackages();
-    setScenarioMessage(`Saved scenario: ${name}`);
+    setScenarioMessage(`Saved scenario: ${saved.title}`);
+  };
+
+  const tryAuthoredScenario = (pkg: ScenarioPackage) => {
+    setAuthoringReturnDoc(doc);
+    startActiveScenario(pkg);
+  };
+
+  const returnToAuthoring = () => {
+    if (!authoringReturnDoc) return;
+    setScenarioOutcome(null);
+    setActiveScenarioPackage(null);
+    replaceDocument(authoringReturnDoc, { dirty: true });
+    setAuthoringReturnDoc(null);
+    selectWorkbench('study');
+  };
+
+  const downloadText = (filename: string, text: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAuthoredScenario = (pkg: ScenarioPackage) => {
+    downloadText(`${pkg.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'lesson'}.lesson.json`, exportLessonPack(pkg));
+  };
+
+  const importLessonPackFile = (file: File) => {
+    file.text().then((text) => {
+      const result = importLessonPack(text);
+      if (!result.ok) {
+        setScenarioMessage(result.reason);
+        return;
+      }
+      saveScenarioPackage(result.pkg);
+      refreshScenarioPackages();
+      const errors = result.issues.filter((issue) => issue.severity === 'error').length;
+      setScenarioMessage(`Imported "${result.pkg.title}"${errors ? ` with ${errors} problem${errors === 1 ? '' : 's'} to fix in the editor` : ''}.`);
+    });
   };
 
   const duplicateScenarioPackageById = (id: string) => {
@@ -606,46 +660,6 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       setScenarioMessage(result.messages.join(' '));
       openScenarioOutcome(result);
     }
-  };
-
-  const renameActiveScenario = () => {
-    if (!activeScenarioPackage) return;
-    const name = window.prompt('Scenario title', activeScenarioPackage.title);
-    if (!name) return;
-    const updated = updateScenarioPackage(activeScenarioPackage, { name });
-    setActiveScenarioPackage(saveScenarioPackage(updated));
-    refreshScenarioPackages();
-  };
-
-  const editActiveScenarioMetadata = () => {
-    if (!activeScenarioPackage) return;
-    const description = window.prompt('Scenario description', activeScenarioPackage.description) ?? activeScenarioPackage.description;
-    const learningObjectives = (window.prompt('Learning objectives, separated by semicolons', activeScenarioPackage.scenario.learningObjectives?.join('; ') ?? '') ?? '')
-      .split(';')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const difficultyInput = window.prompt('Difficulty: intro, standard, advanced', activeScenarioPackage.difficulty) ?? activeScenarioPackage.difficulty;
-    const tags = (window.prompt('Tags, comma separated', activeScenarioPackage.tags.join(', ')) ?? '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const difficulty = difficultyInput === 'advanced' || difficultyInput === 'standard' ? difficultyInput : 'intro';
-    const updated = updateScenarioPackage(activeScenarioPackage, { description, learningObjectives, difficulty, tags });
-    setActiveScenarioPackage(saveScenarioPackage(updated));
-    refreshScenarioPackages();
-  };
-
-  const addScenarioObjective = () => {
-    if (!activeScenarioPackage) return;
-    const text = window.prompt('Objective text', 'Energise target busbar');
-    if (!text) return;
-    const type = window.prompt('Objective type', 'energise-target-busbar') as NonNullable<ScenarioObjective['type']>;
-    const targetObjectId = window.prompt('Target object id', selected[0] ?? '') ?? undefined;
-    const hint = window.prompt('Hint', '') ?? undefined;
-    const objective = { id: `objective-${Date.now()}`, text, type, targetObjectId, hint };
-    const updated = updateScenarioPackage(activeScenarioPackage, { objectives: [...activeScenarioPackage.scenario.objectives, objective] });
-    setActiveScenarioPackage(saveScenarioPackage(updated));
-    refreshScenarioPackages();
   };
 
   const addScenarioEvent = () => {
@@ -1176,7 +1190,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         if (!editingToolsDisabled) addPathPoint(nearestTerminalPoint(symbol, point), draftPath.length > 0);
         return;
       }
-      const operateSwitchgear = tool === 'operate' || tool === 'select';
+      // While authoring, Select picks targets without changing the drawing; use Operate to set up switch states.
+      const operateSwitchgear = tool === 'operate' || (tool === 'select' && !authoringDraft);
+      if (tool === 'select' && authoringDraft) {
+        setSelected([symbol.id]);
+        return;
+      }
       if (!operateSwitchgear) return;
       if (!isSwitchingDevice(symbol.type) && !isGridEndpoint(symbol.type)) {
         setSelected([symbol.id]);
@@ -2229,6 +2248,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           <button className='mimic-v2-chip' onClick={showNextScenarioHint}>Hint</button>
           <button className='mimic-v2-chip' onClick={evaluateActiveScenario}>Check</button>
           <button className='mimic-v2-chip' onClick={() => activeScenarioPackage && startActiveScenario(activeScenarioPackage)}>Restart</button>
+          {authoringReturnDoc && <button className='mimic-v2-chip active' onClick={returnToAuthoring}>Back to editor</button>}
         </div>
         {(selectedObject || selectedPath) && <div className='mimic-v2-scenario-inspection'>
           <strong>{selectedObject?.label?.text ?? selectedPath?.label?.text ?? selectedPath?.id}</strong>
@@ -2273,7 +2293,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </section>}
       </div>
     </main>
-    {!focusedOperateMode && <aside className='mimic-v2-inspector'>
+    {!focusedOperateMode && authoringDraft && <aside className='mimic-v2-inspector authoring'>
+      <ScenarioEditor doc={doc} selectedId={selected[0]} onSave={saveAuthoredScenario} onTryIt={tryAuthoredScenario} onExport={exportAuthoredScenario} />
+    </aside>}
+    {!focusedOperateMode && !authoringDraft && <aside className='mimic-v2-inspector'>
       <h3>{managerView === 'scenario' ? 'Scenario Manager' : 'Inspector'}</h3>
       <p>{doc.name}{dirty ? ' *' : ''}</p>
       {migrationNotice && <p className='mimic-v2-warning-text'>{migrationNotice}</p>}
@@ -2333,16 +2356,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       </section>}
       {managerView === 'scenario' && <section className='mimic-v2-manager-panel'>
         <div className='mimic-v2-voltage-row inspector'>
-          <button className='mimic-v2-chip' onClick={saveCurrentAsScenario}>Convert current drawing</button>
+          <button className='mimic-v2-chip active' onClick={() => startAuthoring()}>New scenario from this drawing</button>
+          {activeScenarioPackage && <button className='mimic-v2-chip' onClick={() => startAuthoring(activeScenarioPackage)}>Edit in scenario editor</button>}
+          <label className='mimic-v2-chip mimic-v2-file-chip'>Import lesson pack<input type='file' accept='.json,application/json' hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) importLessonPackFile(file); event.target.value = ''; }} /></label>
           <button className='mimic-v2-chip' onClick={() => activeScenarioPackage && openScenarioLaunch(activeScenarioPackage)}>Launch</button>
           <button className='mimic-v2-chip' onClick={resetActiveScenario}>Reset</button>
           <button className='mimic-v2-chip' onClick={tickActiveScenario}>Step event</button>
           <button className='mimic-v2-chip' onClick={showNextScenarioHint}>Hint</button>
           <button className='mimic-v2-chip' onClick={evaluateActiveScenario}>Check</button>
           <button className='mimic-v2-chip' onClick={() => { setChallengeProgress(loadChallengeProgress()); setScenarioCatalogueOpen(true); }}>Scenario list</button>
-          <button className='mimic-v2-chip' onClick={renameActiveScenario}>Rename</button>
-          <button className='mimic-v2-chip' onClick={editActiveScenarioMetadata}>Edit metadata</button>
-          <button className='mimic-v2-chip' onClick={addScenarioObjective}>Add objective</button>
           <button className='mimic-v2-chip' onClick={addScenarioEvent}>Add event</button>
         </div>
         <p>{scenarioMessage}</p>

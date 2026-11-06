@@ -210,3 +210,17 @@ describe('switching sheet timing', () => {
     expect(progressFor(advanced, 'sheet-1')[0].atMs).toBe(75_000);
   });
 });
+
+describe('network-wide objectives', () => {
+  it('grade without a target, since they are about the whole network', () => {
+    const scenario: ScenarioDefinition = {
+      id: 'sc-net', name: 'Network', initialSwitchStates: {}, initialSourceStates: {}, faults: [], relays: [],
+      objectives: [
+        { id: 'safe', text: 'No live/earth conflict', type: 'maintain-no-live-earth-conflict' },
+        { id: 'clean', text: 'No disconnector on load', type: 'avoid-disconnector-under-load' }
+      ]
+    };
+    const result = evaluateScenario(radial(), scenario);
+    expect(result.objectives.every((objective) => objective.completed)).toBe(true);
+  });
+});
