@@ -308,6 +308,13 @@ export interface ScenarioObjective {
   isolationKind?: IsolationKind;
   /** Switching sheet that complete-switching-sheet grades. */
   sheetId?: string;
+  /**
+   * Once achieved, stays achieved. Lets a scenario grade a sequence — energise,
+   * then isolate — where both states can never hold at the same moment.
+   */
+  latch?: boolean;
+  /** Objective ids that must already be complete before this one can complete. Reference earlier objectives. */
+  requires?: string[];
   targetTopologyNodeId?: string;
   targetTopologyBranchId?: string;
   targetState?: 'open' | 'closed' | 'live' | 'dead' | 'isolated' | 'cleared' | 'identified';
@@ -361,6 +368,8 @@ export interface ScenarioRestrictions {
   allowedTools?: string[];
   allowedComponentTypes?: ElectricalSymbol['type'][];
   allowedOperationObjectIds?: string[];
+  /** Fixtures a build exercise provides: the learner cannot move or delete them. */
+  lockedObjectIds?: string[];
 }
 
 export interface ScenarioTeachingStep {
@@ -368,7 +377,9 @@ export interface ScenarioTeachingStep {
   title: string;
   body: string;
   targetObjectId?: string;
-  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'manual';
+  waitFor?: 'operation' | 'correct-state' | 'fault-clearance' | 'target-energised' | 'objective-complete' | 'manual';
+  /** For waitFor 'objective-complete': the objective whose completion advances this step. */
+  objectiveId?: string;
   expectedObjectId?: string;
   expectedState?: 'open' | 'closed' | 'live' | 'dead' | 'cleared';
   pauseSimulation?: boolean;

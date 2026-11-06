@@ -34,7 +34,7 @@ import {
 import { EXPORT_FONT_FAMILY } from '../rendering/exportTheme';
 import { loadDocument } from '../storage/documentStore';
 import { rotatePoint } from '../topology/connectivity';
-import { deriveOperationState, operateDevice } from '../topology/operation';
+import { deriveOperationState, disconnectorSwitchesLoad, operateDevice } from '../topology/operation';
 import { computePowerFlow, MIMIC_DESIGNER_V2_SCHEMA_VERSION, migrateDrawingDocument } from '../schema/documentSchema';
 import { addFault, clearFault, createFault, expireTransientFaults } from '../faults/faults';
 import { renderBusbarsForView, renderConductorsForView, renderSymbolsForView } from '../rendering/phaseExpansion';
@@ -770,6 +770,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const editingToolsDisabled = !learningVisibility.allowDrawingTools || (focusedOperateMode && scenarioRestrictions.disableDrawingTools);
   const placementDisabled = !learningVisibility.allowDrawingTools || (focusedOperateMode && (scenarioRestrictions.disablePlacement || scenarioRestrictions.disableDrawingTools));
   const deleteDisabled = focusedOperateMode && scenarioRestrictions.disableDelete;
+  const lockedObjectIds = useMemo(() => new Set(activeScenarioLoaded ? scenarioRestrictions.lockedObjectIds ?? [] : []), [activeScenarioLoaded, scenarioRestrictions.lockedObjectIds]);
   const inspectorEditingDisabled = focusedOperateMode && scenarioRestrictions.disableInspectorEditing;
   const topologyOverlayDisabled = !learningVisibility.showTopologyOverlay || (focusedOperateMode && scenarioRestrictions.disableTopologyOverlay);
   const activeTeachingStep = activeScenario?.teachingSteps?.[activeScenario.currentStepIndex ?? 0];
@@ -783,10 +784,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   }, [activeScenario, activeTeachingStep]);
 
   const operateSymbol = (symbol: ElectricalSymbol) => {
-    const disconnectorLiveOperation = symbol.type === 'disconnector' && symbol.operation?.switchState === 'closed' && topology.terminals
-      .filter((terminal) => terminal.parentObjectId === symbol.id)
-      .flatMap((terminal) => terminal.connectedNodeIds)
-      .some((nodeId) => operateState.liveNodeIds.has(nodeId));
+    const disconnectorLiveOperation = disconnectorSwitchesLoad(doc, topology, symbol.id);
     const result = operateDevice(doc, topology, symbol.id);
     const nextDoc = migrateDrawingDocument(result.doc)!;
     setDoc(nextDoc);
@@ -894,9 +892,10 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     ];
   };
 
-  const beginDragSelected = (start: Point, id: string) => {
-    const ids = selected.includes(id) ? selected : [id];
-    setSelected(ids);
+  const beginDragSelected = (start: Point, clickedId: string) => {
+    const picked = selected.includes(clickedId) ? selected : [clickedId];
+    setSelected(picked);
+    const ids = picked.filter((item) => !lockedObjectIds.has(item));
     dragRef.current = {
       initialDoc: doc,
       moved: false,
@@ -1670,16 +1669,18 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         return;
       }
       if (event.key === 'Delete' && selected.length && !deleteDisabled) {
+        const removable = selected.filter((id) => !lockedObjectIds.has(id));
+        if (removable.length < selected.length) setScenarioMessage('Fixtures provided by the exercise cannot be deleted.');
         commit({
           ...doc,
           objects: {
             ...doc.objects,
-            symbols: doc.objects.symbols.filter((symbol) => !selected.includes(symbol.id)),
-            conductors: doc.objects.conductors.filter((path) => !selected.includes(path.id)),
-            busbars: doc.objects.busbars.filter((path) => !selected.includes(path.id))
+            symbols: doc.objects.symbols.filter((symbol) => !removable.includes(symbol.id)),
+            conductors: doc.objects.conductors.filter((path) => !removable.includes(path.id)),
+            busbars: doc.objects.busbars.filter((path) => !removable.includes(path.id))
           }
         });
-        setSelected([]);
+        setSelected(selected.filter((id) => lockedObjectIds.has(id)));
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         const prev = undoStack[undoStack.length - 1];
@@ -1700,7 +1701,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [commit, deleteDisabled, doc, escapeMenuOpen, exportModalOpen, sequenceModalOpen, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
+  }, [commit, deleteDisabled, lockedObjectIds, doc, escapeMenuOpen, exportModalOpen, sequenceModalOpen, finishPath, focusedOperateMode, redoStack, rotateSelectedSymbols, selected, selectedSymbols.length, tool, undoStack]);
 
   useEffect(() => {
     if (!learningVisibility.showThreePhase && doc.activeView === 'three-phase') setDoc((prev) => ({ ...prev, activeView: 'single-line' }));

@@ -131,9 +131,30 @@ The enabling refactor. Behaviour-preserving, and the highest-leverage work in th
    workbench switcher driving panels, tools and canvas mode. `protection/tripNarrative.ts` is
    the first teaching surface added as a *file* rather than an edit to the shell — a
    tier-appropriate account of the most recent trip, reachable from every tier.
-4. **Extend the scenario model** to cover what `ChallengeApp` could do and V2 cannot: build
-   objectives, switching instruction sheets, isolation tags, scoring, resilience probes.
-   Port the six legacy tutorials/levels onto it, then delete `app/challenges/`.
+4. **Done.** The scenario model now covers what `ChallengeApp` could and V2 could not:
+   build objectives (`connect-between`, `include-component`, `build-bay`), switching
+   instruction sheets with strict sequencing and readback, points of isolation and
+   earthing, and objectives that latch or depend on others so a scenario can grade a
+   sequence. The legacy content is re-authored in `scenarios/portedChallenges.ts`, and
+   every exercise is played to success through the real engine in its tests. The
+   quarantine folder is deleted; commit `f443ece` holds it for reference.
+
+   | Legacy | Outcome |
+   |---|---|
+   | Tutorial 1: Connect the line | Ported — build exercise |
+   | Tutorial 2: Disconnectors under load | Already covered by the existing V2 challenge |
+   | Tutorial 3: Isolate then earth | Ported — switching sheet; now earths the line side only, as the source-side earth arcs |
+   | Tutorial 4: CT/VT basics | Ported — now requires the CT and VT to be part of the bay, not just on the canvas |
+   | Level 1: Energize the load | Ported — build, energise, then isolate, earth and lock off |
+   | Level 2: Twin radial feeder | Ported — design stated explicitly, and graded on keeping both outputs live during transformer maintenance |
+   | Level 3: Add a reserve bus | **Not ported.** Needs the learner to tee into existing conductors, which the editor does not yet do reliably (see Draw increments). Its legacy graders were also trivially satisfied by the fixtures. |
+   | Level 4: Power flow switching | Ported — stages graded individually, and the backfeed through DS-A2 made explicit |
+   | Level 5: Reactive power control | **Not ported.** No capacitor or reactor model exists; porting it would break decision 6.4. |
+
+   Porting surfaced and fixed three engine faults: any active fault anywhere made every
+   earth switch arc and blocked switching on unrelated networks; opening a disconnector
+   off load was counted as a wrong operation; and migration silently stripped new
+   operation state.
 
 **Exit:** adding a teaching feature means adding a file, not editing a 3,000-line one; the
 Builder Challenges content is back and running on the modern engine.
