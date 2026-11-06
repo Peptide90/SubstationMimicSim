@@ -149,3 +149,38 @@
 .mimic-v2-trip-explain .mimic-v2-trip-headline { font-weight:700; }
 .mimic-v2-trip-detail { margin:6px 0 0; padding-left:18px; }
 .mimic-v2-trip-detail li { margin:2px 0; }
+
+/* Points of isolation and earthing. */
+.mimic-v2-isolation-controls { display:grid; gap:4px; margin-top:6px; }
+.mimic-v2-isolation-status.applied { color:var(--md2-warning, #b45309); font-weight:700; }
+.mimic-v2-isolation-hint { font-size:11px; color:var(--md2-muted-text); margin:0; }
+.mimic-v2-isolation-badge rect { fill:#facc15; stroke:#713f12; stroke-width:1; }
+.mimic-v2-isolation-badge.point-of-earthing rect { fill:#86efac; stroke:#14532d; }
+.mimic-v2-isolation-badge text { font-size:8px; font-weight:800; fill:#1c1917; letter-spacing:.04em; }
+
+/* Switching instruction sheet. */
+.mimic-v2-switching-sheet { position:absolute; right:12px; top:12px; width:min(380px, calc(100% - 24px)); max-height:calc(100% - 24px); overflow:auto; border:1px solid var(--md2-border); border-radius:6px; background:var(--md2-panel-bg); color:var(--md2-text); padding:10px; box-shadow:0 12px 30px rgba(15,23,42,.18); font-size:12px; }
+.mimic-v2-inspector .mimic-v2-switching-sheet { position:static; width:auto; max-height:none; box-shadow:none; margin:8px 0; }
+.mimic-v2-switching-sheet header { display:grid; gap:2px; margin-bottom:8px; }
+.mimic-v2-switching-sheet header strong { text-transform:uppercase; letter-spacing:.06em; font-size:11px; }
+.mimic-v2-switching-sheet header small { color:var(--md2-muted-text); font-family:ui-monospace, monospace; }
+.mimic-v2-switching-sheet ol { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
+.mimic-v2-switching-sheet li { display:grid; grid-template-columns:22px 1fr auto; gap:6px; align-items:start; padding:6px; border:1px solid var(--md2-border); border-radius:4px; }
+.mimic-v2-switching-sheet li p { margin:2px 0 0; color:var(--md2-muted-text); }
+.mimic-v2-switching-sheet li.next { border-color:var(--md2-selected); }
+.mimic-v2-switching-sheet li.done { opacity:.7; }
+.mimic-v2-switching-sheet li.done .mimic-v2-sheet-status { color:#15803d; }
+.mimic-v2-sheet-number { font-weight:800; text-align:center; }
+.mimic-v2-sheet-status { font-size:11px; white-space:nowrap; }
+.mimic-v2-sheet-readback { margin-top:8px; padding-top:8px; border-top:1px solid var(--md2-border); display:grid; gap:6px; }
+.mimic-v2-sheet-readback p { margin:0; color:var(--md2-muted-text); }
+.mimic-v2-colour-row { display:flex; flex-wrap:wrap; gap:4px; }
+.mimic-v2-colour-chip { border:1px solid var(--md2-border); border-radius:4px; padding:3px 8px; font-weight:700; text-transform:capitalize; cursor:pointer; color:#fff; }
+.mimic-v2-colour-chip.red { background:#dc2626; }
+.mimic-v2-colour-chip.yellow { background:#ca8a04; }
+.mimic-v2-colour-chip.blue { background:#2563eb; }
+.mimic-v2-colour-chip.green { background:#16a34a; }
+.mimic-v2-colour-chip.black { background:#1c1917; }
+.mimic-v2-sheet-complete { color:#15803d; font-weight:700; margin:8px 0 0; }
+.mimic-v2-sheet-message { margin:8px 0 0; font-weight:600; }
+.mimic-v2-line-end-colours { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }

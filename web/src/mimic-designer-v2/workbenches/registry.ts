@@ -75,6 +75,7 @@ export const workbenches: Record<WorkbenchId, WorkbenchSpec> = {
     tools: ['operate', 'select', 'pan'],
     panels: [
       { id: 'scenarioBrief' },
+      { id: 'switchingSheet', minTier: 'Apprentice' },
       { id: 'objectives' },
       { id: 'hints' },
       { id: 'scenarioCatalogue' },

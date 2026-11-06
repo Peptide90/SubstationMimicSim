@@ -6,7 +6,7 @@ import { extractTopology } from '../topology/extractTopology';
 import { deriveOperationState, operateDevice } from '../topology/operation';
 import { applyIsolation, canApplyIsolation, removeIsolation } from '../safety/isolation';
 import { bayBuilt, includesComponents, physicallyConnected } from '../scenarios/buildObjectives';
-import { activeSheet, checkSequence, confirmReadback, progressFor, sheetComplete } from '../scenarios/switchingSheet';
+import { activeSheet, advanceSwitchingSheets, checkSequence, confirmReadback, progressFor, sheetComplete } from '../scenarios/switchingSheet';
 import { evaluateScenario } from '../scenarios/runner';
 import { symbol } from '../templates/factory';
 
@@ -198,5 +198,15 @@ describe('switching instruction sheets', () => {
     const result = evaluateScenario(doc, scenarioWithSheet());
     doc = result.doc;
     expect(progressFor(doc.scenarios[0], 'sheet-1')).toHaveLength(1);
+  });
+});
+
+describe('switching sheet timing', () => {
+  it('stamps each line with time since the scenario started, not the idle simulation clock', () => {
+    const start = Date.parse('2026-01-01T10:00:00.000Z');
+    const scenario = { ...scenarioWithSheet(), startedAt: new Date(start).toISOString(), elapsedMs: 0 };
+    const doc = carryOut(radial(), 'radial-cb');
+    const advanced = advanceSwitchingSheets(scenario, doc, start + 75_000);
+    expect(progressFor(advanced, 'sheet-1')[0].atMs).toBe(75_000);
   });
 });

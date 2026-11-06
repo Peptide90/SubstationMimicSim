@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, LearningTier, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, IsolationKind, LearningTier, LineEndColour, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioDefinition, ScenarioEventSeverity, ScenarioEventType, ScenarioMode, ScenarioObjective } from '../drawing/model';
 import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
 import { LABEL_SCHEMES } from '../nomenclature/labelSchemes';
 import type { BusbarRole, CircuitType, LabelScheme } from '../nomenclature/labelTypes';
-import { downloadAnimatedSequenceExport, downloadDrawingExport, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
+import { downloadAnimatedSequenceExport, downloadDrawingExport, drawingBounds, type DrawingExportFormat, type DrawingExportLabelMode } from '../rendering/drawingExport';
 import { resolveSwitchgearVisualState } from '../rendering/switchgearVisualState';
 import {
   addStep,
@@ -51,6 +51,11 @@ import { evaluateScenario, nextScenarioHint, recordScenarioOperation, resetScena
 import { adaptScenarioForTier, eventExplanation, explain, featureVisibilityForTier, isScenarioAvailableForTier, learnMore, learningTierOrder, learningTiers, tierBadgeForScenario } from '../learning';
 import { resolveWorkbench, workbenchOrder, workbenches } from '../workbenches';
 import { buildTripNarrative, idleProtectionSummary } from '../protection/tripNarrative';
+import { applyIsolation, removeIsolation } from '../safety/isolation';
+import { activeSheet, checkSequence, confirmReadback, progressFor } from '../scenarios/switchingSheet';
+import { IsolationBadge, IsolationControls } from './panels/IsolationControls';
+import { SwitchingSheetPanel } from './panels/SwitchingSheetPanel';
+import { fitCamera } from './camera';
 import type { WorkbenchId } from '../workbenches';
 import { loadChallengeProgress } from '../persistence/progressStore';
 import '../theme/tokens.css';
@@ -246,6 +251,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const [scenarioPackages, setScenarioPackages] = useState<ScenarioPackage[]>(() => listScenarioPackages());
   const [activeScenarioPackage, setActiveScenarioPackage] = useState<ScenarioPackage | null>(null);
   const [scenarioMessage, setScenarioMessage] = useState<string>('No scenario running');
+  const [sheetMessage, setSheetMessage] = useState<string | undefined>();
   const [scenarioMenuOpen, setScenarioMenuOpen] = useState(false);
   const [escapeMenuOpen, setEscapeMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -304,9 +310,19 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const commit = useCallback((next: DrawingDocument) => {
     setUndoStack((prev) => [...prev, doc]);
     setRedoStack([]);
-    setDoc({ ...next, updatedAt: new Date().toISOString() });
     setDirty(true);
-  }, [doc]);
+    const stamped = { ...next, updatedAt: new Date().toISOString() };
+    // In a build exercise, editing the drawing *is* the learner's work: grade it as it happens.
+    const scenario = activeScenarioPackage?.scenario;
+    const building = Boolean(scenario && stamped.activeScenarioId === scenario.id && scenario.tags?.some((tag) => tag.includes('build')));
+    if (!activeScenarioPackage || !scenario || !building) {
+      setDoc(stamped);
+      return;
+    }
+    const evaluated = evaluateScenario(stamped, scenario);
+    setDoc(evaluated.doc);
+    setActiveScenarioPackage({ ...activeScenarioPackage, scenario: evaluated.scenario, drawing: evaluated.doc });
+  }, [doc, activeScenarioPackage]);
 
   const refreshDrawingSummaries = () => setDrawingSummaries(listDrawings());
   const refreshScenarioPackages = () => setScenarioPackages(listScenarioPackages());
@@ -501,6 +517,13 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       : { ...pkg, scenario: tierScenario };
     const result = startScenario(launchPackage.drawing, launchPackage.scenario);
     replaceDocument(result.doc, { dirty: true });
+    // Frame the drawing clear of the lesson callout and, when there is one, the switching sheet.
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (rect && rect.width > 0) {
+      const camera = fitCamera(drawingBounds(result.doc, 40), rect, { top: 12, bottom: 12, left: 384, right: result.scenario.switchingSheets?.length ? 404 : 12 });
+      setScale(camera.scale);
+      setPan(camera.pan);
+    }
     if (pkg.scenario.activeView === 'thermal' || pkg.scenario.tags?.includes('thermal')) setOverlayMode('thermal');
     if (pkg.scenario.activeView === 'topology') setShowTopologyOverlay(true);
     setMode('operate');
@@ -755,6 +778,9 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   /** True when the current workbench, at this tier, shows the given panel. */
   const panel = useCallback((id: Parameters<typeof activeWorkbench.panels.includes>[0]) => activeWorkbench.panels.includes(id), [activeWorkbench]);
   const tripNarrative = useMemo(() => buildTripNarrative(doc, learningTier), [doc, learningTier]);
+  const sheetInProgress = activeScenario ? activeSheet(activeScenario) ?? activeScenario.switchingSheets?.[activeScenario.switchingSheets.length - 1] : undefined;
+  const selectedLineEndColours = selectedObject && activeScenario ? activeScenario.switchingSheets?.map((sheet) => sheet.lineEndColours?.[selectedObject.id]).find(Boolean) : undefined;
+  const sheetReference = activeScenario && sheetInProgress ? `NCC-${(activeScenario.startedAt ?? '').slice(0, 10).replace(/-/g, '') || 'DRAFT'}-${sheetInProgress.id.toUpperCase().slice(-6)}` : '';
   const selectWorkbench = useCallback((id: WorkbenchId) => {
     const next = resolveWorkbench(id, learningTier, activeScenario, learningVisibility);
     setWorkbench(id);
@@ -785,6 +811,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
 
   const operateSymbol = (symbol: ElectricalSymbol) => {
     const disconnectorLiveOperation = disconnectorSwitchesLoad(doc, topology, symbol.id);
+    const sequence = activeScenarioPackage ? checkSequence(activeScenarioPackage.scenario, doc, symbol.id) : { ok: true as const };
+    if (!sequence.ok) setSheetMessage(sequence.reason);
     const result = operateDevice(doc, topology, symbol.id);
     const nextDoc = migrateDrawingDocument(result.doc)!;
     setDoc(nextDoc);
@@ -795,7 +823,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     if (activeScenarioPackage) {
       const event = nextDoc.operationEvents[nextDoc.operationEvents.length - 1];
       if (event) {
-        const recorded = recordScenarioOperation(activeScenarioPackage.scenario, event, disconnectorLiveOperation || event.message.toLowerCase().includes('arced'));
+        const recorded = recordScenarioOperation(activeScenarioPackage.scenario, event, disconnectorLiveOperation || !sequence.ok || event.message.toLowerCase().includes('arced'));
         const evaluated = evaluateScenario(nextDoc, recorded);
         setActiveScenarioPackage({ ...activeScenarioPackage, scenario: evaluated.scenario, drawing: evaluated.doc });
         setScenarioMessage(evaluated.messages.join(' '));
@@ -1143,6 +1171,11 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         return;
       }
       if (tool === 'pan') return;
+      // Build exercises run in operate mode, so wiring must work here too.
+      if (tool === 'conductor') {
+        if (!editingToolsDisabled) addPathPoint(nearestTerminalPoint(symbol, point), draftPath.length > 0);
+        return;
+      }
       const operateSwitchgear = tool === 'operate' || tool === 'select';
       if (!operateSwitchgear) return;
       if (!isSwitchingDevice(symbol.type) && !isGridEndpoint(symbol.type)) {
@@ -1275,6 +1308,50 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setDoc(nextDoc);
     setDirty(true);
     setLastOperationReason(`Trip reset ${selectedObject.label?.text ?? selectedObject.id}`);
+  };
+
+  /** Record a scenario action and re-evaluate, the way operateSymbol does for switching. */
+  const recordScenarioAction = (nextDoc: DrawingDocument, scenario: ScenarioDefinition, wrong: boolean) => {
+    if (!activeScenarioPackage) return;
+    const event = nextDoc.operationEvents[nextDoc.operationEvents.length - 1];
+    const recorded = event ? recordScenarioOperation(scenario, event, wrong) : scenario;
+    const evaluated = evaluateScenario(nextDoc, recorded);
+    setDoc(evaluated.doc);
+    setActiveScenarioPackage({ ...activeScenarioPackage, scenario: evaluated.scenario, drawing: evaluated.doc });
+    setScenarioMessage(evaluated.messages.join(' '));
+    openScenarioOutcome(evaluated);
+  };
+
+  const changeSelectedIsolation = (kind?: IsolationKind) => {
+    if (!selectedObject) return;
+    const result = kind ? applyIsolation(doc, selectedObject.id, kind) : removeIsolation(doc, selectedObject.id);
+    const nextDoc = migrateDrawingDocument(result.doc)!;
+    setUndoStack((prev) => [...prev, doc]);
+    setRedoStack([]);
+    setDirty(true);
+    setLastOperationReason(result.reason);
+    if (!result.ok || !activeScenarioPackage) {
+      setDoc(nextDoc);
+      if (!result.ok) setScenarioMessage(result.reason);
+      return;
+    }
+    const sequence = checkSequence(activeScenarioPackage.scenario, doc, selectedObject.id);
+    setSheetMessage(sequence.ok ? undefined : sequence.reason);
+    recordScenarioAction(nextDoc, activeScenarioPackage.scenario, !sequence.ok);
+  };
+
+  const readbackInstruction = (sheetId: string, instructionId: string, colours?: LineEndColour[]) => {
+    if (!activeScenarioPackage) return;
+    const scenario = activeScenarioPackage.scenario;
+    const read = confirmReadback(scenario, doc, sheetId, instructionId, colours);
+    setSheetMessage(read.reason);
+    const now = Date.now();
+    const nextDoc = migrateDrawingDocument({
+      ...doc,
+      operationEvents: [...doc.operationEvents, { id: `event-${now}`, timestamp: new Date(now).toISOString(), message: read.reason, severity: read.ok ? 'scenario' : 'alarm', source: 'control' }]
+    })!;
+    // A false readback is a wrong operation: the learner reported something the equipment does not show.
+    recordScenarioAction(nextDoc, read.scenario, !read.ok);
   };
 
   const rotateSelectedSymbols = useCallback(() => {
@@ -1983,7 +2060,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   };
 
   return <div className='mimic-v2-root' data-theme={theme}>
-    {panel('palette') && !placementDisabled && (!focusedOperateMode || buildingScenario) && <aside className='mimic-v2-sidebar'>
+    {(focusedOperateMode ? buildingScenario : panel('palette')) && !placementDisabled && <aside className='mimic-v2-sidebar'>
       <h3>Components</h3>
       <div className='mimic-v2-voltage-row'>
         {standardVoltages.map((voltage) => <button key={voltage} className={`mimic-v2-chip ${selectedVoltage === voltage ? 'active' : ''}`} onClick={() => setSelectedVoltage(voltage)}>{voltage}</button>)}
@@ -1992,7 +2069,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <button className={`mimic-v2-chip ${defaultPlacementRotation === 0 ? 'active' : ''}`} title='Place with terminals left and right' onClick={() => setDefaultPlacementRotation(0)}>Horizontal</button>
         <button className={`mimic-v2-chip ${defaultPlacementRotation === 90 ? 'active' : ''}`} title='Place with terminals top and bottom' onClick={() => setDefaultPlacementRotation(90)}>Vertical</button>
       </div>
-      {SYMBOL_LIBRARY.filter((s) => s.type !== 'line-end' && s.type !== 'cable-sealing-end' && s.type !== 'busbar-coupler').map((s) =>
+      {SYMBOL_LIBRARY.filter((s) => s.type !== 'line-end' && s.type !== 'cable-sealing-end' && s.type !== 'busbar-coupler' && (!focusedOperateMode || !scenarioRestrictions.allowedComponentTypes?.length || scenarioRestrictions.allowedComponentTypes.includes(s.type))).map((s) =>
         <div key={s.type} className='mimic-v2-item'>
           <button className='mimic-v2-component-btn' draggable onDragStart={(event) => onLibraryDragStart(event, s.type)} onClick={() => placeSymbol(s.type)}>
             <span className='mimic-v2-component-icon'>{componentGlyph(s.type)}</span>
@@ -2041,7 +2118,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         {focusedOperateMode ? <>
           <div className='mimic-v2-tool-group'><span>{activeScenarioPackage?.title ?? 'Scenario'}</span></div>
           <div className='mimic-v2-tool-group'><span>Mode</span><button className='mimic-v2-btn active'>Operate</button></div>
-          <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='select'?'active':''}`} aria-label='Select' title='Select and inspect equipment' onClick={() => setTool('select')}>{toolIcon('select')}</button><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='operate'?'active':''}`} aria-label='Operate' title='Operate switchgear' onClick={() => setTool('operate')}>{toolIcon('operate')}</button>{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='fault'?'active':''}`} aria-label='Fault' title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>{toolIcon('fault')}</button>}<button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='pan'?'active':''}`} aria-label='Pan' title='Pan the canvas' onClick={() => setTool('pan')}>{toolIcon('pan')}</button></div>
+          <div className='mimic-v2-tool-group'><span>Tools</span><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='select'?'active':''}`} aria-label='Select' title='Select and inspect equipment' onClick={() => setTool('select')}>{toolIcon('select')}</button><button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='operate'?'active':''}`} aria-label='Operate' title='Operate switchgear' onClick={() => setTool('operate')}>{toolIcon('operate')}</button>{learningVisibility.allowFaultTools && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='fault'?'active':''}`} aria-label='Fault' title='Apply a fault or thermal condition' onClick={() => setTool('fault')}>{toolIcon('fault')}</button>}{buildingScenario && !editingToolsDisabled && <button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='conductor'?'active':''}`} aria-label='Conductor' title='Draw conductor, busbar, cable, or overhead line' onClick={() => setTool('conductor')}>{toolIcon('conductor')}</button>}<button className={`mimic-v2-btn mimic-v2-icon-btn ${tool==='pan'?'active':''}`} aria-label='Pan' title='Pan the canvas' onClick={() => setTool('pan')}>{toolIcon('pan')}</button>{tool === 'conductor' && buildingScenario && !editingToolsDisabled && <select value={conductorToolKind} title='Conductor type' onChange={(event) => setConductorToolKind(event.target.value as ConductorToolKind)}><option value='busbar'>Busbar</option><option value='cable'>Cable</option><option value='overhead-line'>Overhead line</option></select>}</div>
           {(learningVisibility.showThermalOverlay || learningVisibility.showProtectionManager) && <div className='mimic-v2-tool-group'><span>Overlay</span><button className={`mimic-v2-btn ${overlayMode==='none'?'active':''}`} onClick={() => setOverlayMode('none')}>None</button>{learningVisibility.showThermalOverlay && <button className={`mimic-v2-btn ${overlayMode==='thermal'?'active':''}`} onClick={() => setOverlayMode('thermal')}>Thermal</button>}{learningVisibility.showProtectionManager && <button className={`mimic-v2-btn ${overlayMode==='protection'?'active':''}`} onClick={() => setOverlayMode('protection')}>Protection</button>}{learningVisibility.showProtectionManager && <button className='mimic-v2-btn' onClick={openProtectionModal}>Protection...</button>}</div>}
         </> : <>
           <div className='mimic-v2-tool-group'><span>Tier</span><select value={learningTier} title={learningTiers[learningTier].explanationStyle} onChange={(event) => setLearningTier(event.target.value as LearningTier)}>{learningTierOrder.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></div>
@@ -2107,6 +2184,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
             {transformerLabels(instance.symbol)}
             {ctLabels(instance.symbol)}
             {switchVisual(instance.symbol)}
+            {instance.symbol.operation?.isolation && <IsolationBadge kind={instance.symbol.operation.isolation.kind} rotation={instance.symbol.rotation} />}
             {instance.symbol.terminals.filter((terminal) => !instance.phase || terminal.phaseApplicability.includes(instance.phase)).map((terminal) => {
               const world = terminalWorldPosition(instance.symbol, terminal.id);
               const connected = world ? (terminalByPosition.get(pointKey({ x: Math.round(world.x), y: Math.round(world.y) })) ?? []).length > 1 : false;
@@ -2143,6 +2221,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <button className='mimic-v2-camera-readout' title='Canvas zoom' onClick={() => { setScale(1); setPan({ x: 0, y: 0 }); }}>{Math.round(scale * 100)}%</button>
         <button className='mimic-v2-camera-btn' title='Zoom in' onClick={() => zoomFromCanvasCenter(1.1)}>+</button>
       </div>}
+      {focusedOperateMode && activeScenario && sheetInProgress && <SwitchingSheetPanel sheet={sheetInProgress} progress={progressFor(activeScenario, sheetInProgress.id)} doc={doc} reference={sheetReference} message={sheetMessage} onReadback={(instructionId, colours) => readbackInstruction(sheetInProgress.id, instructionId, colours)} />}
       {focusedOperateMode && <div className='mimic-v2-lesson-callout'>
         <strong>{activeTeachingStep?.title ?? activeScenarioPackage?.title ?? 'Operations mode'}</strong>
         <p>{activeTeachingStep?.body ?? scenarioMessage}</p>
@@ -2160,6 +2239,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
           {selectedObject?.type === 'vt' && <p>VT indication: {selectedFault ? '0.0kV primary, abnormal reference detected' : `${selectedObject.voltageLevelKv ?? selectedDiagnostic?.aggregate.voltageKv ?? 'n/a'}kV primary, 110V secondary`} / ratio {selectedObject.engineering?.vtRatio ?? vtRatioText(selectedObject)} / construction {variantLabel('vt', selectedObject.symbolVariant)}.</p>}
           {selectedObject?.operation?.switchState && <p>Switch state: {selectedObject.operation.switchState}{selectedObject.operation.tripped ? ' / tripped' : ''}{selectedObject.operation.lockout ? ' / lockout' : ''}</p>}
           {selectedObject?.type === 'circuit-breaker' && selectedObject.operation?.lockout && <button className='mimic-v2-chip' onClick={resetSelectedBreakerTrip}>Reset trip lockout</button>}
+          {selectedObject && <IsolationControls symbol={selectedObject} onApply={changeSelectedIsolation} onRemove={() => changeSelectedIsolation()} />}
+          {selectedLineEndColours && <div className='mimic-v2-line-end-colours'><strong>Line-end colours:</strong>{selectedLineEndColours.map((colour, index) => <span key={index} className={`mimic-v2-colour-chip ${colour}`}>{colour}</span>)}</div>}
           {selectedObject?.simulation?.arced && <p className='mimic-v2-warning-text'>Arc damage detected on this device.</p>}
           <button className='mimic-v2-chip' disabled={!markActionAllowed} onClick={markSelectedAsIdentified}>Mark as faulted</button>
         </div>}
@@ -2339,6 +2420,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         </div>}
         <p>{!hasAllPhases(selectedObject.phaseApplicability) ? `* phase-specific device in single-line view (${selectedObject.phaseApplicability.join(',')})` : 'Device applies to all phases.'}</p>
         {selectedObject.type === 'circuit-breaker' && selectedObject.operation?.lockout && <button className='mimic-v2-btn' onClick={resetSelectedBreakerTrip}>Reset trip lockout</button>}
+        {mode === 'operate' && <IsolationControls symbol={selectedObject} onApply={changeSelectedIsolation} onRemove={() => changeSelectedIsolation()} />}
+        {selectedLineEndColours && <div className='mimic-v2-line-end-colours'><strong>Line-end colours:</strong>{selectedLineEndColours.map((colour, index) => <span key={index} className={`mimic-v2-colour-chip ${colour}`}>{colour}</span>)}</div>}
       </>}
       {busbarOnlySelection && panel('labelling') && <>
         <h4>Busbar naming ({selectedBusbars.length})</h4>
@@ -2366,6 +2449,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <h4>Power Flow</h4>
         <p>Input {selectedPowerFlow?.mw ?? 'n/a'}MW / {selectedPowerFlow?.mvar ?? 'n/a'}MVAR. Derived {selectedSummary?.aggregate.mw?.toFixed(1) ?? 'n/a'}MW / {selectedSummary?.aggregate.currentA?.toFixed(0) ?? 'n/a'}A.</p>
       </>}
+      {panel('switchingSheet') && activeScenario && sheetInProgress && <SwitchingSheetPanel sheet={sheetInProgress} progress={progressFor(activeScenario, sheetInProgress.id)} doc={doc} reference={sheetReference} message={sheetMessage} onReadback={(instructionId, colours) => readbackInstruction(sheetInProgress.id, instructionId, colours)} />}
       {panel('tripExplain') && <section className='mimic-v2-manager-panel mimic-v2-trip-explain'>
         <h4>What happened</h4>
         {tripNarrative ? <>

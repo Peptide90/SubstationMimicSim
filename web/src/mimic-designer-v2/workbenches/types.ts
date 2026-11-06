@@ -29,6 +29,7 @@ export type PanelId =
   | 'schemeLogic'
   // Study — "am I doing this correctly?"
   | 'scenarioBrief'
+  | 'switchingSheet'
   | 'objectives'
   | 'hints'
   | 'replayLog'

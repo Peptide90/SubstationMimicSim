@@ -91,6 +91,15 @@ function withProgress(scenario: ScenarioDefinition, sheetId: string, progress: S
   return { ...scenario, switchingProgress: { ...(scenario.switchingProgress ?? {}), [sheetId]: progress } };
 }
 
+/**
+ * Time since the scenario started. The simulation clock (elapsedMs) only moves
+ * while timed simulation runs, so wall-clock time from startedAt is preferred.
+ */
+export function scenarioElapsedMs(scenario: ScenarioDefinition, now = Date.now()): number {
+  const started = scenario.startedAt ? Date.parse(scenario.startedAt) : NaN;
+  return Number.isFinite(started) ? Math.max(0, now - started) : scenario.elapsedMs ?? 0;
+}
+
 function confirmation(instruction: SwitchingInstruction, atMs: number, now: number): SwitchingInstructionProgress {
   return { instructionId: instruction.id, confirmedAt: new Date(now).toISOString(), atMs };
 }
@@ -99,7 +108,7 @@ function confirmation(instruction: SwitchingInstruction, atMs: number, now: numb
  * Complete every action line, in order, whose equipment has reached the asked
  * state. Stops at the first unmet line or the first readback line.
  */
-export function advanceSwitchingSheets(scenario: ScenarioDefinition, doc: DrawingDocument, atMs = scenario.elapsedMs ?? 0, now = Date.now()): ScenarioDefinition {
+export function advanceSwitchingSheets(scenario: ScenarioDefinition, doc: DrawingDocument, now = Date.now(), atMs = scenarioElapsedMs(scenario, now)): ScenarioDefinition {
   let next = scenario;
   for (const sheet of scenario.switchingSheets ?? []) {
     const progress = [...progressFor(next, sheet.id)];
@@ -160,8 +169,8 @@ export function confirmReadback(
   sheetId: string,
   instructionId: string,
   reportedColours?: LineEndColour[],
-  atMs = scenario.elapsedMs ?? 0,
-  now = Date.now()
+  now = Date.now(),
+  atMs = scenarioElapsedMs(scenario, now)
 ): ReadbackResult {
   const sheet = (scenario.switchingSheets ?? []).find((item) => item.id === sheetId);
   if (!sheet) return { scenario, ok: false, reason: `No switching sheet ${sheetId}` };
