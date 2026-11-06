@@ -1,4 +1,5 @@
 import type { DrawingDocument, ElectricalSymbol, OperationEvent } from '../drawing/model';
+import { isolationBlocksOperation } from '../safety/isolation';
 import { actsAsPowerSource } from '../simulation/powerRoles';
 import type { TopologyGraph } from './types';
 
@@ -27,6 +28,8 @@ export interface OperationResult {
   doc: DrawingDocument;
   state: OperationState;
   reason: string;
+  /** True when the device refused to move: a lock, a lockout or an interlock held it. */
+  refused?: boolean;
 }
 
 const isSwitchingDevice = (type: string) => type === 'circuit-breaker' || type === 'disconnector' || type === 'earth-switch';
@@ -206,9 +209,13 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
     return { doc: addOperationEvent(nextDoc, `Grid endpoint ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Grid endpoint ${symbol.id} toggled` };
   }
   if (!isSwitchingDevice(symbol.type)) return { doc, state: deriveOperationState(doc, graph), reason: `${symbol.type} has no operate action` };
+  const locked = isolationBlocksOperation(symbol);
+  if (locked) {
+    return { doc: addOperationEvent(doc, locked, symbol.id, locked, 'alarm'), state: deriveOperationState(doc, graph), reason: locked, refused: true };
+  }
   if (symbol.type === 'circuit-breaker' && symbol.operation?.lockout) {
     const reason = `Breaker ${symbol.id} lockout active: reset trip before operating`;
-    return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
+    return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason, refused: true };
   }
 
   const nextState = symbol.operation?.switchState === 'closed' ? 'open' : 'closed';
@@ -232,7 +239,7 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
     const trial = deriveOperationState(doc, graph, { symbolId: symbol.id, switchState: 'closed', tripped: false });
     if (trial.faultNodeIds.size > 0 || trial.faultBranchIds.size > 0) {
       const reason = `Disconnector ${symbol.id} interlocked: cannot close onto earthed equipment`;
-      return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason };
+      return { doc: addOperationEvent(doc, reason, symbol.id, reason, 'alarm'), state: deriveOperationState(doc, graph), reason, refused: true };
     }
   }
 
