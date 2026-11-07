@@ -370,6 +370,8 @@ export interface ScenarioRestrictions {
   allowedOperationObjectIds?: string[];
   /** Fixtures a build exercise provides: the learner cannot move or delete them. */
   lockedObjectIds?: string[];
+  /** Fix Operate to one view, so a control-room challenge cannot be solved from the substation view. */
+  operateView?: 'substation' | 'control-room';
 }
 
 export interface ScenarioTeachingStep {
@@ -498,6 +500,10 @@ export interface ScenarioDefinition {
   activeView?: ViewMode | 'thermal' | 'topology';
   objectives: ScenarioObjective[];
   tierObjectives?: Partial<Record<LearningTier, ScenarioObjective[]>>;
+  /** The workspace the scenario opens in. Defaults to Operate. */
+  workspace?: 'design' | 'protect' | 'operate';
+  /** The Operate view it opens in, when not locked by restrictions.operateView. */
+  preferredOperateView?: 'substation' | 'control-room';
   /** Formal switching instruction sheets issued for this scenario. */
   switchingSheets?: SwitchingSheet[];
   /** Instructions confirmed so far, per sheet id, in confirmation order. */

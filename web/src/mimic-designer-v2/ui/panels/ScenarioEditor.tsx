@@ -205,6 +205,12 @@ export function ScenarioEditor({ doc, selectedId, onSave, onTryIt, onExport }: P
           <p className='mimic-v2-editor-hint'>The learner operates the drawing as it is. Set the switches on the diagram the way the lesson should begin, then capture them.</p>
           <button type='button' className='mimic-v2-chip' onClick={() => apply((s) => captureStartingState(s, doc))}>Use the diagram's current switch states as the start</button>
         </>}
+        <label>Opens in Operate's<select value={draft.restrictions?.operateView ?? draft.preferredOperateView ?? 'substation'} onChange={(event) => {
+          const view = event.target.value as 'substation' | 'control-room';
+          apply((s) => updateScenario(s, { preferredOperateView: view, restrictions: { ...(s.restrictions ?? {}), operateView: s.restrictions?.operateView ? view : undefined } }));
+        }}><option value='substation'>Substation view (the plant as it is)</option><option value='control-room'>Control room view (only what is reported)</option></select></label>
+        <label><input type='checkbox' checked={!draft.restrictions?.operateView} onChange={(event) => apply((s) => updateScenario(s, { restrictions: { ...(s.restrictions ?? {}), operateView: event.target.checked ? undefined : (s.preferredOperateView ?? 'substation') } }))} />Learner may switch between views</label>
+        <p className='mimic-v2-editor-hint'>Untick for a control-room challenge, so it cannot be solved by looking at the substation view.</p>
         <label>Fail after this many wrong operations<input type='number' min={0} value={draft.failureRules?.maxWrongOperations ?? 3} onChange={(event) => apply((s) => updateScenario(s, { failureRules: { ...(s.failureRules ?? {}), maxWrongOperations: Math.max(0, Number(event.target.value) || 0) } }))} /></label>
         <label><input type='checkbox' checked={draft.failureRules?.requireNoLiveEarthConflict ?? false} onChange={(event) => apply((s) => updateScenario(s, { failureRules: { ...(s.failureRules ?? {}), requireNoLiveEarthConflict: event.target.checked } }))} />Fail if live equipment is earthed</label>
       </div>}

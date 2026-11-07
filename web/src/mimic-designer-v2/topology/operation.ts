@@ -233,7 +233,7 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
   if (!symbol) return { doc, state: deriveOperationState(doc, graph), reason: `No device ${symbolId}` };
   if (symbol.type === 'source' || symbol.type === 'grid-connection') {
     const nextDoc = updateOperation(doc, symbol.id, { sourceOn: symbol.operation?.sourceOn === false });
-    return { doc: addOperationEvent(nextDoc, `Grid endpoint ${symbol.id} toggled`, symbol.id), state: deriveOperationState(nextDoc, graph), reason: `Grid endpoint ${symbol.id} toggled` };
+    return { doc: addOperationEvent(nextDoc, `Grid endpoint ${symbol.id} toggled`, symbol.id, undefined, 'operation'), state: deriveOperationState(nextDoc, graph), reason: `Grid endpoint ${symbol.id} toggled` };
   }
   if (!isSwitchingDevice(symbol.type)) return { doc, state: deriveOperationState(doc, graph), reason: `${symbol.type} has no operate action` };
   const locked = isolationBlocksOperation(symbol);
@@ -277,7 +277,8 @@ export function operateDevice(doc: DrawingDocument, graph: TopologyGraph, symbol
 
   const nextDoc = updateOperation(doc, symbol.id, { switchState: nextState, tripped: false });
   const reason = `${symbol.type} ${symbol.id} ${nextState}`;
-  return { doc: addOperationEvent(nextDoc, reason, symbol.id), state: deriveOperationState(nextDoc, graph), reason };
+  // Tagged at source: a routine operation must never be read as a fault because an id contains "fault".
+  return { doc: addOperationEvent(nextDoc, reason, symbol.id, undefined, 'operation'), state: deriveOperationState(nextDoc, graph), reason };
 }
 
 /**

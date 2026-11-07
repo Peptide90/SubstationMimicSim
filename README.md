@@ -16,6 +16,11 @@ See **[docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md)** for where this is going, 
 
 ## What it does today
 
+The tool is organised as three workspaces over the same substation — **Design** (as built),
+**Protect** (as protected and controlled) and **Operate** (as it runs, seen either as the
+true substation or from the control room) — with **Learn** and **Studio** as modes that work
+in any of them.
+
 **Drawing**
 - Drag-and-drop symbol library, orthogonal busbar and conductor drafting, snapping
 - Single-line and three-phase views of the same document
@@ -57,6 +62,9 @@ Tracked in [docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md):
 
 - The protection engine is far richer than the UI exposes (the relay input/output
   manager panels are currently disabled in the build)
+- Protect has one generated sheet so far (the protection block diagram); trip, close,
+  interlocking and DC sheets follow with the secondary systems model
+- Overcurrent relays cannot yet trip on faults, because faults do not raise current
 - Animation has no camera or annotation keyframes
 - Timed scenario events are not yet editable in the scenario editor
 

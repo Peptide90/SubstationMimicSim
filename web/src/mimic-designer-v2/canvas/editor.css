@@ -220,3 +220,109 @@
 .mimic-v2-issue-list li.warning { color:#b45309; }
 .mimic-v2-scenario-editor input[type='checkbox'] { width:auto; flex:0 0 auto; padding:0; margin:0; }
 .mimic-v2-scenario-editor label:has(> input[type='checkbox']) { display:flex; gap:6px; align-items:center; }
+
+/* ---------------------------------------------------------------------------
+   Operate › Control room view. A scoped theme over the same renderer: the
+   control room sees indications on a dark mimic, not a drawing sheet.
+   --------------------------------------------------------------------------- */
+.mimic-v2-hmi {
+  --md2-canvas-bg: #10161f;
+  --md2-grid-line: transparent;
+  --md2-symbol-bg: #10161f;
+  --md2-busbar: #9aa7b8;
+  --md2-cable: #8193a8;
+  --md2-terminal: #9aa7b8;
+  --md2-text: #dbe4ee;
+  --md2-muted-text: #8b99ab;
+  --md2-live: #33d17a;
+  --md2-deenergised: #4a5566;
+  --md2-selected: #22d3ee;
+  --md2-selected-fill: rgba(34, 211, 238, 0.16);
+  --md2-panel-bg: #161e29;
+  --md2-border: #2c394a;
+  --md2-button-bg: #1d2735;
+  background: var(--md2-canvas-bg);
+  color: var(--md2-text);
+}
+.mimic-v2-hmi .mimic-v2-canvas { background: var(--md2-canvas-bg); }
+.mimic-v2-hmi .mimic-v2-canvas text { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; fill: var(--md2-text); }
+.mimic-v2-hmi .mimic-v2-event-log,
+.mimic-v2-hmi .mimic-v2-lesson-callout,
+.mimic-v2-hmi .mimic-v2-switching-sheet,
+.mimic-v2-hmi .mimic-v2-camera-controls { background: var(--md2-panel-bg); color: var(--md2-text); border-color: var(--md2-border); }
+
+.mimic-v2-hmi-status { position:absolute; left:0; right:0; top:0; height:30px; display:flex; align-items:center; gap:18px; padding:0 14px; background:#0a0f16; border-bottom:1px solid #2c394a; color:#dbe4ee; font:600 12px ui-monospace, Menlo, monospace; letter-spacing:.06em; z-index:3; }
+.mimic-v2-hmi-status time { margin-left:auto; }
+.mimic-v2-hmi-alarm-count.clear { color:#33d17a; }
+.mimic-v2-hmi-alarm-count.p1 { color:#fff; background:#c0262d; padding:2px 8px; border-radius:3px; animation: mimic-v2-hmi-flash 1s steps(2, start) infinite; }
+.mimic-v2-hmi-alarm-count.p2 { color:#1a1200; background:#f5b301; padding:2px 8px; border-radius:3px; }
+.mimic-v2-hmi-alarm-count.p3 { color:#f5b301; }
+@keyframes mimic-v2-hmi-flash { to { visibility: hidden; } }
+
+.mimic-v2-hmi-alarms { position:absolute; left:12px; right:12px; bottom:12px; max-height:30%; display:grid; grid-template-rows:auto 1fr; background:#0a0f16; border:1px solid #2c394a; border-radius:4px; color:#dbe4ee; font:12px ui-monospace, Menlo, monospace; z-index:3; }
+.mimic-v2-hmi-alarms header { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid #2c394a; letter-spacing:.06em; }
+.mimic-v2-hmi-alarms header button, .mimic-v2-hmi-control button { background:#1d2735; color:#dbe4ee; border:1px solid #3a4a5e; border-radius:3px; padding:3px 10px; font:inherit; cursor:pointer; }
+.mimic-v2-hmi-alarms header button:disabled { opacity:.45; cursor:default; }
+.mimic-v2-hmi-alarm-rows { overflow:auto; }
+.mimic-v2-hmi-alarms p { margin:0; padding:8px 10px; color:#8b99ab; }
+.mimic-v2-hmi-alarm { display:grid; grid-template-columns:72px 64px 120px 1fr; gap:10px; width:100%; padding:4px 10px; background:transparent; color:inherit; border:0; border-bottom:1px solid #18212d; text-align:left; font:inherit; cursor:pointer; }
+.mimic-v2-hmi-alarm.p1 b { color:#ff5a5f; }
+.mimic-v2-hmi-alarm.p2 b { color:#f5b301; }
+.mimic-v2-hmi-alarm.p3 b { color:#9fb3c8; }
+.mimic-v2-hmi-alarm.unacked { background:#2a1316; }
+.mimic-v2-hmi-alarm.unacked.p2 { background:#2a2210; }
+.mimic-v2-hmi-alarm.unacked.p3 { background:#16202c; }
+.mimic-v2-hmi-alarm.acked { color:#8b99ab; }
+.mimic-v2-hmi-alarm em { font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.mimic-v2-hmi-control { position:absolute; right:12px; top:44px; width:250px; background:#0a0f16; border:1px solid #22d3ee; border-radius:4px; color:#dbe4ee; font:12px ui-monospace, Menlo, monospace; padding:10px; z-index:4; display:grid; gap:8px; }
+.mimic-v2-hmi-control header { display:flex; justify-content:space-between; align-items:center; }
+.mimic-v2-hmi-control dl { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; margin:0; }
+.mimic-v2-hmi-control dt { color:#8b99ab; }
+.mimic-v2-hmi-control dd { margin:0; font-weight:700; }
+.mimic-v2-hmi-control dd.closed { color:#ff5a5f; }
+.mimic-v2-hmi-control dd.open { color:#33d17a; }
+.mimic-v2-hmi-control dd.locked { color:#f5b301; }
+.mimic-v2-hmi-control .mimic-v2-hmi-action { padding:8px; font-weight:700; letter-spacing:.06em; }
+.mimic-v2-hmi-confirm { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.mimic-v2-hmi-confirm span { width:100%; color:#f5b301; font-weight:700; }
+.mimic-v2-hmi-control .mimic-v2-hmi-execute { background:#c0262d; border-color:#ff5a5f; color:#fff; font-weight:700; }
+.mimic-v2-hmi-result { margin:0; color:#9fb3c8; }
+/* Leave room under the status bar for the lesson overlays. */
+.mimic-v2-hmi .mimic-v2-lesson-callout, .mimic-v2-hmi .mimic-v2-switching-sheet { top:44px; }
+.mimic-v2-hmi .mimic-v2-switching-sheet ~ .mimic-v2-hmi-control { top:auto; bottom:calc(30% + 24px); }
+
+/* ---------------------------------------------------------------------------
+   Protect › generated sheets. An engineering drawing set: paper, frame, title
+   block, and live state drawn on the blocks.
+   --------------------------------------------------------------------------- */
+.mimic-v2-sheet-viewer { position:absolute; inset:0; overflow:auto; background:#d9d6cc; padding:24px; }
+.mimic-v2-sheet { display:block; margin:0 auto; box-shadow:0 6px 24px rgba(0,0,0,.25); font-family: 'Arial Narrow', Arial, sans-serif; }
+.mimic-v2-sheet-paper { fill:#fbfaf5; }
+.mimic-v2-sheet-frame { fill:none; stroke:#1c1c1c; stroke-width:1.5; }
+.mimic-v2-sheet-column-title { font-size:12px; font-weight:700; letter-spacing:.12em; fill:#3a3a3a; }
+.mimic-v2-sheet-link { fill:none; stroke:#5c5c5c; stroke-width:1.4; }
+.mimic-v2-sheet-link.active { stroke:#c0262d; stroke-width:3; }
+.mimic-v2-sheet-arrowhead { fill:#5c5c5c; }
+.mimic-v2-sheet-arrowhead.active { fill:#c0262d; }
+.mimic-v2-sheet-block { cursor:pointer; }
+.mimic-v2-sheet-block rect { fill:#ffffff; stroke:#1c1c1c; stroke-width:1.3; }
+.mimic-v2-sheet-block.relay rect { stroke-width:2.2; }
+.mimic-v2-sheet-block.plant rect { stroke-dasharray:0; fill:#eef3f8; }
+.mimic-v2-sheet-block.picked-up rect { fill:#fff1c2; stroke:#b07d00; }
+.mimic-v2-sheet-block.tripped rect { fill:#ffd6d6; stroke:#c0262d; }
+.mimic-v2-sheet-block.disabled rect { fill:#f1f1f1; stroke:#9a9a9a; stroke-dasharray:4 3; }
+.mimic-v2-sheet-block.plant.open rect { fill:#e6f6ea; stroke:#1f7a3a; }
+.mimic-v2-sheet-block.selected rect { stroke:#0078d4; stroke-width:3; }
+.mimic-v2-sheet-label { font-size:13px; font-weight:700; fill:#141414; }
+.mimic-v2-sheet-detail { font-size:11px; fill:#4a4a4a; }
+.mimic-v2-sheet-titleblock rect { fill:#fbfaf5; stroke:#1c1c1c; stroke-width:1.3; }
+.mimic-v2-sheet-titleblock line { stroke:#1c1c1c; stroke-width:1; }
+.mimic-v2-sheet-titleblock text { font-size:11px; fill:#1c1c1c; letter-spacing:.04em; }
+.mimic-v2-sheet-titleblock text.strong { font-size:13px; font-weight:700; }
+.mimic-v2-sheet-notes { max-width:880px; margin:16px auto 0; background:#fbfaf5; border:1px solid #1c1c1c; padding:8px 12px; font-size:12px; color:#1c1c1c; }
+.mimic-v2-sheet-notes ul { margin:4px 0 0; padding-left:18px; }
+.mimic-v2-sheet-empty { max-width:560px; margin:60px auto; background:#fbfaf5; border:1px solid #1c1c1c; padding:20px 24px; color:#1c1c1c; }
+.mimic-v2-sheet-empty h3 { margin-top:0; }
+/* Fit the sheet to the viewer width rather than clipping its frame. */
+.mimic-v2-sheet { max-width:100%; height:auto; }

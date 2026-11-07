@@ -146,7 +146,7 @@ existing tier controls on power-flow detail and terminology.
 Each phase ships content as well as features: at least one lesson that uses what it adds,
 written in the in-app editor (decision 5.2). Sizes are relative: S, M, L.
 
-### Phase A — Three workspaces (M)
+### Phase A — Three workspaces (M) — **done**
 
 Make the differentiation real before adding depth, so that every later phase has a home.
 
@@ -159,13 +159,28 @@ Make the differentiation real before adding depth, so that every later phase has
    plant. Until Phase F, the control room view shows plant state directly — correct while the
    secondary side is healthy, which until then it always is. Protect gets a sheet viewer.
 3. Protect's first sheet is the **protection block diagram**, generated from the relay model
-   that already exists (inputs, functions, outputs). Re-enable the relay input and output
-   panels that are switched off today as the inspector for it.
+   that already exists (inputs, functions, outputs), with a relay inspector beside it.
 4. A minimal alarm list in the control room view, fed by today's event log. It grows in every
    later phase.
 5. A scenario setting to lock Operate to one view.
 
 **Exit:** a stranger can tell which workspace they are in from a screenshot.
+
+*Delivered:* `workspaces/` replaces the workbench switcher, with tests that every workspace
+and view resolves to a different canvas. Design is the light editor; Protect shows the
+generated block diagram as an engineering sheet with a title block, live relay and breaker
+state, and plant cross-referencing; Operate's substation view is the live diagram, and its
+control room view is a dark HMI with a status bar, an alarm list with acknowledgement, and
+select-before-operate controls. Editing is confined to Design, and faults to the substation
+view. Learn and Studio are toggles in all three.
+
+*Corrections and findings:*
+- The two switched-off panels the September review called "relay inputs and outputs" were in
+  fact a duplicate of the Power Flow dialog (removed as dead code) and a zones and relays
+  manager (now Protect's relay manager).
+- Routine operations were classified by guessing from message text, so a breaker whose id
+  contained "fault" raised an urgent alarm when opened. The switching engine now tags its
+  own events.
 
 ### Phase B — The secondary model (L)
 
@@ -214,12 +229,17 @@ Gives the secondary side consequences.
 
 The tiered protection ladder from decision 5.1, now on a model that can carry it.
 
-1. CT cores and ratios wired to relay functions; VT secondaries.
-2. A relay inspector with settings, and time–current curves drawn from the same
+1. **Fault current.** Faults do not raise current in the engine today, so an overcurrent
+   relay only ever sees load current and cannot trip on a fault (earth-fault and
+   differential functions can). A deliberately simple fault-level model is needed — the
+   first real pressure on decision 5.4, to be met openly rather than with a silent
+   approximation.
+2. CT cores and ratios wired to relay functions; VT secondaries.
+3. A relay inspector with settings, and time–current curves drawn from the same
    definitions that drive trip timing.
-3. Grading and discrimination between relays, with margins flagged.
-4. Intertrips, blocking, breaker fail and lockout relays as rungs and contacts.
-5. Commissioning tier: test links, secondary injection, isolating a relay for testing.
+4. Grading and discrimination between relays, with margins flagged.
+5. Intertrips, blocking, breaker fail and lockout relays as rungs and contacts.
+6. Commissioning tier: test links, secondary injection, isolating a relay for testing.
 
 **Exit:** the same fault, viewed at all five tiers, gives five true explanations at five depths.
 
