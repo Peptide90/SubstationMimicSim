@@ -1,274 +1,251 @@
 # Substation Sim — platform plan
 
-Status: proposal, September 2026. Supersedes the forward-looking half of
-[ROADMAP.md](./ROADMAP.md); that document remains the record of hub/multiplayer decisions.
+Status: revised November 2026. Replaces the September plan, whose delivered work is
+summarised in section 1. [ROADMAP.md](./ROADMAP.md) remains the record of hub and
+multiplayer decisions.
 
-Goal, restated: **one learning tool that teaches substation layouts, component purpose,
-switching operations and protection across five ability tiers, and produces broadcast-quality
-animated diagrams as a by-product of the same document.**
+Goal: **one learning tool that teaches a substation the way it really works — the plant,
+the secondary systems that protect and control it, and the control room that operates it —
+at five ability tiers, and films any of it for video.**
 
 ---
 
-## 1. Where the project actually is
+## 1. Where it stands
 
-Better than the README suggests. The engine under `web/src/mimic-designer-v2/` is not a
-drawing toy — it is a small, tested power-system simulator:
+### Delivered
 
-| Capability | Where | State |
+- **Foundation.** Legacy editor removed (bundle 736 kB → 493 kB), CI, README.
+- **Switching and safety.** Switching instruction sheets worked strictly in order with
+  readback; points of isolation and earthing; build exercises graded on what was built.
+- **Content.** Six Builder Challenges ported onto the engine, each played to success in tests.
+- **Authoring.** In-app scenario editor with validation, "try it", and lesson-pack files.
+- **Engine corrections** found by playing the content: faults made every earth arc;
+  off-load disconnector operation was punished; saving dropped operation state.
+
+### Why the workbenches do not feel different
+
+The September plan proposed five workbenches. What was built is one screen with panel
+toggles: switching workbench changes which side panels appear, but the canvas, the toolbar,
+the look and what a click does are identical in all five. Protect resolves seven panels of
+which five have nothing to render. Studio is one button.
+
+There is also a category error. Draw, Operate and Protect are *subjects* — layers of the
+substation. Study and Studio are *activities* — you can study or film any subject. Putting
+all five side by side made them compete when they should compose.
+
+And underneath both: there is no secondary system to show. Protect has nothing distinct to
+be *about* until the engine models the circuits that sit between the relays and the plant.
+
+---
+
+## 2. The shape: three workspaces, two modes, five tiers
+
+**Three workspaces, three views of the same substation:**
+
+| Workspace | The substation… | The canvas shows | A click… | Look |
+|---|---|---|---|---|
+| **Design** | as built | The single-line diagram, editable | places, wires, labels | Light drawing sheet |
+| **Protect** | as protected and controlled | Generated secondary sheets: protection, trip and close, interlocking, DC | inspects, isolates a link, opens an MCB, injects a test | Engineering drawing set |
+| **Operate** | as the control room sees it | A SCADA mimic driven by *indications*, with alarm list and controls | issues a control, acknowledges an alarm | Dark control-room HMI, no editing tools |
+
+The line that separates Operate from Design is the important one: **the control room never
+sees the plant, only what the secondary systems report about it.** Indications come from
+auxiliary contacts, controls travel through close and trip circuits, and alarms are raised by
+the secondary systems. When the secondary side is wrong — DC lost, an auxiliary contact
+misreporting, a control switch left in Local — Operate shows it the way a real control room
+would, and the learner has to work out why. That gives each workspace a reason to exist.
+
+**Two modes, available in any workspace:**
+
+- **Learn** — lessons and challenges, and authoring them. Objectives can be about any
+  workspace: build a bay in Design, find why a breaker failed to trip in Protect, restore
+  supply from the HMI in Operate.
+- **Studio** — sequencing, camera and annotation, and export. Any workspace can be filmed,
+  including a trip circuit sheet as current flows through it.
+
+**Five tiers** remain the depth control. They decide how much of each workspace a learner is
+ready for; they never hide a workspace outright. Junior sees a protection sheet as three
+boxes and an arrow; Commissioning sees every link, contact and test block.
+
+---
+
+## 3. The secondary model
+
+### One model: circuits as rungs
+
+Trip circuits, close circuits and interlocks are all the same thing in real life: contacts in
+series and parallel between two supply rails, energising a coil. So the engine gets one
+secondary model and one evaluator for all of them — a ladder.
+
+- **Supplies:** batteries, chargers, DC distribution boards, MCBs with healthy and tripped
+  states. A rung only carries current if its supply is live.
+- **Contacts:** auxiliary contacts that follow primary plant (breaker 52a/52b,
+  disconnector and earth switch positions), relay output contacts, control switch positions
+  (Local/Remote, trip/close), lockout relay contacts, key interlocks, test links.
+- **Coils and outputs:** trip and close coils that act on breakers, lockout relays,
+  interlock permissives that allow or refuse an operation, alarms and indications.
+- **Measurement:** CT cores and VT secondaries, each wired to the relay functions they feed,
+  carrying the primary quantities the engine already computes.
+
+Evaluating it is small and honest: a rung is continuous if every element in it conducts, and
+a continuous rung energises its coil. A trip coil that energises opens its breaker. An
+interlock rung that does not conduct refuses the operation, and the learner can see exactly
+which contact held it.
+
+This replaces today's hard-coded refusals. The physics stays — an earth closed onto live
+plant still arcs — but *preventing* it becomes the interlocking scheme's job, which can be
+seen, authored, defeated with a key, and can fail.
+
+### Generated sheets
+
+Secondary drawings are **generated from the model, never drawn by hand**, applying the rule
+from decision 5.1: if it is on a sheet, it is simulated.
+
+| Sheet | Layout | Shows |
 |---|---|---|
-| Document model (symbols, busbars, conductors, phases, labels) | `drawing/model.ts` (580 lines) | Solid, versioned, migrated |
-| Topology extraction + islanding | `topology/` | Solid |
-| Energisation, earthing, live/earth conflict, arc & interlock refusal | `topology/operation.ts` | Solid |
-| Power flow, per-phase values, thermal state | `simulation/powerFlow.ts` | Solid |
-| Relays: functions, inputs, outputs, zones, breaker-fail, intertrip | `simulation/protection.ts` | Solid, largely unexposed |
-| Faults: phase-earth, phase-phase, transient, high-impedance, hot joints | `faults/faults.ts` | Solid |
-| Scenario runner: objectives, events, hints, replay log, scoring | `scenarios/runner.ts` | Solid |
-| Learning tiers (Junior → Commissioning Engineer) | `learning/` | Wired into the UI, thinly used |
-| Animation sequencer + animated SVG/PNG export | `animation/`, `rendering/drawingExport.ts` | Working |
-| BP109 nomenclature inference | `nomenclature/` | Working |
+| Protection block diagram | Layered, left to right | CT cores → relay functions → outputs → breakers and intertrips |
+| Trip and close circuits | Ladder: two rails, one rung per path | Supply, MCB, control switch, relay contacts, interlocks, coil |
+| Interlocking scheme | Ladder | The conditions each permissive requires, live |
+| DC distribution | Tree | Battery and charger → boards → MCBs → circuits |
 
-91 tests pass under `web/`. The domain foundations for the whole ambition are already built.
+Ladders and layered block diagrams have well-known automatic layouts, which is what makes
+generated sheets feasible rather than a drawing tool in disguise. Every element cross-references
+its plant: selecting a breaker's trip coil highlights the breaker on the single-line diagram,
+and the reverse.
 
-### The three real problems
+Live state is drawn on the sheets: energised rungs, picked-up relays, open MCBs, defeated
+interlocks. That is also what Studio films.
 
-**1. `MimicDesignerV2.tsx` is 2,890 lines.** It is the designer, the operator HMI, the protection
-configurator, the scenario runner, the lesson player and the animation studio in one component,
-with roughly 60 `useState` hooks. Every new teaching feature makes the next one harder. This —
-not missing features — is what will stop the roadmap.
+### What each tier does with it
 
-**2. Three generations of the app are in the tree; two are dead.** `App.tsx`'s React Flow editor
-(`legacy-editor`) is unreachable from any button. `ChallengeApp.tsx` (1,541 lines) has **no
-importer at all** — the "Builder Challenges" tile now routes to V2's scenario view. Together with
-their supporting `core/`, `ui/`, `app/hooks/` trees that is roughly 4,000 lines of maintained-looking
-dead code, plus the `reactflow` dependency.
-
-**3. The engine is richer than the UI admits.** The protection model supports coordination,
-blocking and lockout; the UI shows a relay list. The tier system defines five audiences; most
-content targets one.
-
-### What the dead code is still worth (the check you asked for)
-
-`ChallengeApp` must **not** be deleted outright. It contains four things V2's scenario runner
-cannot express, and all four are on the critical path for teaching switching:
-
-- **Build objectives** — `buildBay`, `includeComponent`, `connectBetween`. V2 can only grade
-  *operating* an existing drawing, never *constructing* one. "Build a line bay" is the single
-  most valuable exercise type you have and it lives only here.
-- **Switching instruction sheets** — `SwitchingInstructionsModal.tsx`, with verbs, sequence
-  numbering and line-end colours (RED/BLUE/YELLOW/GREEN/BLACK). Authentic UK control practice,
-  and exactly the artefact an apprentice must learn to write and execute.
-- **Isolation tagging** — `tagIsolation`, caution/danger notices. Not modelled in V2 at all.
-- **Scoring and resilience tests** — graded builds with pass/fail probes.
-
-Port these into the V2 scenario model first (Phase 1), then delete. The legacy React Flow
-editor has no such value and can go immediately.
-
----
-
-## 2. One tool or several?
-
-**One application, one engine, several workbenches.** Not a suite of separate tools.
-
-The reason is the document. A single-line diagram, its topology, its switching state, its
-protection settings and its animation timeline are all the same object. Split the tool and you
-split that object — then you spend the rest of the project writing importers between your own
-programs, and a lesson can no longer become a video without a round trip.
-
-Three separate tools would also fail your actual use case. You do not draw a substation, then
-teach it, then film it as three jobs. You draw it *while* explaining it and hit record.
-
-So: **one document, one simulation core, and workbenches that change which affordances are on
-screen.** A workbench is a filter over one shared state, not a separate app.
-
-| Workbench | Question it answers | Primary user |
+| Tier | Protect workspace | Operate workspace |
 |---|---|---|
-| **Draw** | What does this substation look like? | You, authoring |
-| **Operate** | What happens when I switch it? | Learner |
-| **Protect** | Why did it trip, and would it grade? | Engineer tier |
-| **Study** | Am I doing this correctly? (lessons, challenges, marking) | Learner |
-| **Studio** | How do I film this? | You, producing |
-
-`learning/featureVisibility.ts` already proves the pattern works; it is applied too narrowly.
-Workbenches are the same idea promoted to a first-class concept, with tier as a second axis:
-**workbench decides which panels exist, tier decides how much of each panel is shown.**
-
-The one genuine candidate for a separate program is the **multiplayer/classroom server** — a
-different runtime with different concerns. Keep it separate (it already is), and have it drive
-the same document format.
+| Junior | Block diagram only: "the guard sees danger and tells the switch to open" | Indications and a big alarm light |
+| Student | Block diagram with values; interlocks as plain rules | Alarm list with plain explanations |
+| Apprentice | Interlocking and trip circuit sheets; open an MCB and see the consequence | Local/Remote, controls refused and why |
+| Engineer | Settings, curves, grading, intertrips, breaker fail | Full alarm handling and priorities |
+| Commissioning | Test links, secondary injection, trip circuit supervision | Indication faults, aux contact discrepancies |
 
 ---
 
-## 3. Plan
+## 4. Roadmap
 
-### Phase 0 — Clear the ground — **done**
+Each phase ships content as well as features: at least one lesson that uses what it adds,
+written in the in-app editor (decision 5.2). Sizes are relative: S, M, L.
 
-Nothing else on this list is pleasant until this is done.
+### Phase A — Three workspaces (M)
 
-1. Delete the legacy React Flow editor: `App.tsx`'s `AppInner`, `core/`, `ui/` (React Flow nodes),
-   `app/hooks/`, `app/util/`, `templates/`, `components/modals/`. Drop `reactflow`.
-   `App.tsx` becomes a ~40-line router.
-2. **Quarantine, do not delete, `app/challenges/`** until Phase 1 has ported the four items above.
-3. Fix root `npm test` — it runs `node --test` against `.ts` files and reports 18 failures that
-   are not real. Make it delegate to `web`'s vitest.
-4. Add CI: typecheck, lint, test, build on push. (Open PR #8 may already cover this.)
-5. Update the README checklist — most of it shipped; it currently undersells the project badly.
+Make the differentiation real before adding depth, so that every later phase has a home.
 
-**Exit:** one editor in the tree, green CI, honest README. *Delivered: the legacy React Flow
-editor and ~4,000 lines of unreachable code removed, bundle down from 736 kB to 493 kB (gzip
-213 kB to 139 kB), challenge content quarantined under `web/src/legacy/challenges/`, root
-`npm test` fixed, CI added.*
+1. Replace the five-way switcher with **Design / Protect / Operate**, and add **Learn** and
+   **Studio** as mode toggles available in all three.
+2. Each workspace owns its canvas behaviour, toolbar and look, not just its side panels.
+   Design keeps today's editor. Operate gets the dark HMI shell: no editing tools, a status
+   bar, an alarm list, and controls issued by clicking plant. Protect gets a sheet viewer.
+3. Protect's first sheet is the **protection block diagram**, generated from the relay model
+   that already exists (inputs, functions, outputs). Re-enable the relay input and output
+   panels that are switched off today as the inspector for it.
+4. A minimal alarm list in Operate, fed by today's event log. It grows in every later phase.
 
-### Phase 1 — Split the workbench and absorb the challenge content — **in progress**
+**Exit:** a stranger can tell which workspace they are in from a screenshot.
 
-The enabling refactor. Behaviour-preserving, and the highest-leverage work in this plan.
+### Phase B — The secondary model (L)
 
-1. **Started.** Scenario authoring state now lives in a zustand store
-   (`authoring/store.ts`) whose every change goes through pure, tested functions. The
-   document itself is still owned by `MimicDesignerV2.tsx`; moving it out is the
-   remaining step, and should follow the same pattern.
-2. Extract panels into `workbenches/{draw,operate,protect,study,studio}/`, each a real module
-   with its own panel set. Target: no file over ~400 lines.
-3. **Done.** Workbench is now a first-class concept alongside tier: `workbenches/` holds the
-   registry, the `WorkbenchId × LearningTier` resolver and its tests, and the shell renders a
-   workbench switcher driving panels, tools and canvas mode. `protection/tripNarrative.ts` is
-   the first teaching surface added as a *file* rather than an edit to the shell — a
-   tier-appropriate account of the most recent trip, reachable from every tier.
-4. **Done.** The scenario model now covers what `ChallengeApp` could and V2 could not:
-   build objectives (`connect-between`, `include-component`, `build-bay`), switching
-   instruction sheets with strict sequencing and readback, points of isolation and
-   earthing, and objectives that latch or depend on others so a scenario can grade a
-   sequence. The legacy content is re-authored in `scenarios/portedChallenges.ts`, and
-   every exercise is played to success through the real engine in its tests. The
-   quarantine folder is deleted; commit `f443ece` holds it for reference.
+The foundation for everything after it, with no new teaching on its own.
 
-   | Legacy | Outcome |
-   |---|---|
-   | Tutorial 1: Connect the line | Ported — build exercise |
-   | Tutorial 2: Disconnectors under load | Already covered by the existing V2 challenge |
-   | Tutorial 3: Isolate then earth | Ported — switching sheet; now earths the line side only, as the source-side earth arcs |
-   | Tutorial 4: CT/VT basics | Ported — now requires the CT and VT to be part of the bay, not just on the canvas |
-   | Level 1: Energize the load | Ported — build, energise, then isolate, earth and lock off |
-   | Level 2: Twin radial feeder | Ported — design stated explicitly, and graded on keeping both outputs live during transformer maintenance |
-   | Level 3: Add a reserve bus | **Not ported.** Needs the learner to tee into existing conductors, which the editor does not yet do reliably (see Draw increments). Its legacy graders were also trivially satisfied by the fixtures. |
-   | Level 4: Power flow switching | Ported — stages graded individually, and the backfeed through DS-A2 made explicit |
-   | Level 5: Reactive power control | **Not ported.** No capacitor or reactor model exists; porting it would break decision 6.4. |
+1. Supplies, contacts, coils and CT/VT secondaries as part of the drawing document, migrated
+   and versioned like the rest.
+2. The rung evaluator: continuity, coil energisation, and coil actions on primary plant.
+   Pure, deterministic and exhaustively tested, like the switching engine.
+3. **Standard schemes generated for standard bays**, so an author never has to wire a
+   secondary system by hand to get a working one. A feeder bay gets a default trip circuit,
+   close circuit and interlocking from its plant.
+4. The ladder sheet renderer, with live state and plant cross-referencing.
 
-   Porting surfaced and fixed three engine faults: any active fault anywhere made every
-   earth switch arc and blocked switching on unrelated networks; opening a disconnector
-   off load was counted as a wrong operation; and migration silently stripped new
-   operation state.
+**Exit:** a feeder bay's trip and close circuits are generated, drawn and evaluated, and
+operating the breaker from its close circuit behaves exactly as operating it directly does today.
 
-**Exit:** adding a teaching feature means adding a file, not editing a 3,000-line one; the
-Builder Challenges content is back and running on the modern engine.
+### Phase C — Interlocking schemes (M)
 
-### Phase 2 — Tiered protection (~4-6 weeks)
+First because switching is the original purpose of the tool, and every existing switching
+lesson gets better.
 
-Your answer was explicit: tiered, from single trip and alarm up to full coordination — and
-**where drawings are shown, they must be simplified to only what is modelled.** That last
-constraint is the discipline that keeps this honest, and it drives the design below.
+1. Today's hard-coded disconnector and earth refusals become generated interlock rungs,
+   visible on the interlocking sheet. The physical consequences (arcing) stay in the engine.
+2. A refused operation says *which* condition held it, and links to the rung.
+3. Key interlocks, and defeating an interlock with an override that is logged and graded.
+4. Interlocking authored per scenario: a lesson can ship with a deliberately wrong scheme
+   for the learner to find.
 
-| Tier | What protection *is*, at this level | Screen |
-|---|---|---|
-| Junior | "A guard watches the wire and switches it off." | Trip animation + one plain sentence |
-| Student | Relay saw too much current, told the breaker to open | Trip banner, cause, affected section |
-| Apprentice | Pickup, time delay, alarm vs trip, what a lockout means | Relay card: setting, measured value, margin |
-| Engineer | Time-current curves, discrimination, blocking, intertrip | Curve plot, grading margins, zone overlay |
-| Commissioning | Scheme logic: inhibit, lockout, reclaim, backup timing | Simplified scheme diagram + injection/test mode |
+**Exit:** a lesson where the interlocking is wrong, and the learner finds out why on the sheet.
 
-Build order:
+### Phase D — DC, trip and close circuits, and Local/Remote (M)
 
-1. **Trip storytelling (all tiers).** The event log already records trips; give the same event a
-   tier-appropriate rendering. Cheapest, biggest immediate teaching win, no engine work.
-2. **Relay inspector.** One relay: function, input, setting, live measured value, margin to
-   pickup, time to trip. Apprentice and up.
-3. **Time-current curve view.** Plot IDMT curves for selected relays on shared axes with the
-   fault current marked. Standard curves (IEC SI/VI/EI, DT) as data; the engine's timing must be
-   driven by the *same* curve definitions the plot draws, or the picture lies.
-4. **Coordination checking.** Grading margins between upstream/downstream pairs, flagged when
-   they fail. Engineer tier.
-5. **Scheme logic — the constrained part.** Add intertrip, blocking, inhibit, reclaim and lockout
-   to the relay model where they are not already there, then render a **generated** scheme
-   diagram whose every element is a modelled object. No decorative wiring, no drawn contact that
-   does nothing. If it appears, it is simulated.
+Gives the secondary side consequences.
 
-**Exit:** the same fault, viewed at five tiers, gives five true explanations at five depths.
+1. Batteries, chargers, distribution and MCBs, with the DC distribution sheet.
+2. Protection trips travel through the trip circuit: open its MCB and the breaker cannot
+   trip, so breaker-fail or backup protection has to clear the fault.
+3. Close circuits with Local/Remote control switches: a remote close from Operate is refused
+   while the bay is in Local, and says so.
+4. Trip circuit supervision and DC failure alarms.
 
-### Phase 3 — Animation Studio (~3-4 weeks)
+**Exit:** the lesson "the breaker failed to trip — find out why" works at Apprentice and above.
 
-Your answer: export is fine, the win is **keyframes, annotations and camera movement**. So this
-is an upgrade of the sequencer, not of the exporter.
+### Phase E — Protection in depth (L)
 
-1. **Timeline UI.** The sequencer becomes a proper track view: scrubbable, with steps as blocks
-   you drag to retime. Groundwork exists in `animation/sequence.ts`.
-2. **Camera keyframes.** Pan/zoom/scale as a keyframed track, interpolated with easing. Lets a
-   sequence follow the action across a large substation instead of showing all of it small.
-3. **Annotation track.** Callout arrows, highlight rings, text overlays, dimmed non-focus areas,
-   each with in/out times on the timeline. This is what makes a clip teach rather than just move.
-4. **Narration pacing.** Per-step dwell and hold so timing can be matched to a voiceover.
-5. Extend `buildAnimatedSequenceExportSvg` to bake camera and annotation tracks into the export.
+The tiered protection ladder from decision 5.1, now on a model that can carry it.
 
-Deliberately deferred: in-browser video capture. OBS over a keyframed, annotated animation beats
-a WebM encoder over a plain one, and it is a fraction of the work.
+1. CT cores and ratios wired to relay functions; VT secondaries.
+2. A relay inspector with settings, and time–current curves drawn from the same
+   definitions that drive trip timing.
+3. Grading and discrimination between relays, with margins flagged.
+4. Intertrips, blocking, breaker fail and lockout relays as rungs and contacts.
+5. Commissioning tier: test links, secondary injection, isolating a relay for testing.
 
-**Exit:** a switching sequence can be filmed with camera moves and callouts, straight from the
-document that models it.
+**Exit:** the same fault, viewed at all five tiers, gives five true explanations at five depths.
 
-### Phase 4 — Content authoring — **core delivered**
+### Phase F — Control and SCADA (M)
 
-Content-first, tier-agnostic. The point of this phase is that **you stop needing a code change
-to publish a lesson.**
+Last because indications and alarms draw on everything before them.
 
-1. **Scenario editor in-app.** Author objectives, teaching steps, events, hints and tier text
-   through UI, not by editing `builtInScenarios.ts`. This is the keystone deliverable.
-2. **Tier text authoring.** Write the five variants of an explanation side by side, so tier
-   coverage is visible and gaps are obvious.
-3. **Lesson packs.** Bundle drawing + scenario + animation + notes as one shareable file, with
-   import/export. `scenarios/packageScenario.ts` is the seed.
-4. **Content library.** Browse, search and filter packs by tier, topic and substation type.
-5. **Symbol library expansion.** 12 symbol types today. Realistic teaching needs reactors,
-   capacitor banks, tap changers, auto-reclosers, ring main units, generators, NER/NEC,
-   station transformers, GIS-specific and switch-disconnector variants.
+1. Indications derived from auxiliary contacts, not from the plant: a misreporting contact
+   shows a wrong position in Operate.
+2. Alarm priorities, acknowledgement, standing and fleeting alarms, alarm floods.
+3. All Operate controls travel through control circuits; the HMI never moves plant directly.
+4. Lessons that start in Operate with something wrong, and end in Protect finding it.
 
-**Exit:** a lesson is a file you author and share, not a commit.
+**Exit:** a full fault scenario played entirely from the control room, using only what the
+control room would see.
 
-*Delivered:* an in-app scenario editor (Study workbench → "New scenario from this drawing")
-covering overview and tier explanations side by side, objectives with type-specific
-fields, teaching steps, switching sheets with line-end colours, and build-exercise rules
-(fixtures and palette). Targets are picked from the diagram. A validator explains every
-mistake that would make a scenario unplayable or misleading, and gaps in tier coverage.
-"Try it" plays the scenario as a learner and returns to the editor with the drawing
-restored. Lesson packs export and import as files. The `window.prompt` authoring chain
-is gone.
+### Running alongside
 
-*Still to do:* authoring timed events in the editor (the old prompt remains for those),
-a content library browser (item 4), and the symbol library expansion (item 5).
+- **Studio:** timeline, camera keyframes and annotations, as planned in September — now able
+  to film any workspace, including live secondary sheets.
+- **Learn:** editing timed events in the editor, a lesson library browser, and content for
+  each phase.
+- **Design:** mid-conductor tees (which unblocks the reserve-bus level), and the symbol
+  library expansion.
+
+### Order, and why
+
+**A → B → C → D → E → F.** A first because it is the visible problem and gives everything
+else a home. B is the dependency for the rest. C next because switching is the core purpose,
+D because it gives the secondary side consequences, E because it builds on D's trip chain,
+and F last because it consumes everything else. Studio and Learn work can be done at any time.
 
 ---
 
-## 4. Sequencing
-
-Phases 0 and 1 are prerequisites for everything and should not be reordered. After that, 2, 3
-and 4 are genuinely independent — but given your content-first answer, **run Phase 4 before
-Phase 2**, and treat Phase 3 as the pleasant interleave when you want to make something rather
-than build something.
-
-Suggested order: **0 → 1 → 4 → 2 → 3** (see decision 6.2), with Phase 3's timeline UI pulled
-forward if a video deadline demands it.
-
-## 5. Naming
-
-The identity crisis is a symptom, not a cause. Once workbenches exist, the naming resolves
-itself: the *platform* is the thing with a name, and Draw / Operate / Protect / Study / Studio
-are modes within it, not products. Under Grid Games, "Substation 2D Sim" is a fine tile name
-for the platform as a whole — and one more rename should wait until Phase 1 has settled what
-the thing actually is.
-
-## 6. Decisions
+## 5. Decisions
 
 The questions this plan opened are answered here. Each is settled enough to build against;
 where a decision has a cost, the cost is stated rather than hidden.
 
-### 6.1 Protection depth — tiered, all the way up
+Decisions 5.1–5.6 were recorded in September 2026 and still stand. Their phase numbers refer
+to the September plan: its Phase 2 (protection) is now Phases B–E, its Phase 3 is the Studio
+mode, and its Phase 4 is the Learn mode. Decisions 5.7–5.10 were added with this revision.
+
+### 5.1 Protection depth — tiered, all the way up
 
 **Decided:** tiered from a single trip-and-alarm account through settings and curves to
 coordination, discrimination, intertrips, blocking, inhibit and lockout. Where a drawing is
@@ -284,7 +261,7 @@ The tier ladder is now expressed in code, in `workbenches/registry.ts` and
 `protection/tripNarrative.ts`, and pinned by tests asserting that depth increases with tier and
 that the plain-language account is never removed.
 
-### 6.2 Audience — content-first, tier-agnostic
+### 5.2 Audience — content-first, tier-agnostic
 
 **Decided:** no single audience drives the roadmap. The priority is the authoring tooling that
 lets content be made for any tier without a code change, which moves **Phase 4 ahead of
@@ -294,7 +271,7 @@ The consequence to accept: protection depth arrives later than it otherwise woul
 compensation is that when it arrives, lessons for it can be written without a commit — and the
 trip narrative already gives every tier something true in the meantime.
 
-### 6.3 Video — keyframes, annotations and camera movement
+### 5.3 Video — keyframes, annotations and camera movement
 
 **Decided:** export is adequate; the gap is direction, not encoding. Phase 3 builds a timeline
 with camera keyframes and an annotation track. **In-browser video capture is explicitly
@@ -302,12 +279,12 @@ dropped** — OBS pointed at a keyframed, annotated animation produces a better 
 fraction of the work, and reintroducing a capture pipeline later costs nothing that this
 decision forecloses.
 
-### 6.4 Realism ceiling — a teaching abstraction, held honest
+### 5.4 Realism ceiling — a teaching abstraction, held honest
 
 **Decided:** this is a teaching tool, not a study package. It does not need load flow
 convergence, sequence components or fault-level calculation, and it should not pretend to.
 
-The rule that keeps that honest is the same one as 6.1: **the tool may simplify, but it must
+The rule that keeps that honest is the same one as 5.1: **the tool may simplify, but it must
 not lie.** A displayed number must come from something modelled. Where a tier needs a figure
 the engine cannot honestly produce, the answer is to show less, not to fabricate a plausible
 value.
@@ -317,7 +294,7 @@ time-current curves need fault current at a point, which is the first real press
 boundary and should be met with a documented, deliberately simple model rather than a silent
 approximation.
 
-### 6.5 Assessment — local now, server only when someone asks
+### 5.5 Assessment — local now, server only when someone asks
 
 **Decided:** progress stays per-learner in the browser (`persistence/progressStore.ts`), and
 lesson packs carry results out as files. No accounts, no telemetry, no instructor dashboard for
@@ -328,8 +305,42 @@ protection commitment, not a feature. If classroom use makes it necessary, it sh
 together with the deferred multiplayer server rather than grown separately — and the privacy
 draft noted in ROADMAP.md becomes a prerequisite, not an afterthought.
 
-### 6.6 Classroom multiplayer — still deferred, now cheaper
+### 5.6 Classroom multiplayer — still deferred, now cheaper
 
 **Unchanged, but reassessed.** Multiplayer stays deferred. Phase 1's shared document store is
 the thing that would make it tractable; revisit once that has landed rather than before.
 
+### 5.7 Structure — three workspaces and two modes
+
+**Decided (November 2026):** Design, Protect and Operate are workspaces, each with its own
+canvas, tools and look. Learn and Studio are modes available in all three. This replaces the
+five-workbench switcher, which mixed subjects with activities.
+
+### 5.8 Secondary drawings — generated sheets
+
+**Decided:** secondary systems are shown on separate sheets generated from the model, not
+overlaid on the single-line diagram and not drawn by hand. Generation is what keeps 5.1
+honest: a sheet cannot show a contact the engine does not evaluate. Cross-referencing keeps
+the sheets connected to the plant.
+
+### 5.9 Operate — a control-room HMI
+
+**Decided:** Operate looks and behaves like a control room — dark mimic, alarms, indications,
+no editing tools — so it is unmistakably a different place from Design. Studio can still
+film the light drawing style where it reads better on video.
+
+### 5.10 Secondary scope — all four, in dependency order
+
+**Decided:** the protection trip chain, interlocking schemes, DC and auxiliary supplies, and
+control and SCADA are all in scope, built on one ladder model in the order set out in
+section 4.
+
+## 6. Open questions, for the phases that need them
+
+- **Device conventions (Phase B).** Label secondary devices with ANSI numbers (52a/52b,
+  86, 94), IEC designations, or the National Grid conventions the BP109 labelling already
+  follows? This affects every generated sheet, so it should be settled before B.
+- **Key interlocks (Phase C).** Model them as keys that physically move between locks, or
+  as a simplified permissive? The first teaches more and costs more.
+- **Intertrips between substations (Phase E).** Real intertrips run between sites. Does a
+  document need to hold two substations, or is a remote end represented as an interface?
