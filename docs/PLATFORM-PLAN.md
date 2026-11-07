@@ -46,20 +46,30 @@ be *about* until the engine models the circuits that sit between the relays and 
 |---|---|---|---|---|
 | **Design** | as built | The single-line diagram, editable | places, wires, labels | Light drawing sheet |
 | **Protect** | as protected and controlled | Generated secondary sheets: protection, trip and close, interlocking, DC | inspects, isolates a link, opens an MCB, injects a test | Engineering drawing set |
-| **Operate** | as the control room sees it | A SCADA mimic driven by *indications*, with alarm list and controls | issues a control, acknowledges an alarm | Dark control-room HMI, no editing tools |
+| **Operate** | as it runs | Two views, switched freely: the **substation view** and the **control room view** | operates plant, applies faults; or issues controls and acknowledges alarms | Live single-line diagram; or dark control-room HMI. No editing tools in either |
 
-The line that separates Operate from Design is the important one: **the control room never
-sees the plant, only what the secondary systems report about it.** Indications come from
-auxiliary contacts, controls travel through close and trip circuits, and alarms are raised by
-the secondary systems. When the secondary side is wrong — DC lost, an auxiliary contact
-misreporting, a control switch left in Local — Operate shows it the way a real control room
-would, and the learner has to work out why. That gives each workspace a reason to exist.
+Design edits the substation; Operate runs it. Operate has two views of the same running
+substation, and the learner chooses which to look through:
+
+- **Substation view** — the truth. Live energisation, power flow, faults and switching on the
+  single-line diagram, as the tool does today. This is the view for demonstrating how power
+  flows and what switching does to it, and it is the default for Junior and Student.
+- **Control room view** — what is reported. A SCADA mimic driven by *indications*, with an
+  alarm list and controls. **The control room never sees the plant, only what the secondary
+  systems report about it**: indications come from auxiliary contacts, controls travel
+  through close and trip circuits, and alarms are raised by the secondary systems.
+
+While the secondary side is healthy the two views agree. When it is wrong — DC lost, an
+auxiliary contact misreporting, a control switch left in Local — they disagree, and comparing
+them is a lesson in itself: the control room shows a breaker closed, the substation view shows
+it open, and Protect explains why. A scenario can lock Operate to one view, so a control-room
+challenge cannot be solved by peeking at the truth.
 
 **Two modes, available in any workspace:**
 
 - **Learn** — lessons and challenges, and authoring them. Objectives can be about any
   workspace: build a bay in Design, find why a breaker failed to trip in Protect, restore
-  supply from the HMI in Operate.
+  supply from the control room view in Operate.
 - **Studio** — sequencing, camera and annotation, and export. Any workspace can be filmed,
   including a trip circuit sheet as current flows through it.
 
@@ -118,13 +128,16 @@ interlocks. That is also what Studio films.
 
 ### What each tier does with it
 
-| Tier | Protect workspace | Operate workspace |
+| Tier | Protect workspace | Operate: control room view |
 |---|---|---|
 | Junior | Block diagram only: "the guard sees danger and tells the switch to open" | Indications and a big alarm light |
 | Student | Block diagram with values; interlocks as plain rules | Alarm list with plain explanations |
 | Apprentice | Interlocking and trip circuit sheets; open an MCB and see the consequence | Local/Remote, controls refused and why |
 | Engineer | Settings, curves, grading, intertrips, breaker fail | Full alarm handling and priorities |
 | Commissioning | Test links, secondary injection, trip circuit supervision | Indication faults, aux contact discrepancies |
+
+The substation view is available at every tier and changes little between them, beyond the
+existing tier controls on power-flow detail and terminology.
 
 ---
 
@@ -140,12 +153,17 @@ Make the differentiation real before adding depth, so that every later phase has
 1. Replace the five-way switcher with **Design / Protect / Operate**, and add **Learn** and
    **Studio** as mode toggles available in all three.
 2. Each workspace owns its canvas behaviour, toolbar and look, not just its side panels.
-   Design keeps today's editor. Operate gets the dark HMI shell: no editing tools, a status
-   bar, an alarm list, and controls issued by clicking plant. Protect gets a sheet viewer.
+   Design keeps today's editor. Operate loses the editing tools and gains its two views: the
+   substation view is today's operate canvas with power-flow overlays, and the control room
+   view is a dark HMI shell with a status bar, an alarm list, and controls issued by clicking
+   plant. Until Phase F, the control room view shows plant state directly — correct while the
+   secondary side is healthy, which until then it always is. Protect gets a sheet viewer.
 3. Protect's first sheet is the **protection block diagram**, generated from the relay model
    that already exists (inputs, functions, outputs). Re-enable the relay input and output
    panels that are switched off today as the inspector for it.
-4. A minimal alarm list in Operate, fed by today's event log. It grows in every later phase.
+4. A minimal alarm list in the control room view, fed by today's event log. It grows in every
+   later phase.
+5. A scenario setting to lock Operate to one view.
 
 **Exit:** a stranger can tell which workspace they are in from a screenshot.
 
@@ -186,7 +204,7 @@ Gives the secondary side consequences.
 1. Batteries, chargers, distribution and MCBs, with the DC distribution sheet.
 2. Protection trips travel through the trip circuit: open its MCB and the breaker cannot
    trip, so breaker-fail or backup protection has to clear the fault.
-3. Close circuits with Local/Remote control switches: a remote close from Operate is refused
+3. Close circuits with Local/Remote control switches: a remote close from the control room view is refused
    while the bay is in Local, and says so.
 4. Trip circuit supervision and DC failure alarms.
 
@@ -210,10 +228,12 @@ The tiered protection ladder from decision 5.1, now on a model that can carry it
 Last because indications and alarms draw on everything before them.
 
 1. Indications derived from auxiliary contacts, not from the plant: a misreporting contact
-   shows a wrong position in Operate.
+   shows a wrong position in the control room view while the substation view shows the truth.
 2. Alarm priorities, acknowledgement, standing and fleeting alarms, alarm floods.
-3. All Operate controls travel through control circuits; the HMI never moves plant directly.
-4. Lessons that start in Operate with something wrong, and end in Protect finding it.
+3. Controls in the control room view travel through control circuits and never move plant
+   directly. The substation view keeps direct operation, for demonstrating power flow.
+4. Lessons that start in the control room view with something wrong, compare it with the
+   substation view, and end in Protect finding the cause.
 
 **Exit:** a full fault scenario played entirely from the control room, using only what the
 control room would see.
@@ -323,11 +343,14 @@ overlaid on the single-line diagram and not drawn by hand. Generation is what ke
 honest: a sheet cannot show a contact the engine does not evaluate. Cross-referencing keeps
 the sheets connected to the plant.
 
-### 5.9 Operate — a control-room HMI
+### 5.9 Operate — a substation view and a control room view
 
-**Decided:** Operate looks and behaves like a control room — dark mimic, alarms, indications,
-no editing tools — so it is unmistakably a different place from Design. Studio can still
-film the light drawing style where it reads better on video.
+**Decided:** Operate runs the substation through two views the learner switches between: a
+substation view showing the true plant state and power flow, and a control-room HMI showing
+only what the secondary systems report. The substation view keeps the tool's strength in
+demonstrating power flow and switching, and is the natural view for video; the control room
+view teaches operating from indications. Neither has editing tools, which is what separates
+Operate from Design. Scenarios may lock Operate to one view.
 
 ### 5.10 Secondary scope — all four, in dependency order
 
