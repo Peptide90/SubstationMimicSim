@@ -1,5 +1,6 @@
 import type { DrawingDocument, ElectricalSymbol, FaultMetadata, RelayFunction, RelayOutputAction, RelaySettings } from '../drawing/model';
 import type { SimulationDerivedState } from './powerFlow';
+import { mainTripTargets, relayTripReachesCoil } from '../secondary/ladder';
 
 const earthFaultTypes = new Set(['phase-to-earth', 'A-E', 'B-E', 'C-E', 'A-B-C-E', 'persistent', 'transient', 'high-impedance']);
 
@@ -40,6 +41,7 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
   const openedBreakers = new Set<string>();
   const failedBreakers = new Set<string>();
   const backupBreakers = new Set<string>();
+  const failedBackups = new Set<string>();
   const timestamp = new Date(now).toISOString();
 
   const relays = doc.relays.map((relay) => {
@@ -60,12 +62,16 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
     });
     if (!state.tripped) return { ...relay, state: 'picked-up' as const, pickedUpAt, functions };
 
-    relayOutputs(relay).forEach((action) => applyRelayOutput(doc, action, openedBreakers, failedBreakers));
+    relayOutputs(relay).forEach((action) => applyRelayOutput(doc, relay, action, openedBreakers, failedBreakers));
 
     const pickupAge = now - Date.parse(pickedUpAt);
     // Backup trips only if the main breaker has failed to clear the fault once the breaker-fail time has run.
     if (relay.breakerFailEnabled && primaryTripFailed(doc, relay) && pickupAge >= relay.timeDelayMs + relay.breakerFailDelayMs) {
-      relay.backupTripTargetBreakerIds.forEach((breakerId) => backupBreakers.add(breakerId));
+      relay.backupTripTargetBreakerIds.forEach((breakerId) => {
+        // The backup trip has its own contact on the backup breaker's trip circuit; it needs that circuit healthy too.
+        if (relayTripReachesCoil(doc, breakerId, relay.id) && !breakerDamaged(doc, breakerId)) backupBreakers.add(breakerId);
+        else failedBackups.add(breakerId);
+      });
     }
 
     return { ...relay, state: 'tripped' as const, pickedUpAt, trippedAt: relay.trippedAt ?? timestamp, functions };
@@ -80,7 +86,8 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
     }),
     ...[...openedBreakers].map((id) => `Relay trip opened ${id}`),
     ...[...failedBreakers].map((id) => `Breaker fail detected on ${id}`),
-    ...[...backupBreakers].map((id) => `Backup trip opened ${id}`)
+    ...[...backupBreakers].map((id) => `Backup trip opened ${id}`),
+    ...[...failedBackups].map((id) => `Backup trip failed on ${id}`)
   ];
 
   return {
@@ -152,12 +159,12 @@ function evaluateRelayFunction(doc: DrawingDocument, simulation: SimulationDeriv
   };
 }
 
-function applyRelayOutput(doc: DrawingDocument, action: RelayOutputAction, openedBreakers: Set<string>, failedBreakers: Set<string>) {
+function applyRelayOutput(doc: DrawingDocument, relay: RelaySettings, action: RelayOutputAction, openedBreakers: Set<string>, failedBreakers: Set<string>) {
   if (!action.targetObjectId || !['trip-open-breaker', 'apply-lockout'].includes(action.action)) return;
   const target = doc.objects.symbols.find((symbol) => symbol.id === action.targetObjectId);
   if (!target) return;
   if (target.type !== 'circuit-breaker' && action.targetType !== 'source') return;
-  if (breakerWillFail(doc, action.targetObjectId)) failedBreakers.add(action.targetObjectId);
+  if (target.type === 'circuit-breaker' ? breakerWillFail(doc, action.targetObjectId, relay.id) : breakerDamaged(doc, action.targetObjectId)) failedBreakers.add(action.targetObjectId);
   else openedBreakers.add(action.targetObjectId);
 }
 
@@ -236,10 +243,18 @@ function maxZoneThermalState(doc: DrawingDocument, simulation: SimulationDerived
 }
 
 function primaryTripFailed(doc: DrawingDocument, relay: RelaySettings): boolean {
-  return relay.tripTargetBreakerIds.some((breakerId) => breakerWillFail(doc, breakerId));
+  return mainTripTargets(relay).some((breakerId) => breakerWillFail(doc, breakerId, relay.id));
 }
 
-function breakerWillFail(doc: DrawingDocument, breakerId: string): boolean {
+/**
+ * A breaker fails to clear when it is damaged, or when the relay's trip cannot
+ * reach its trip coil — a trip MCB open or the DC supply lost.
+ */
+function breakerWillFail(doc: DrawingDocument, breakerId: string, relayId: string): boolean {
+  return breakerDamaged(doc, breakerId) || !relayTripReachesCoil(doc, breakerId, relayId);
+}
+
+function breakerDamaged(doc: DrawingDocument, breakerId: string): boolean {
   const breaker = doc.objects.symbols.find((symbol): symbol is ElectricalSymbol => symbol.id === breakerId);
   return Boolean(breaker?.simulation?.damaged);
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, IsolationKind, LearningTier, LineEndColour, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioDefinition, ScenarioEventSeverity, ScenarioEventType, ScenarioMode } from '../drawing/model';
+import type { BreakerCommand, BusbarSegment, ControlLocation, ConductorPath, DrawingDocument, ElectricalSymbol, FaultType, IsolationKind, LearningTier, LineEndColour, OperationEvent, Phase, Point, PowerFlowMetadata, RelayFunctionType, RelayInputSourceType, RelayLogicCondition, RelayMeasuredQuantity, RelayOutputActionType, RelayOutputTargetType, RelayRole, RelaySettings, ScenarioDefinition, ScenarioEventSeverity, ScenarioEventType, ScenarioMode } from '../drawing/model';
 import { SYMBOL_LIBRARY, POWER_EXAMPLE_SYMBOLS, SWITCH_TERMINAL_SPAN } from '../symbols/library';
 import { extractTopology } from '../topology/extractTopology';
 import { generateLabels, resolveLabelScheme } from '../nomenclature/engine';
@@ -58,6 +58,10 @@ import { IsolationBadge, IsolationControls } from './panels/IsolationControls';
 import { SwitchingSheetPanel } from './panels/SwitchingSheetPanel';
 import { AlarmList, ControlPanel, ControlRoomStatusBar } from './panels/ControlRoom';
 import { ProtectionSheet } from './sheets/ProtectionSheet';
+import { issueBreakerCommand } from '../secondary/commands';
+import { resolveSecondary, setLocalRemote, setMcbClosed, setSupplyHealthy } from '../secondary/ladder';
+import { buildLadderSheet, protectSheetIndex, type ElementAction } from '../secondary/ladderSheet';
+import { LadderSheetView } from './sheets/LadderSheetView';
 import { buildProtectionBlockDiagram, type DiagramBlock } from '../secondary/protectionBlockDiagram';
 import { conventionOrder, isConventionAvailable, secondaryConventions, type SecondaryConvention } from '../secondary/conventions';
 import { ScenarioEditor } from './panels/ScenarioEditor';
@@ -836,6 +840,21 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
     setDirty(true);
   };
   const sheetRelay = selectedSheetBlock ? doc.relays.find((relay) => relay.id === selectedSheetBlock.relayId) : undefined;
+  /** Protect's sheet index: P-01 the block diagram, then trip & close per breaker. */
+  const sheetIndex = useMemo(() => protectSheetIndex(doc), [doc]);
+  const [activeSheetId, setActiveSheetId] = useState('protection-block-diagram');
+  const protectSheet = sheetIndex.find((entry) => entry.id === activeSheetId) ?? sheetIndex[0];
+  const ladderSheet = useMemo(() => (protectSheet.breakerId ? buildLadderSheet(doc, protectSheet.breakerId, learningTier, secondaryConvention) : undefined), [doc, protectSheet.breakerId, learningTier, secondaryConvention]);
+  const openSheet = (id: string) => { setActiveSheetId(id); setSelectedSheetBlock(undefined); };
+  const onLadderAction = (action: ElementAction) => {
+    if (action.kind === 'toggle-local-remote') {
+      const current = resolveSecondary(doc).switches.find((item) => item.id === action.switchId);
+      commit(setLocalRemote(doc, action.switchId, current?.position === 'local' ? 'remote' : 'local'));
+      return;
+    }
+    const breaker = doc.objects.symbols.find((symbol) => symbol.id === action.breakerId);
+    if (breaker) setLastOperationReason(operateSymbol(breaker, { location: action.location, command: action.command }));
+  };
   const selectSheetBlock = (block: DiagramBlock | undefined) => {
     setSelectedSheetBlock(block);
     setSelected(block?.objectId ? [block.objectId] : []);
@@ -863,11 +882,15 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       .filter(Boolean) as string[]);
   }, [activeScenario, activeTeachingStep]);
 
-  const operateSymbol = (symbol: ElectricalSymbol) => {
+  /** Operate a device. Remote control sends breaker commands through their trip and close circuits. */
+  const operateSymbol = (symbol: ElectricalSymbol, via?: { location: ControlLocation; command?: BreakerCommand }) => {
     const disconnectorLiveOperation = disconnectorSwitchesLoad(doc, topology, symbol.id);
     const sequence = activeScenarioPackage ? checkSequence(activeScenarioPackage.scenario, doc, symbol.id) : { ok: true as const };
     if (!sequence.ok) setSheetMessage(sequence.reason);
-    const result = operateDevice(doc, topology, symbol.id);
+    const closed = symbol.operation?.switchState === 'closed' && !symbol.operation?.tripped;
+    const result = via && symbol.type === 'circuit-breaker'
+      ? issueBreakerCommand(doc, topology, symbol.id, via.command ?? (closed ? 'trip' : 'close'), via.location)
+      : operateDevice(doc, topology, symbol.id);
     const nextDoc = migrateDrawingDocument(result.doc)!;
     setDoc(nextDoc);
     setUndoStack((prev) => [...prev, doc]);
@@ -2160,6 +2183,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         {!focusedOperateMode && <button className={`mimic-v2-btn ${escapeMenuOpen ? 'active' : ''}`} title='Application menu (Esc)' onClick={() => setEscapeMenuOpen(true)}>Menu</button>}
         {!focusedOperateMode && <div className='mimic-v2-tool-group mimic-v2-workspace-switcher'><span>Workspace</span>{workspaceOrder.map((id) => <button key={id} type='button' className={`mimic-v2-btn mimic-v2-workspace-${id} ${workspace === id ? 'active' : ''}`} title={`The substation ${workspaces[id].aspect}. ${workspaces[id].description}`} onClick={() => selectWorkspace(id)}>{workspaces[id].label}</button>)}</div>}
         {!focusedOperateMode && workspace === 'operate' && <div className='mimic-v2-tool-group mimic-v2-view-switcher'><span>View</span>{(Object.keys(operateViews) as OperateView[]).map((view) => <button key={view} type='button' className={`mimic-v2-btn ${operateView === view ? 'active' : ''}`} title={operateViews[view].description} onClick={() => selectWorkspace('operate', view)}>{operateViews[view].label}</button>)}</div>}
+        {showingSheet && <div className='mimic-v2-tool-group mimic-v2-sheet-index'><span>Sheet</span><select aria-label='Protect sheet' value={protectSheet.id} onChange={(event) => openSheet(event.target.value)}>{sheetIndex.map((entry) => <option key={entry.id} value={entry.id}>{entry.number} {entry.title}</option>)}</select></div>}
         {showingSheet && <div className='mimic-v2-tool-group mimic-v2-convention-switcher'><span>Labels</span>{conventionOrder.map((id) => <button key={id} type='button' className={`mimic-v2-btn ${secondaryConvention === id ? 'active' : ''}`} disabled={!isConventionAvailable(id)} title={isConventionAvailable(id) ? `${secondaryConventions[id].description}${secondaryConventions[id].reference ? ` (${secondaryConventions[id].reference})` : ''}` : `${secondaryConventions[id].label}: definitions not supplied yet`} onClick={() => setSecondaryConvention(id)}>{secondaryConventions[id].label}</button>)}</div>}
         {!focusedOperateMode && <div className='mimic-v2-tool-group mimic-v2-mode-toggles'><span>Modes</span>{modeOrder.map((id) => <button key={id} type='button' aria-pressed={workspaceModes[id]} className={`mimic-v2-btn ${workspaceModes[id] ? 'active' : ''}`} title={modes[id].description} onClick={() => toggleMode(id)}>{modes[id].label}</button>)}</div>}
         {focusedOperateMode ? <>
@@ -2180,7 +2204,16 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <div className='mimic-v2-tool-group'><span>UI</span>{!focusedOperateMode && panel('topologyOverlay') && <button className={`mimic-v2-btn ${showTopologyOverlay?'active':''}`} title={topologyOverlayDisabled ? 'Topology overlay disabled by scenario' : 'Show topology graph overlay'} disabled={topologyOverlayDisabled} onClick={() => setShowTopologyOverlay((v)=>!v)}>Topology overlay</button>}</div>
       </div>
       <div className={`mimic-v2-canvas-wrap ${inControlRoom ? 'mimic-v2-hmi' : ''}`} onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
-      {showingSheet && <ProtectionSheet diagram={protectionDiagram} site={doc.name} tier={learningTier} selectedBlockId={selectedSheetBlock?.id} onSelectBlock={selectSheetBlock} />}
+      {showingSheet && ladderSheet && <LadderSheetView
+        sheet={ladderSheet}
+        number={protectSheet.number}
+        site={doc.name}
+        tier={learningTier}
+        onToggleMcb={(id, closed) => commit(setMcbClosed(doc, id, closed))}
+        onToggleSupply={(id, healthy) => commit(setSupplyHealthy(doc, id, healthy))}
+        onAction={onLadderAction}
+      />}
+      {showingSheet && !ladderSheet && <ProtectionSheet diagram={protectionDiagram} site={doc.name} tier={learningTier} selectedBlockId={selectedSheetBlock?.id} onSelectBlock={selectSheetBlock} />}
       {showingSheet ? null : scenarioSelectorOnly ? <div className='mimic-v2-canvas mimic-v2-canvas-empty' /> : <svg ref={svgRef} className='mimic-v2-canvas' onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onDoubleClick={() => finishPath()} onContextMenu={(event) => { event.preventDefault(); setDraftPath([]); setCursorPoint(null); }}>
         <defs>
           <pattern id='grid' width={doc.uiState.gridSize} height={doc.uiState.gridSize} patternUnits='userSpaceOnUse'><path d={`M ${doc.uiState.gridSize} 0 L 0 0 0 ${doc.uiState.gridSize}`} fill='none' stroke='var(--md2-grid-line)' strokeWidth='1'/></pattern>
@@ -2305,7 +2338,8 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         key={selectedObject.id}
         symbol={selectedObject}
         result={controlResult}
-        onExecute={() => setControlResult(operateSymbol(selectedObject))}
+        controlLocation={selectedObject.type === 'circuit-breaker' ? resolveSecondary(doc).switches.find((item) => item.breakerId === selectedObject.id)?.position : undefined}
+        onExecute={() => setControlResult(operateSymbol(selectedObject, { location: 'remote' }))}
         onClose={() => { setSelected([]); setControlResult(undefined); }}
       />}
       {panel('eventLog') && <section className='mimic-v2-event-log' aria-label='Operational event log'>
@@ -2356,6 +2390,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         <h4>{selectedSheetBlock.label}</h4>
         {selectedSheetBlock.detail && <p>{selectedSheetBlock.detail}</p>}
         {selectedSheetBlock.objectId && <button className='mimic-v2-chip' onClick={() => selectWorkspace('operate', 'substation')}>Show on single-line diagram</button>}
+        {selectedSheetBlock.objectId && sheetIndex.some((entry) => entry.breakerId === selectedSheetBlock.objectId) && <button className='mimic-v2-chip' onClick={() => openSheet(`trip-close:${selectedSheetBlock.objectId}`)}>Open trip &amp; close sheet</button>}
         {sheetRelay && (panel('relayInputs') || panel('relayOutputs')) && <>
           <h4>{sheetRelay.name}</h4>
           <p>{sheetRelay.role?.replace(/-/g, ' ') ?? 'relay'} · {sheetRelay.enabled ? sheetRelay.state : 'disabled'}</p>
@@ -2447,7 +2482,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
       <p>Selected: {selected.join(', ') || 'none'}</p>
       <p>Editing: {selectedPhase ? `phase ${selectedPhase}` : doc.activeView === 'three-phase' ? 'whole object / all phases' : 'single-line aggregate (applies to all phases)'}</p>
       {selectedObject && <>
-        {inspectorEditingDisabled && <p className='mimic-v2-warning-text'>Inspector editing is disabled for this operation exercise.</p>}
+        {inspectorEditingDisabled && <p className='mimic-v2-warning-text'>{focusedOperateMode ? 'Inspector editing is disabled for this operation exercise.' : 'The drawing is edited in Design. Switch to Design to change it.'}</p>}
         <div className='mimic-v2-voltage-row inspector'>
           <button className='mimic-v2-btn' disabled={inspectorEditingDisabled} onClick={rotateSelectedSymbols} title='Rotate 90° (R)'>Rotate 90°</button>
         </div>

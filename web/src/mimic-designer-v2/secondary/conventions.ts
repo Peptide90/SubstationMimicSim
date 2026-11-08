@@ -24,14 +24,19 @@ export interface ConventionDefinition {
 export const secondaryConventions: Record<SecondaryConvention, ConventionDefinition> = {
   plain: { id: 'plain', label: 'Plain', description: 'Descriptive names, no device codes.' },
   ansi: { id: 'ansi', label: 'ANSI', description: 'ANSI/IEEE device function numbers.', reference: 'IEEE C37.2' },
-  iec: { id: 'iec', label: 'IEC', description: 'IEC 60617 function symbols with IEC 61850 logical node names.', reference: 'IEC 60617 / IEC 61850-7-4' },
+  iec: { id: 'iec', label: 'IEC', description: 'IEC 60617 function symbols with IEC 61850 logical node names; IEC 81346-2 codes for circuit devices.', reference: 'IEC 60617 / IEC 61850-7-4 / IEC 81346-2' },
   ng: { id: 'ng', label: 'National Grid', description: 'National Grid secondary device conventions.', reference: 'To be supplied' }
 };
 
 export const conventionOrder: SecondaryConvention[] = ['plain', 'ansi', 'iec', 'ng'];
 
 /** Every kind of secondary device or signal a sheet can show. */
-export type DeviceRole = RelayFunctionType | `output:${RelayOutputActionType}` | 'breaker-fail-backup';
+export type DeviceRole = RelayFunctionType | `output:${RelayOutputActionType}` | 'breaker-fail-backup' | CircuitRole;
+
+/** Devices on trip and close circuits (secondary/ladder.ts). */
+export type CircuitRole =
+  | 'aux-a' | 'aux-b' | 'trip-coil' | 'close-coil' | 'local-remote' | 'local-control' | 'remote-control'
+  | 'mcb' | 'dc-supply' | 'relay-trip-contact' | 'lockout-contact';
 
 export interface DeviceLabel {
   /** The convention's code, e.g. "51", "I>". Absent in plain. */
@@ -65,7 +70,19 @@ const table: Record<DeviceRole, Entry> = {
   'output:block-close': { plain: 'Block close', ansi: { name: 'Block close' }, iec: { name: 'Block close' } },
   'output:clear-auto-reset': { plain: 'Clear auto-reset', ansi: { name: 'Clear auto-reset' }, iec: { name: 'Clear auto-reset' } },
   'output:trigger-backup-relay': { plain: 'Start backup', ansi: { name: 'Start backup' }, iec: { name: 'Start backup' } },
-  'breaker-fail-backup': { plain: 'Breaker fail backup trip', ansi: { code: '50BF', name: 'Backup trip' }, iec: { code: 'RBRF', name: 'Backup trip' } }
+  'breaker-fail-backup': { plain: 'Breaker fail backup trip', ansi: { code: '50BF', name: 'Backup trip' }, iec: { code: 'RBRF', name: 'Backup trip' } },
+  // Circuit devices. IEC codes are IEC 81346-2 class letters.
+  'aux-a': { plain: 'CB closed contact', ansi: { code: '52a', name: 'CB auxiliary (NO)' }, iec: { code: '-QA', name: 'Aux NO' } },
+  'aux-b': { plain: 'CB open contact', ansi: { code: '52b', name: 'CB auxiliary (NC)' }, iec: { code: '-QA', name: 'Aux NC' } },
+  'trip-coil': { plain: 'Trip coil', ansi: { code: '52TC', name: 'Trip coil' }, iec: { code: '-MB1', name: 'Trip coil' } },
+  'close-coil': { plain: 'Close coil', ansi: { code: '52CC', name: 'Close coil' }, iec: { code: '-MB2', name: 'Close coil' } },
+  'local-remote': { plain: 'Local/Remote selector', ansi: { code: '43LR', name: 'Local/Remote' }, iec: { code: '-SF1', name: 'Local/Remote' } },
+  'local-control': { plain: 'Local control switch', ansi: { code: '52CS', name: 'Control switch' }, iec: { code: '-SF2', name: 'Control switch' } },
+  'remote-control': { plain: 'Remote control (SCADA)', ansi: { code: 'RTU', name: 'Remote control output' }, iec: { code: '-KF', name: 'Remote control' } },
+  mcb: { plain: 'Supply MCB', ansi: { code: '72', name: 'DC circuit breaker' }, iec: { code: '-FC', name: 'MCB' } },
+  'dc-supply': { plain: 'DC supply', ansi: { code: 'DC', name: 'Station battery' }, iec: { code: '-GB', name: 'Battery' } },
+  'relay-trip-contact': { plain: 'Relay trip contact', ansi: { code: '94', name: 'Trip contact' }, iec: { code: '-KF', name: 'Trip contact' } },
+  'lockout-contact': { plain: 'Lockout contact', ansi: { code: '86', name: 'Lockout (NC)' }, iec: { code: '-KF', name: 'Lockout NC' } }
 };
 
 export const deviceRoles = Object.keys(table) as DeviceRole[];

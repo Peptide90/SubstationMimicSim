@@ -627,6 +627,84 @@ export interface Annotation {
   text: string;
 }
 
+
+/**
+ * Secondary circuits (Phase B). Stored as what each device is and its state;
+ * labels are resolved per convention when a sheet is drawn. Circuits for a
+ * breaker are generated from a standard scheme unless the document stores a
+ * custom one, so only device state needs storing for generated schemes.
+ */
+export interface DcSupply {
+  id: string;
+  name: string;
+  voltageV: number;
+  healthy: boolean;
+}
+
+export interface SecondaryMcb {
+  id: string;
+  name: string;
+  supplyId: string;
+  closed: boolean;
+}
+
+export interface LocalRemoteSwitch {
+  id: string;
+  name: string;
+  breakerId: string;
+  position: 'local' | 'remote';
+}
+
+export type ControlLocation = 'local' | 'remote';
+export type BreakerCommand = 'trip' | 'close';
+
+export type ContactSource =
+  /** Plant auxiliary contact: 'a' (52a) conducts when the plant is closed, 'b' (52b) when open. */
+  | { kind: 'plant-aux'; objectId: string; contact: 'a' | 'b' }
+  /** A protection relay's trip output contact; conducts while the relay is tripped. */
+  | { kind: 'relay-trip'; relayId: string; path: 'main' | 'backup' }
+  /** A momentary command contact: conducts only while that command is being issued. */
+  | { kind: 'command'; command: BreakerCommand; location: ControlLocation }
+  /** A Local/Remote selector contact, conducting in the given position. */
+  | { kind: 'local-remote'; switchId: string; position: ControlLocation }
+  /** Lockout relay (86) normally closed contact; opens when the breaker is locked out. */
+  | { kind: 'lockout'; objectId: string };
+
+export interface RungContact {
+  id: string;
+  source: ContactSource;
+}
+
+export interface RungCoil {
+  kind: 'trip-coil' | 'close-coil';
+  objectId: string;
+}
+
+export interface Rung {
+  id: string;
+  contacts: RungContact[];
+  coil: RungCoil;
+}
+
+export interface SecondaryCircuit {
+  id: string;
+  name: string;
+  kind: 'trip' | 'close';
+  breakerId: string;
+  mcbId: string;
+  rungs: Rung[];
+  /** True for circuits produced from the generic standard scheme. */
+  generated?: boolean;
+}
+
+export interface SecondaryModel {
+  supplies: DcSupply[];
+  mcbs: SecondaryMcb[];
+  switches: LocalRemoteSwitch[];
+  /** Custom circuits only; generated ones are rebuilt from the relays every time. */
+  circuits: SecondaryCircuit[];
+}
+
 export interface DrawingDocument {
   id: string;
   version: 2;
@@ -657,6 +735,8 @@ export interface DrawingDocument {
   scenarios: ScenarioDefinition[];
   activeScenarioId?: string;
   operationEvents: OperationEvent[];
+  /** Secondary circuits. Absent means every breaker uses the generated standard scheme. */
+  secondary?: SecondaryModel;
   simulationState: SimulationControlState;
   uiState: {
     gridSize: number;

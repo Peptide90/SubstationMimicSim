@@ -56,9 +56,11 @@ export function AlarmList({ alarms, nameOf, onAcknowledge, onAcknowledgeAll }: {
  * Select-before-operate: choose the device, choose the action, then execute.
  * Nothing moves on a single click, as in a real control system.
  */
-export function ControlPanel({ symbol, result, onExecute, onClose }: {
+export function ControlPanel({ symbol, result, controlLocation, onExecute, onClose }: {
   symbol: ElectricalSymbol;
   result?: string;
+  /** A breaker's Local/Remote selector: commands from here are remote. */
+  controlLocation?: 'local' | 'remote';
   onExecute: () => void;
   onClose: () => void;
 }) {
@@ -76,6 +78,7 @@ export function ControlPanel({ symbol, result, onExecute, onClose }: {
         <dt>Type</dt><dd>{symbol.type.replace(/-/g, ' ').toUpperCase()}</dd>
         <dt>Indication</dt><dd className={state}>{state.toUpperCase()}</dd>
         {symbol.operation?.isolation && <><dt>Lock</dt><dd className='locked'>{symbol.operation.isolation.kind === 'point-of-isolation' ? 'LOCKED OPEN' : 'LOCKED EARTH'}</dd></>}
+        {controlLocation && <><dt>Control</dt><dd className={controlLocation === 'local' ? 'locked' : undefined}>{controlLocation === 'local' ? 'LOCAL — REMOTE BLOCKED' : 'REMOTE'}</dd></>}
         {symbol.operation?.lockout && <><dt>Status</dt><dd className='locked'>TRIPPED — LOCKOUT</dd></>}
       </dl>
       {!armed ? (

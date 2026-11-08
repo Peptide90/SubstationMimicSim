@@ -186,7 +186,7 @@ view. Learn and Studio are toggles in all three.
   once its timer ran whether or not the main breaker had opened — so every trip opened the
   backup breaker too. Both are fixed; the backup now trips only when the main breaker fails.
 
-### Phase B — The secondary model (L)
+### Phase B — The secondary model (L) — **done**
 
 The foundation for everything after it, with no new teaching on its own.
 
@@ -201,6 +201,31 @@ The foundation for everything after it, with no new teaching on its own.
 
 **Exit:** a feeder bay's trip and close circuits are generated, drawn and evaluated, and
 operating the breaker from its close circuit behaves exactly as operating it directly does today.
+
+*Delivered:* `doc.secondary` holds DC supplies, MCBs, Local/Remote selectors and any custom
+circuits, migrated with the document; it is absent until a secondary device changes state.
+`secondary/ladder.ts` evaluates rungs (contacts from plant auxiliaries 52a/52b, relay trip
+contacts, momentary local and remote commands, the Local/Remote selector and the 86 lockout)
+and names the contact holding a rung open. Every breaker without a custom circuit gets a
+**generic standard scheme** — one trip and one close circuit, a Local/Remote selector, a
+station battery and an MCB per circuit — rebuilt from the relays each time, so it never goes
+stale. It is labelled as generic on the sheet and stands in until the user's trip circuit
+drawings arrive; reshaping it is a data change. A test drives every breaker in every template
+through its circuit and through direct operation and requires the same result.
+
+Protect gained a sheet index (P-01 block diagram, then P-02… trip & close per breaker) and a
+ladder renderer: live wiring is drawn only as far as current reaches; the MCBs, battery and
+Local/Remote selector can be operated on the sheet, and the local and remote command contacts
+issue real commands. Labels follow the convention switch (52a, 52TC, 43LR, 72, 86 in ANSI;
+IEC 81346-2 class codes in IEC).
+
+Pulled forward from Phase D because they fell out of the model at no extra cost: protection
+trips travel through the trip circuit (trip MCB open or battery lost → the breaker does not
+open, breaker fail clears it from the backup breaker, whose own trip circuit must also be
+healthy), and the control room's Execute sends breaker commands through the circuits, so a
+remote command is refused while the bay is in Local and says so. Not yet done from item 1:
+CT/VT secondaries as circuit elements (relays still read the primary model); and the
+interlocking part of item 3 belongs to Phase C.
 
 ### Phase C — Interlocking schemes (M)
 
@@ -220,12 +245,13 @@ lesson gets better.
 
 Gives the secondary side consequences.
 
-1. Batteries, chargers, distribution and MCBs, with the DC distribution sheet.
-2. Protection trips travel through the trip circuit: open its MCB and the breaker cannot
-   trip, so breaker-fail or backup protection has to clear the fault.
-3. Close circuits with Local/Remote control switches: a remote close from the control room view is refused
-   while the bay is in Local, and says so.
-4. Trip circuit supervision and DC failure alarms.
+1. Batteries, chargers, distribution and MCBs, with the DC distribution sheet. (One station
+   battery and per-circuit MCBs exist from Phase B; chargers and distribution boards do not.)
+2. ~~Protection trips travel through the trip circuit~~ — delivered in Phase B.
+3. ~~Local/Remote control switches~~ — delivered in Phase B.
+4. Trip circuit supervision and DC failure alarms: today a dead circuit is visible on its
+   sheet but raises no alarm, so the failure is found only when a trip fails.
+5. Reshape the generic scheme to the user's trip circuit drawings.
 
 **Exit:** the lesson "the breaker failed to trip — find out why" works at Apprentice and above.
 
@@ -394,9 +420,14 @@ The setting is saved with the drawing, alongside the primary labelling scheme.
 
 ## 6. Open questions, for the phases that need them
 
-- **National Grid secondary labels (before Phase B).** Decision 5.11 needs the National
-  Grid entry for each secondary device role in `secondary/conventions.ts`; until then the
-  option is shown but unavailable.
+- **National Grid secondary labels.** Decision 5.11 needs the National Grid entry for each
+  secondary device role in `secondary/conventions.ts` — now including the circuit devices
+  (auxiliary contacts, trip and close coils, Local/Remote, control switch, remote control,
+  MCB, battery, relay trip contact, lockout contact); until then the option is shown but
+  unavailable.
+- **Trip and close scheme drawings.** The generic scheme is a placeholder; the user's drawings
+  will set the real contacts, their order, and anything missing (e.g. trip circuit
+  supervision, anti-pumping, spring-charged interlock).
 - **Key interlocks (Phase C).** Model them as keys that physically move between locks, or
   as a simplified permissive? The first teaches more and costs more.
 - **Intertrips between substations (Phase E).** Real intertrips run between sites. Does a

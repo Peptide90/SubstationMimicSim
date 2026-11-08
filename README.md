@@ -48,6 +48,13 @@ in any of them.
 - Points of isolation (locked open, caution notice) and points of earthing (locked closed)
 - Build exercises graded on what the learner constructed, not just how they operate it
 
+**Secondary circuits**
+- Generated trip and close circuits per breaker, drawn as ladder sheets in Protect with live
+  wiring, switchable ANSI / IEC / plain labels
+- Protection trips and control-room commands travel through the circuits: an open MCB, lost
+  battery, Local/Remote at Local or an operated lockout stops them, and says which
+- MCBs, the station battery and Local/Remote selectors operable from the sheet
+
 **Authoring**
 - In-app scenario editor with live validation, "try it" as a learner, and shareable
   lesson-pack files
@@ -62,8 +69,9 @@ Tracked in [docs/PLATFORM-PLAN.md](docs/PLATFORM-PLAN.md):
 
 - The protection engine is far richer than the UI exposes (the relay input/output
   manager panels are currently disabled in the build)
-- Protect has one generated sheet so far (the protection block diagram); trip, close,
-  interlocking and DC sheets follow with the secondary systems model
+- Trip and close circuits use a generic standard scheme until real scheme drawings replace
+  it; interlocking and DC distribution sheets are still to come
+- A dead trip circuit raises no alarm yet (no trip circuit supervision)
 - Overcurrent relays cannot yet trip on faults, because faults do not raise current
 - Animation has no camera or annotation keyframes
 - Timed scenario events are not yet editable in the scenario editor

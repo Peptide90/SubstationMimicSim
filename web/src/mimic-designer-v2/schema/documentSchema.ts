@@ -1,4 +1,4 @@
-import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultMetadata, HotJointMetadata, Phase, PowerFlowMetadata, ProtectionElement, ProtectionZone, RelayFunction, RelayInput, RelayOutputAction, RelaySettings, ScenarioDefinition } from '../drawing/model';
+import type { BusbarSegment, ConductorPath, DrawingDocument, ElectricalSymbol, FaultMetadata, HotJointMetadata, Phase, PowerFlowMetadata, ProtectionElement, ProtectionZone, RelayFunction, RelayInput, RelayOutputAction, RelaySettings, ScenarioDefinition, SecondaryModel } from '../drawing/model';
 
 export const MIMIC_DESIGNER_V2_SCHEMA_VERSION = 7;
 
@@ -121,6 +121,7 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
     scenarios: ((input.scenarios ?? []) as ScenarioDefinition[]).map(migrateScenario),
     activeScenarioId: input.activeScenarioId,
     operationEvents: input.operationEvents ?? [],
+    secondary: migrateSecondary(input.secondary),
     simulationState: input.simulationState ?? { running: false, speed: 1, overlay: 'none' },
     uiState: {
       gridSize: input.uiState?.gridSize ?? 20,
@@ -383,4 +384,14 @@ function inferVoltageLevels(objects: Partial<DrawingDocument['objects']>): numbe
   (objects.conductors ?? []).forEach((path) => { if (path.voltageLevelKv) values.add(path.voltageLevelKv); });
   (objects.busbars ?? []).forEach((path) => { if (path.voltageLevelKv) values.add(path.voltageLevelKv); });
   return [...values].sort((a, b) => b - a);
+}
+
+function migrateSecondary(input?: Partial<SecondaryModel>): SecondaryModel | undefined {
+  if (!input) return undefined;
+  return {
+    supplies: (input.supplies ?? []).map((supply) => ({ ...supply, healthy: supply.healthy !== false })),
+    mcbs: (input.mcbs ?? []).map((mcb) => ({ ...mcb, closed: mcb.closed !== false })),
+    switches: (input.switches ?? []).map((item) => ({ ...item, position: item.position === 'local' ? 'local' : 'remote' })),
+    circuits: (input.circuits ?? []).map((circuit) => ({ ...circuit, rungs: circuit.rungs ?? [] }))
+  };
 }

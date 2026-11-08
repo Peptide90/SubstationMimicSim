@@ -326,3 +326,35 @@
 .mimic-v2-sheet-empty h3 { margin-top:0; }
 /* Fit the sheet to the viewer width rather than clipping its frame. */
 .mimic-v2-sheet { max-width:100%; height:auto; }
+
+/* Trip and close ladder sheets */
+.mimic-v2-ladder .hit { fill:transparent; }
+.mimic-v2-ladder-heading { font-size:13px; font-weight:700; letter-spacing:.08em; fill:#1c1c1c; }
+.mimic-v2-ladder-dead { font-size:12px; font-weight:700; fill:#c0262d; letter-spacing:.06em; }
+.mimic-v2-ladder-rail { stroke:#1c1c1c; stroke-width:2.5; }
+.mimic-v2-ladder-rail.live { stroke:#c0262d; stroke-width:3.5; }
+.mimic-v2-ladder-rail.return { stroke:#1f4e9c; stroke-width:3; }
+.mimic-v2-ladder-rail-label { font-size:16px; font-weight:700; fill:#1c1c1c; }
+.mimic-v2-ladder-wire { stroke:#5c5c5c; stroke-width:1.5; fill:none; }
+.mimic-v2-ladder-wire.live { stroke:#c0262d; stroke-width:3; }
+.mimic-v2-ladder-contact .bar { stroke:#1c1c1c; stroke-width:2.2; }
+.mimic-v2-ladder-contact .nc { stroke:#1c1c1c; stroke-width:1.6; }
+.mimic-v2-ladder-contact .bridge { stroke:#5c5c5c; stroke-width:3; }
+.mimic-v2-ladder-contact.live .bridge { stroke:#c0262d; }
+.mimic-v2-ladder-contact.live.open .bar { stroke:#c0262d; }
+.mimic-v2-ladder-contact text, .mimic-v2-ladder-coil text, .mimic-v2-ladder-mcb text, .mimic-v2-ladder-supply text { fill:#1c1c1c; }
+.mimic-v2-ladder .code { font-size:12px; font-weight:700; }
+.mimic-v2-ladder .name { font-size:10px; fill:#3a3a3a; }
+.mimic-v2-ladder .detail { font-size:10px; fill:#4a4a4a; }
+.mimic-v2-ladder .fault { font-size:10px; font-weight:700; fill:#c0262d; }
+.mimic-v2-ladder-contact.clickable, .mimic-v2-ladder-mcb, .mimic-v2-ladder-supply { cursor:pointer; }
+.mimic-v2-ladder-contact.clickable:hover .hit, .mimic-v2-ladder-mcb:hover .hit, .mimic-v2-ladder-supply:hover .hit { fill:rgba(0,120,212,.08); stroke:#0078d4; stroke-dasharray:3 2; }
+.mimic-v2-ladder-coil circle { fill:#fff; stroke:#1c1c1c; stroke-width:2; }
+.mimic-v2-ladder-coil.energised circle { fill:#ffd6d6; stroke:#c0262d; stroke-width:3; }
+.mimic-v2-ladder-mcb line, .mimic-v2-ladder-mcb circle { stroke:#1c1c1c; stroke-width:2; fill:#1c1c1c; }
+.mimic-v2-ladder-mcb line.live { stroke:#c0262d; stroke-width:3; }
+.mimic-v2-ladder-mcb.open .detail { fill:#c0262d; font-weight:700; }
+.mimic-v2-ladder-supply .cell { stroke:#1c1c1c; stroke-width:2; }
+.mimic-v2-ladder-supply .cell.long { stroke-width:3; }
+.mimic-v2-ladder-supply.failed .cell { stroke:#9a9a9a; stroke-dasharray:3 2; }
+.mimic-v2-sheet-index select { max-width:240px; }
