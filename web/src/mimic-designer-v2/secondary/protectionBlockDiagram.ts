@@ -1,5 +1,6 @@
-import type { DrawingDocument, LearningTier, RelayFunction, RelayFunctionType, RelayOutputAction, RelaySettings } from '../drawing/model';
+import type { DrawingDocument, LearningTier, RelayFunction, RelaySettings } from '../drawing/model';
 import { isTierAtLeast } from '../learning/tiers';
+import { formatDeviceLabel, type SecondaryConvention } from './conventions';
 
 /**
  * The protection block diagram, generated from the relay model.
@@ -38,35 +39,13 @@ export interface DiagramLink {
 export interface ProtectionBlockDiagram {
   /** Simple diagrams fold functions and outputs away, for the youngest tiers. */
   detail: 'simple' | 'full';
+  /** How devices are labelled. Changing it never changes the structure. */
+  convention: SecondaryConvention;
   columns: BlockColumn[];
   blocks: DiagramBlock[];
   links: DiagramLink[];
   notes: string[];
 }
-
-const functionNames: Record<RelayFunctionType, string> = {
-  overcurrent: 'Overcurrent',
-  'earth-fault': 'Earth fault',
-  'directional-overcurrent': 'Directional overcurrent',
-  'directional-earth-fault': 'Directional earth fault',
-  overvoltage: 'Overvoltage',
-  undervoltage: 'Undervoltage',
-  'thermal-overload': 'Thermal overload',
-  differential: 'Differential',
-  'restricted-earth-fault': 'Restricted earth fault',
-  'breaker-fail': 'Breaker fail',
-  intertrip: 'Intertrip',
-  'trip-circuit-supervision': 'Trip circuit supervision'
-};
-
-const actionNames: Record<RelayOutputAction['action'], string> = {
-  'trip-open-breaker': 'Trip',
-  'block-close': 'Block close',
-  alarm: 'Alarm',
-  'apply-lockout': 'Lockout',
-  'clear-auto-reset': 'Clear auto-reset',
-  'trigger-backup-relay': 'Start backup'
-};
 
 const unitFor = (fn: RelayFunction) => (fn.requiredInputType === 'voltage' ? 'kV' : fn.requiredInputType === 'temperature' ? '°C' : 'A');
 
@@ -86,7 +65,7 @@ function functionState(relay: RelaySettings, fn: RelayFunction): BlockState {
   return 'normal';
 }
 
-export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: LearningTier = 'Apprentice'): ProtectionBlockDiagram {
+export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: LearningTier = 'Apprentice', convention: SecondaryConvention = 'plain'): ProtectionBlockDiagram {
   const detail = isTierAtLeast(tier, 'Apprentice') ? 'full' : 'simple';
   const showSettings = isTierAtLeast(tier, 'Apprentice');
   const symbols = new Map(doc.objects.symbols.map((symbol) => [symbol.id, symbol]));
@@ -161,7 +140,7 @@ export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: Learning
       id: `function:${relay.id}:${fn.id}`,
       column: 'function',
       relayId: relay.id,
-      label: functionNames[fn.type] ?? fn.type,
+      label: formatDeviceLabel(fn.type, convention),
       detail: showSettings ? [fn.pickupThreshold !== undefined ? `pickup ${fn.pickupThreshold} ${unitFor(fn)}` : undefined, fn.instantaneous ? 'instantaneous' : `${fn.timeDelayMs} ms`].filter(Boolean).join(' · ') : undefined,
       state: functionState(relay, fn)
     }));
@@ -177,7 +156,7 @@ export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: Learning
         id: `output:${relay.id}:${output.id}`,
         column: 'output',
         relayId: relay.id,
-        label: actionNames[output.action] ?? output.action,
+        label: formatDeviceLabel(`output:${output.action}`, convention),
         detail: output.delayMs ? `after ${output.delayMs} ms` : undefined,
         state: tripped ? 'tripped' : state === 'disabled' ? 'disabled' : 'normal'
       };
@@ -194,7 +173,7 @@ export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: Learning
         id: `output:${relay.id}:breaker-fail`,
         column: 'output',
         relayId: relay.id,
-        label: 'Breaker fail backup trip',
+        label: formatDeviceLabel('breaker-fail-backup', convention),
         detail: `after ${relay.breakerFailDelayMs} ms if the main breaker does not open`,
         state: tripped ? 'picked-up' : state === 'disabled' ? 'disabled' : 'normal'
       };
@@ -208,7 +187,7 @@ export function buildProtectionBlockDiagram(doc: DrawingDocument, tier: Learning
   }
 
   const columns: BlockColumn[] = detail === 'simple' ? ['measure', 'relay', 'plant'] : blockColumns;
-  return { detail, columns, blocks, links, notes };
+  return { detail, convention, columns, blocks, links, notes };
 }
 
 export const columnTitles: Record<BlockColumn, { full: string; simple: string }> = {

@@ -95,3 +95,43 @@ describe('protection block diagram', () => {
     }
   });
 });
+
+describe('breaker fail backup', () => {
+  /** The real engine, with the setting lowered so load current trips the relay. */
+  function trip(base: DrawingDocument): DrawingDocument {
+    const doc = { ...base, relays: base.relays.map((relay) => ({ ...relay, pickupCurrentA: 1, functions: relay.functions!.map((fn) => ({ ...fn, pickupThreshold: 1 })) })) };
+    let next = applyRelayProtectionStep(doc, derive(doc), 0).doc;
+    next = applyRelayProtectionStep(next, derive(next), 1000).doc;
+    return next;
+  }
+  const state = (doc: DrawingDocument, id: string) => doc.objects.symbols.find((symbol) => symbol.id === id)?.operation?.switchState;
+
+  it('leaves the backup breaker closed when the main breaker opens', () => {
+    const tripped = trip(example('example-breaker-fail-backup'));
+    expect(tripped.relays[0].state).toBe('tripped');
+    expect(state(tripped, 'ex-bf-cb')).toBe('open');
+    expect(state(tripped, 'ex-bf-backup-cb')).toBe('closed');
+  });
+
+  it('trips the backup breaker when the main breaker fails', () => {
+    const base = example('example-breaker-fail-backup');
+    const failing = { ...base, objects: { ...base.objects, symbols: base.objects.symbols.map((symbol) => (symbol.id === 'ex-bf-cb' ? { ...symbol, simulation: { ...symbol.simulation, damaged: true } } : symbol)) } };
+    let tripped = trip(failing);
+    tripped = applyRelayProtectionStep(tripped, derive(tripped), 2000).doc;
+    expect(state(tripped, 'ex-bf-cb')).toBe('closed');
+    expect(state(tripped, 'ex-bf-backup-cb')).toBe('open');
+  });
+
+  it('removes the unconditional backup trip that earlier migrations generated', () => {
+    const base = example('example-breaker-fail-backup');
+    const relay = base.relays[0];
+    const saved = { ...base, relays: [{ ...relay, outputActions: [...relay.outputActions!, { id: `${relay.id}-backup-ex-bf-backup-cb`, targetType: 'circuit-breaker' as const, targetObjectId: 'ex-bf-backup-cb', action: 'trip-open-breaker' as const, delayMs: 500 }] }] };
+    const migrated = migrateDrawingDocument(saved)!;
+    expect(migrated.relays[0].outputActions!.map((output) => output.targetObjectId)).toEqual(['ex-bf-cb']);
+  });
+
+  it('draws one trip output and one breaker fail backup, not two trips', () => {
+    const outputs = buildProtectionBlockDiagram(example('example-breaker-fail-backup')).blocks.filter((block) => block.column === 'output').map((block) => block.label);
+    expect(outputs).toEqual(['Trip', 'Breaker fail backup trip']);
+  });
+});

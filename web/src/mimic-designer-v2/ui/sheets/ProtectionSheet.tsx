@@ -1,4 +1,5 @@
 import type { LearningTier } from '../../drawing/model';
+import { secondaryConventions } from '../../secondary/conventions';
 import { columnTitles, layoutBlockDiagram, type DiagramBlock, type PlacedBlock, type ProtectionBlockDiagram } from '../../secondary/protectionBlockDiagram';
 
 type Props = {
@@ -72,10 +73,11 @@ export function ProtectionSheet({ diagram, site, tier, selectedBlockId, onSelect
           <rect width={TITLE_BLOCK.width} height={TITLE_BLOCK.height} />
           <line x1={0} y1={26} x2={TITLE_BLOCK.width} y2={26} />
           <line x1={0} y1={50} x2={TITLE_BLOCK.width} y2={50} />
-          <line x1={180} y1={50} x2={180} y2={TITLE_BLOCK.height} />
+          <line x1={180} y1={26} x2={180} y2={TITLE_BLOCK.height} />
           <text x={8} y={18} className='strong'>PROTECTION BLOCK DIAGRAM</text>
-          <text x={8} y={42}>{site.toUpperCase()}</text>
+          <text x={8} y={42}><title>{site}</title>{site.length > 26 ? `${site.slice(0, 25).toUpperCase()}…` : site.toUpperCase()}</text>
           <text x={8} y={66}>SHEET P-01 · GENERATED</text>
+          <text x={188} y={42}>{secondaryConventions[diagram.convention].label.toUpperCase()}</text>
           <text x={188} y={66}>{tier.toUpperCase()}</text>
         </g>
       </svg>

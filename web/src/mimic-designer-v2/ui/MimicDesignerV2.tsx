@@ -59,6 +59,7 @@ import { SwitchingSheetPanel } from './panels/SwitchingSheetPanel';
 import { AlarmList, ControlPanel, ControlRoomStatusBar } from './panels/ControlRoom';
 import { ProtectionSheet } from './sheets/ProtectionSheet';
 import { buildProtectionBlockDiagram, type DiagramBlock } from '../secondary/protectionBlockDiagram';
+import { conventionOrder, isConventionAvailable, secondaryConventions, type SecondaryConvention } from '../secondary/conventions';
 import { ScenarioEditor } from './panels/ScenarioEditor';
 import { exportLessonPack, importLessonPack, newScenarioDraft, useScenarioAuthoring } from '../authoring';
 import { fitCamera } from './camera';
@@ -828,7 +829,12 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
   const alarms = useMemo(() => deriveAlarms(doc.operationEvents, acknowledgedAlarms), [doc.operationEvents, acknowledgedAlarms]);
   const alarmStatus = useMemo(() => alarmSummary(alarms), [alarms]);
   /** Protect › the protection block diagram, generated from the relay model. */
-  const protectionDiagram = useMemo(() => buildProtectionBlockDiagram(doc, learningTier), [doc, learningTier]);
+  const secondaryConvention: SecondaryConvention = doc.uiState.secondaryConvention ?? 'plain';
+  const protectionDiagram = useMemo(() => buildProtectionBlockDiagram(doc, learningTier, secondaryConvention), [doc, learningTier, secondaryConvention]);
+  const setSecondaryConvention = (convention: SecondaryConvention) => {
+    setDoc((prev) => ({ ...prev, uiState: { ...prev.uiState, secondaryConvention: convention } }));
+    setDirty(true);
+  };
   const sheetRelay = selectedSheetBlock ? doc.relays.find((relay) => relay.id === selectedSheetBlock.relayId) : undefined;
   const selectSheetBlock = (block: DiagramBlock | undefined) => {
     setSelectedSheetBlock(block);
@@ -2154,6 +2160,7 @@ export function MimicDesignerV2({ onRequestMenu, initialPlatformView }: Props): 
         {!focusedOperateMode && <button className={`mimic-v2-btn ${escapeMenuOpen ? 'active' : ''}`} title='Application menu (Esc)' onClick={() => setEscapeMenuOpen(true)}>Menu</button>}
         {!focusedOperateMode && <div className='mimic-v2-tool-group mimic-v2-workspace-switcher'><span>Workspace</span>{workspaceOrder.map((id) => <button key={id} type='button' className={`mimic-v2-btn mimic-v2-workspace-${id} ${workspace === id ? 'active' : ''}`} title={`The substation ${workspaces[id].aspect}. ${workspaces[id].description}`} onClick={() => selectWorkspace(id)}>{workspaces[id].label}</button>)}</div>}
         {!focusedOperateMode && workspace === 'operate' && <div className='mimic-v2-tool-group mimic-v2-view-switcher'><span>View</span>{(Object.keys(operateViews) as OperateView[]).map((view) => <button key={view} type='button' className={`mimic-v2-btn ${operateView === view ? 'active' : ''}`} title={operateViews[view].description} onClick={() => selectWorkspace('operate', view)}>{operateViews[view].label}</button>)}</div>}
+        {showingSheet && <div className='mimic-v2-tool-group mimic-v2-convention-switcher'><span>Labels</span>{conventionOrder.map((id) => <button key={id} type='button' className={`mimic-v2-btn ${secondaryConvention === id ? 'active' : ''}`} disabled={!isConventionAvailable(id)} title={isConventionAvailable(id) ? `${secondaryConventions[id].description}${secondaryConventions[id].reference ? ` (${secondaryConventions[id].reference})` : ''}` : `${secondaryConventions[id].label}: definitions not supplied yet`} onClick={() => setSecondaryConvention(id)}>{secondaryConventions[id].label}</button>)}</div>}
         {!focusedOperateMode && <div className='mimic-v2-tool-group mimic-v2-mode-toggles'><span>Modes</span>{modeOrder.map((id) => <button key={id} type='button' aria-pressed={workspaceModes[id]} className={`mimic-v2-btn ${workspaceModes[id] ? 'active' : ''}`} title={modes[id].description} onClick={() => toggleMode(id)}>{modes[id].label}</button>)}</div>}
         {focusedOperateMode ? <>
           <div className='mimic-v2-tool-group'><span>{activeScenarioPackage?.title ?? 'Scenario'}</span></div>

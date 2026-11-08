@@ -128,6 +128,7 @@ export function migrateDrawingDocument(input: PersistedDrawingDocument | null | 
       snapToTerminals: input.uiState?.snapToTerminals ?? true,
       snapToIntersections: input.uiState?.snapToIntersections ?? true,
       labelScheme: input.uiState?.labelScheme,
+      secondaryConvention: input.uiState?.secondaryConvention,
       displayScale: input.uiState?.displayScale
     },
     history: { undoStack: [], redoStack: [] }
@@ -180,7 +181,8 @@ function migrateZone(zone: ProtectionZone): ProtectionZone {
 function migrateRelay(relay: RelaySettings): RelaySettings {
   const phases = relay.phases?.length ? relay.phases : phasesAll;
   const functions = (relay.functions?.length ? relay.functions : legacyFunctionsForRelay(relay, phases)).map(migrateRelayFunction);
-  const outputActions = (relay.outputActions?.length ? relay.outputActions : legacyOutputsForRelay(relay)).map(migrateRelayOutput);
+  const existingOutputs = relay.outputActions?.length ? withoutGeneratedBackupTrips(relay, relay.outputActions) : [];
+  const outputActions = (existingOutputs.length ? existingOutputs : legacyOutputsForRelay(relay)).map(migrateRelayOutput);
   return {
     ...relay,
     name: relay.name ?? relay.id,
@@ -254,22 +256,28 @@ function legacyFunctionsForRelay(relay: RelaySettings, phases: Phase[]): RelayFu
   }];
 }
 
+/**
+ * Outputs for relays saved before output actions existed: a trip to each main
+ * breaker. Backup breakers are deliberately not included — they are tripped by
+ * the breaker-fail logic only when the main breaker fails to open.
+ */
 function legacyOutputsForRelay(relay: RelaySettings): RelayOutputAction[] {
-  return [
-    ...(relay.tripTargetBreakerIds ?? []).map((targetObjectId) => ({
-      id: `${relay.id}-trip-${targetObjectId}`,
-      targetType: 'circuit-breaker' as const,
-      targetObjectId,
-      action: 'trip-open-breaker' as const
-    })),
-    ...(relay.backupTripTargetBreakerIds ?? []).map((targetObjectId) => ({
-      id: `${relay.id}-backup-${targetObjectId}`,
-      targetType: 'circuit-breaker' as const,
-      targetObjectId,
-      action: 'trip-open-breaker' as const,
-      delayMs: relay.breakerFailDelayMs
-    }))
-  ];
+  return (relay.tripTargetBreakerIds ?? []).map((targetObjectId) => ({
+    id: `${relay.id}-trip-${targetObjectId}`,
+    targetType: 'circuit-breaker' as const,
+    targetObjectId,
+    action: 'trip-open-breaker' as const
+  }));
+}
+
+/**
+ * Earlier migrations turned each backup breaker into an unconditional trip
+ * output, so the backup opened on every trip, not just on breaker failure.
+ * Remove those generated outputs; the breaker-fail logic still trips backups.
+ */
+function withoutGeneratedBackupTrips(relay: RelaySettings, outputs: RelayOutputAction[]): RelayOutputAction[] {
+  const generated = new Set((relay.backupTripTargetBreakerIds ?? []).map((targetObjectId) => `${relay.id}-backup-${targetObjectId}`));
+  return outputs.filter((output) => !generated.has(output.id));
 }
 
 function migrateScenario(scenario: ScenarioDefinition): ScenarioDefinition {

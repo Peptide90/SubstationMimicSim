@@ -181,6 +181,10 @@ view. Learn and Studio are toggles in all three.
 - Routine operations were classified by guessing from message text, so a breaker whose id
   contained "fault" raised an urgent alarm when opened. The switching engine now tags its
   own events.
+- Breaker-fail backup was not conditional on breaker failure. Migration turned backup
+  breakers into unconditional trip outputs, and the breaker-fail step sent its backup trip
+  once its timer ran whether or not the main breaker had opened — so every trip opened the
+  backup breaker too. Both are fixed; the backup now trips only when the main breaker fails.
 
 ### Phase B — The secondary model (L)
 
@@ -378,11 +382,21 @@ Operate from Design. Scenarios may lock Operate to one view.
 control and SCADA are all in scope, built on one ladder model in the order set out in
 section 4.
 
+### 5.11 Secondary labels — switchable conventions
+
+**Decided (November 2026):** secondary devices can be labelled in any of several
+conventions, switched on the sheet: plain names, ANSI/IEEE C37.2 device numbers, IEC 60617
+symbols with IEC 61850 logical nodes, and National Grid. The model stores each device's
+*role*; labels are resolved when a sheet is drawn, so switching convention never changes what
+is simulated. A convention is offered only once it labels every role — so National Grid is
+listed but unavailable until its definitions are supplied, rather than filled with guesses.
+The setting is saved with the drawing, alongside the primary labelling scheme.
+
 ## 6. Open questions, for the phases that need them
 
-- **Device conventions (Phase B).** Label secondary devices with ANSI numbers (52a/52b,
-  86, 94), IEC designations, or the National Grid conventions the BP109 labelling already
-  follows? This affects every generated sheet, so it should be settled before B.
+- **National Grid secondary labels (before Phase B).** Decision 5.11 needs the National
+  Grid entry for each secondary device role in `secondary/conventions.ts`; until then the
+  option is shown but unavailable.
 - **Key interlocks (Phase C).** Model them as keys that physically move between locks, or
   as a simplified permissive? The first teaches more and costs more.
 - **Intertrips between substations (Phase E).** Real intertrips run between sites. Does a

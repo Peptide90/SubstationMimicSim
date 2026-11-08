@@ -664,6 +664,8 @@ export interface DrawingDocument {
     snapToTerminals: boolean;
     snapToIntersections: boolean;
     labelScheme?: 'DEFAULT' | 'NG_BP109' | 'ANSI_IEC';
+    /** How secondary devices are labelled on generated sheets. See secondary/conventions.ts. */
+    secondaryConvention?: 'plain' | 'ansi' | 'iec' | 'ng';
     displayScale?: {
       busbar?: number;
       text?: number;

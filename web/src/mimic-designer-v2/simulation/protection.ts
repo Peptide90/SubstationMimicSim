@@ -63,7 +63,8 @@ export function applyRelayProtectionStep(doc: DrawingDocument, simulation: Simul
     relayOutputs(relay).forEach((action) => applyRelayOutput(doc, action, openedBreakers, failedBreakers));
 
     const pickupAge = now - Date.parse(pickedUpAt);
-    if (relay.breakerFailEnabled && pickupAge >= relay.timeDelayMs + relay.breakerFailDelayMs) {
+    // Backup trips only if the main breaker has failed to clear the fault once the breaker-fail time has run.
+    if (relay.breakerFailEnabled && primaryTripFailed(doc, relay) && pickupAge >= relay.timeDelayMs + relay.breakerFailDelayMs) {
       relay.backupTripTargetBreakerIds.forEach((breakerId) => backupBreakers.add(breakerId));
     }
 
